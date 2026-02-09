@@ -39,3 +39,6 @@ secrets/
 
 # Copilot specific instructions (be specific, don't ignore all markdown!)
 .github/copilot-instructions.md
+
+# Claude Code local configuration (project-specific model settings)
+.claude/
