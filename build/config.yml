@@ -1,0 +1,35 @@
+# Wails v3 configuration for Hamster Wheel
+version: '3'
+
+# Application information
+info:
+  companyName: "Hamster Wheel"
+  productName: "Hamster Wheel"
+  productIdentifier: "com.hamsterwheel.app"
+  description: "Job search monitoring and application assistant"
+  copyright: "(c) 2026, Hamster Wheel"
+  comments: "Automated job search monitoring with LLM-powered matching"
+  version: "0.1.0"
+
+# Dev mode configuration
+dev_mode:
+  root_path: .
+  log_level: info
+  debounce: 1000
+  ignore:
+    dir:
+      - .git
+      - node_modules
+      - frontend
+      - bin
+    file:
+      - .DS_Store
+      - .gitignore
+    watched_extension:
+      - "*.go"
+    git_ignore: true
+  executes:
+    - cmd: npm run dev --prefix frontend
+      type: background
+    - cmd: ./dev-run.sh
+      type: primary
