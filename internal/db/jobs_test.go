@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -27,7 +28,7 @@ func TestInsertJobReturnsID(t *testing.T) {
 	db := testDB(t)
 
 	job := makeTestJob("abc123")
-	id, err := db.InsertJob(job)
+	id, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -40,13 +41,13 @@ func TestInsertJobGeneratesUUID(t *testing.T) {
 	db := testDB(t)
 
 	job1 := makeTestJob("job-1")
-	id1, err := db.InsertJob(job1)
+	id1, err := db.InsertJob(context.Background(), job1)
 	if err != nil {
 		t.Fatalf("inserting job 1: %v", err)
 	}
 
 	job2 := makeTestJob("job-2")
-	id2, err := db.InsertJob(job2)
+	id2, err := db.InsertJob(context.Background(), job2)
 	if err != nil {
 		t.Fatalf("inserting job 2: %v", err)
 	}
@@ -62,7 +63,7 @@ func TestInsertJobPreservesExplicitID(t *testing.T) {
 	job := makeTestJob("explicit-id-test")
 	job.ID = "my-custom-id"
 
-	id, err := db.InsertJob(job)
+	id, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -75,14 +76,14 @@ func TestInsertJobDuplicateSourceIDReturnsError(t *testing.T) {
 	db := testDB(t)
 
 	job1 := makeTestJob("same-source-id")
-	_, err := db.InsertJob(job1)
+	_, err := db.InsertJob(context.Background(), job1)
 	if err != nil {
 		t.Fatalf("inserting first job: %v", err)
 	}
 
 	job2 := makeTestJob("same-source-id")
 	job2.Title = "Different Title"
-	_, err = db.InsertJob(job2)
+	_, err = db.InsertJob(context.Background(), job2)
 	if !errors.Is(err, ErrDuplicateJob) {
 		t.Errorf("expected ErrDuplicateJob, got: %v", err)
 	}
@@ -93,14 +94,14 @@ func TestInsertJobSameSourceIDDifferentSourceAllowed(t *testing.T) {
 
 	job1 := makeTestJob("shared-id")
 	job1.Source = "indeed_uk"
-	_, err := db.InsertJob(job1)
+	_, err := db.InsertJob(context.Background(), job1)
 	if err != nil {
 		t.Fatalf("inserting indeed job: %v", err)
 	}
 
 	job2 := makeTestJob("shared-id")
 	job2.Source = "glassdoor_uk"
-	_, err = db.InsertJob(job2)
+	_, err = db.InsertJob(context.Background(), job2)
 	if err != nil {
 		t.Fatalf("expected no error for different source, got: %v", err)
 	}
@@ -114,12 +115,12 @@ func TestGetJobReturnsInsertedJob(t *testing.T) {
 	job.Location = "Manchester"
 	job.Description = "A great job description"
 
-	id, err := db.InsertJob(job)
+	id, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("inserting job: %v", err)
 	}
 
-	got, err := db.GetJob(id)
+	got, err := db.GetJob(context.Background(), id)
 	if err != nil {
 		t.Fatalf("getting job: %v", err)
 	}
@@ -159,7 +160,7 @@ func TestGetJobReturnsInsertedJob(t *testing.T) {
 func TestGetJobReturnsNilForMissing(t *testing.T) {
 	db := testDB(t)
 
-	got, err := db.GetJob("nonexistent-id")
+	got, err := db.GetJob(context.Background(), "nonexistent-id")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -174,12 +175,12 @@ func TestInsertJobWithNilPostedAt(t *testing.T) {
 	job := makeTestJob("nil-posted")
 	job.PostedAt = nil
 
-	id, err := db.InsertJob(job)
+	id, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("inserting job: %v", err)
 	}
 
-	got, err := db.GetJob(id)
+	got, err := db.GetJob(context.Background(), id)
 	if err != nil {
 		t.Fatalf("getting job: %v", err)
 	}
@@ -192,7 +193,7 @@ func TestInsertJobWithFilterID(t *testing.T) {
 	db := testDB(t)
 
 	// Create a filter first.
-	filterID, err := db.CreateFilter("Test", "golang", "London", "indeed_uk")
+	filterID, err := db.CreateFilter(context.Background(),"Test", "golang", "London", "indeed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
@@ -200,12 +201,12 @@ func TestInsertJobWithFilterID(t *testing.T) {
 	job := makeTestJob("with-filter")
 	job.FilterID = &filterID
 
-	id, err := db.InsertJob(job)
+	id, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("inserting job: %v", err)
 	}
 
-	got, err := db.GetJob(id)
+	got, err := db.GetJob(context.Background(), id)
 	if err != nil {
 		t.Fatalf("getting job: %v", err)
 	}
@@ -221,12 +222,12 @@ func TestJobExistsBySourceIDReturnsTrueForExisting(t *testing.T) {
 	db := testDB(t)
 
 	job := makeTestJob("exists-check")
-	_, err := db.InsertJob(job)
+	_, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("inserting job: %v", err)
 	}
 
-	exists, err := db.JobExistsBySourceID("indeed_uk", "exists-check")
+	exists, err := db.JobExistsBySourceID(context.Background(),"indeed_uk", "exists-check")
 	if err != nil {
 		t.Fatalf("checking existence: %v", err)
 	}
@@ -238,7 +239,7 @@ func TestJobExistsBySourceIDReturnsTrueForExisting(t *testing.T) {
 func TestJobExistsBySourceIDReturnsFalseForMissing(t *testing.T) {
 	db := testDB(t)
 
-	exists, err := db.JobExistsBySourceID("indeed_uk", "does-not-exist")
+	exists, err := db.JobExistsBySourceID(context.Background(),"indeed_uk", "does-not-exist")
 	if err != nil {
 		t.Fatalf("checking existence: %v", err)
 	}
@@ -252,13 +253,13 @@ func TestJobExistsBySourceIDDistinguishesSources(t *testing.T) {
 
 	job := makeTestJob("source-specific")
 	job.Source = "indeed_uk"
-	_, err := db.InsertJob(job)
+	_, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("inserting job: %v", err)
 	}
 
 	// Same source_id but different source should not exist.
-	exists, err := db.JobExistsBySourceID("glassdoor_uk", "source-specific")
+	exists, err := db.JobExistsBySourceID(context.Background(),"glassdoor_uk", "source-specific")
 	if err != nil {
 		t.Fatalf("checking existence: %v", err)
 	}
@@ -272,13 +273,13 @@ func TestListJobsReturnsAll(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		job := makeTestJob(fmt.Sprintf("list-job-%d", i))
-		_, err := db.InsertJob(job)
+		_, err := db.InsertJob(context.Background(), job)
 		if err != nil {
 			t.Fatalf("inserting job %d: %v", i, err)
 		}
 	}
 
-	jobs, err := db.ListJobs(0)
+	jobs, err := db.ListJobs(context.Background(),0)
 	if err != nil {
 		t.Fatalf("listing jobs: %v", err)
 	}
@@ -292,13 +293,13 @@ func TestListJobsRespectsLimit(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		job := makeTestJob(fmt.Sprintf("limit-job-%d", i))
-		_, err := db.InsertJob(job)
+		_, err := db.InsertJob(context.Background(), job)
 		if err != nil {
 			t.Fatalf("inserting job %d: %v", i, err)
 		}
 	}
 
-	jobs, err := db.ListJobs(2)
+	jobs, err := db.ListJobs(context.Background(),2)
 	if err != nil {
 		t.Fatalf("listing jobs: %v", err)
 	}
@@ -310,7 +311,7 @@ func TestListJobsRespectsLimit(t *testing.T) {
 func TestListJobsReturnsEmptySlice(t *testing.T) {
 	db := testDB(t)
 
-	jobs, err := db.ListJobs(0)
+	jobs, err := db.ListJobs(context.Background(),0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -325,7 +326,7 @@ func TestListJobsReturnsEmptySlice(t *testing.T) {
 func TestListJobsRejectsNegativeLimit(t *testing.T) {
 	db := testDB(t)
 
-	jobs, err := db.ListJobs(-1)
+	jobs, err := db.ListJobs(context.Background(),-1)
 	if err == nil {
 		t.Fatal("expected error for negative limit, got nil")
 	}
@@ -340,7 +341,7 @@ func TestListJobsRejectsNegativeLimit(t *testing.T) {
 func TestListJobsRejectsExcessiveLimit(t *testing.T) {
 	db := testDB(t)
 
-	jobs, err := db.ListJobs(maxJobsLimit + 1)
+	jobs, err := db.ListJobs(context.Background(),maxJobsLimit + 1)
 	if err == nil {
 		t.Fatal("expected error for excessive limit, got nil")
 	}
@@ -355,24 +356,24 @@ func TestListJobsRejectsExcessiveLimit(t *testing.T) {
 func TestListJobsByFilterReturnsMatchingJobs(t *testing.T) {
 	db := testDB(t)
 
-	filterA, _ := db.CreateFilter("Filter A", "go", "London", "indeed_uk")
-	filterB, _ := db.CreateFilter("Filter B", "python", "Remote", "indeed_uk")
+	filterA, _ := db.CreateFilter(context.Background(),"Filter A", "go", "London", "indeed_uk")
+	filterB, _ := db.CreateFilter(context.Background(),"Filter B", "python", "Remote", "indeed_uk")
 
 	jobA := makeTestJob("filter-a-job")
 	jobA.FilterID = &filterA
-	_, err := db.InsertJob(jobA)
+	_, err := db.InsertJob(context.Background(), jobA)
 	if err != nil {
 		t.Fatalf("inserting job A: %v", err)
 	}
 
 	jobB := makeTestJob("filter-b-job")
 	jobB.FilterID = &filterB
-	_, err = db.InsertJob(jobB)
+	_, err = db.InsertJob(context.Background(), jobB)
 	if err != nil {
 		t.Fatalf("inserting job B: %v", err)
 	}
 
-	jobs, err := db.ListJobsByFilter(filterA)
+	jobs, err := db.ListJobsByFilter(context.Background(),filterA)
 	if err != nil {
 		t.Fatalf("listing by filter: %v", err)
 	}
@@ -388,17 +389,17 @@ func TestDeleteJobRemovesIt(t *testing.T) {
 	db := testDB(t)
 
 	job := makeTestJob("to-delete")
-	id, err := db.InsertJob(job)
+	id, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("inserting job: %v", err)
 	}
 
-	err = db.DeleteJob(id)
+	err = db.DeleteJob(context.Background(),id)
 	if err != nil {
 		t.Fatalf("deleting job: %v", err)
 	}
 
-	got, err := db.GetJob(id)
+	got, err := db.GetJob(context.Background(), id)
 	if err != nil {
 		t.Fatalf("getting deleted job: %v", err)
 	}
@@ -410,7 +411,7 @@ func TestDeleteJobRemovesIt(t *testing.T) {
 func TestDeleteJobNotFoundReturnsError(t *testing.T) {
 	db := testDB(t)
 
-	err := db.DeleteJob("nonexistent-id")
+	err := db.DeleteJob(context.Background(),"nonexistent-id")
 	if !errors.Is(err, ErrJobNotFound) {
 		t.Errorf("expected ErrJobNotFound, got: %v", err)
 	}
@@ -419,7 +420,7 @@ func TestDeleteJobNotFoundReturnsError(t *testing.T) {
 func TestCountJobs(t *testing.T) {
 	db := testDB(t)
 
-	count, err := db.CountJobs()
+	count, err := db.CountJobs(context.Background())
 	if err != nil {
 		t.Fatalf("counting empty: %v", err)
 	}
@@ -429,13 +430,13 @@ func TestCountJobs(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		job := makeTestJob(fmt.Sprintf("count-job-%d", i))
-		_, err := db.InsertJob(job)
+		_, err := db.InsertJob(context.Background(), job)
 		if err != nil {
 			t.Fatalf("inserting job %d: %v", i, err)
 		}
 	}
 
-	count, err = db.CountJobs()
+	count, err = db.CountJobs(context.Background())
 	if err != nil {
 		t.Fatalf("counting after insert: %v", err)
 	}
@@ -456,12 +457,12 @@ func TestInsertJobWithEmptyOptionalFields(t *testing.T) {
 		// PostedAt nil, FilterID nil
 	}
 
-	id, err := db.InsertJob(job)
+	id, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("inserting minimal job: %v", err)
 	}
 
-	got, err := db.GetJob(id)
+	got, err := db.GetJob(context.Background(), id)
 	if err != nil {
 		t.Fatalf("getting job: %v", err)
 	}

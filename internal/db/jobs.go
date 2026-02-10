@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -29,7 +30,7 @@ type Job struct {
 
 // InsertJob stores a new job. Returns ErrDuplicateJob if a job with the same
 // (source, source_id) already exists — this is the primary deduplication mechanism.
-func (db *DB) InsertJob(job *Job) (string, error) {
+func (db *DB) InsertJob(ctx context.Context, job *Job) (string, error) {
 	if job.ID == "" {
 		job.ID = uuid.New().String()
 	}
@@ -40,7 +41,7 @@ func (db *DB) InsertJob(job *Job) (string, error) {
 		postedAt = &s
 	}
 
-	_, err := db.conn.Exec(
+	_, err := db.conn.ExecContext(ctx,
 		`INSERT INTO jobs (id, source, source_id, title, company, location, description, url, posted_at, filter_id)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID, job.Source, job.SourceID, job.Title, job.Company,
@@ -59,8 +60,8 @@ func (db *DB) InsertJob(job *Job) (string, error) {
 
 // GetJob retrieves a single job by ID.
 // Returns nil and no error if the job doesn't exist.
-func (db *DB) GetJob(id string) (*Job, error) {
-	row := db.conn.QueryRow(
+func (db *DB) GetJob(ctx context.Context, id string) (*Job, error) {
+	row := db.conn.QueryRowContext(ctx,
 		`SELECT id, source, source_id, title, company, location, description,
 		        url, posted_at, discovered_at, filter_id
 		 FROM jobs WHERE id = ?`, id,
@@ -72,9 +73,9 @@ func (db *DB) GetJob(id string) (*Job, error) {
 // JobExistsBySourceID checks whether a job with the given source + source_id
 // already exists in the database. The scheduler calls this before fetching
 // full details to avoid redundant HTTP requests.
-func (db *DB) JobExistsBySourceID(source, sourceID string) (bool, error) {
+func (db *DB) JobExistsBySourceID(ctx context.Context, source, sourceID string) (bool, error) {
 	var count int
-	err := db.conn.QueryRow(
+	err := db.conn.QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM jobs WHERE source = ? AND source_id = ?",
 		source, sourceID,
 	).Scan(&count)
@@ -89,7 +90,7 @@ const maxJobsLimit = 10000
 
 // ListJobs returns all jobs, ordered by discovered_at (newest first).
 // Pass limit=0 for no limit. Returns ErrInvalidLimit if limit is negative or exceeds maxJobsLimit.
-func (db *DB) ListJobs(limit int) ([]Job, error) {
+func (db *DB) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 	if limit < 0 {
 		return nil, fmt.Errorf("limit must be non-negative: %w", ErrInvalidLimit)
 	}
@@ -105,7 +106,7 @@ func (db *DB) ListJobs(limit int) ([]Job, error) {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
 
-	rows, err := db.conn.Query(query)
+	rows, err := db.conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("listing jobs: %w", err)
 	}
@@ -115,8 +116,8 @@ func (db *DB) ListJobs(limit int) ([]Job, error) {
 }
 
 // ListJobsByFilter returns jobs found through a specific search filter.
-func (db *DB) ListJobsByFilter(filterID string) ([]Job, error) {
-	rows, err := db.conn.Query(
+func (db *DB) ListJobsByFilter(ctx context.Context, filterID string) ([]Job, error) {
+	rows, err := db.conn.QueryContext(ctx,
 		`SELECT id, source, source_id, title, company, location, description,
 		        url, posted_at, discovered_at, filter_id
 		 FROM jobs WHERE filter_id = ? ORDER BY discovered_at DESC`,
@@ -133,8 +134,8 @@ func (db *DB) ListJobsByFilter(filterID string) ([]Job, error) {
 // DeleteJob removes a job by ID. Due to ON DELETE CASCADE, this also
 // removes any associated job_matches rows.
 // Returns ErrJobNotFound if the job doesn't exist.
-func (db *DB) DeleteJob(id string) error {
-	result, err := db.conn.Exec("DELETE FROM jobs WHERE id = ?", id)
+func (db *DB) DeleteJob(ctx context.Context, id string) error {
+	result, err := db.conn.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("deleting job %q: %w", id, err)
 	}
@@ -151,9 +152,9 @@ func (db *DB) DeleteJob(id string) error {
 }
 
 // CountJobs returns the total number of jobs in the database.
-func (db *DB) CountJobs() (int, error) {
+func (db *DB) CountJobs(ctx context.Context) (int, error) {
 	var count int
-	err := db.conn.QueryRow("SELECT COUNT(*) FROM jobs").Scan(&count)
+	err := db.conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM jobs").Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("counting jobs: %w", err)
 	}

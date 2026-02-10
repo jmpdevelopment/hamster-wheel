@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -27,7 +28,7 @@ type SearchFilter struct {
 
 // CreateFilter inserts a new search filter and returns the generated ID.
 // Returns ErrInvalidInput if name, keywords, or source are empty.
-func (db *DB) CreateFilter(name, keywords, location, source string) (string, error) {
+func (db *DB) CreateFilter(ctx context.Context, name, keywords, location, source string) (string, error) {
 	// Validate required fields.
 	if strings.TrimSpace(name) == "" {
 		return "", fmt.Errorf("name cannot be empty: %w", ErrInvalidInput)
@@ -41,7 +42,7 @@ func (db *DB) CreateFilter(name, keywords, location, source string) (string, err
 
 	id := uuid.New().String()
 
-	_, err := db.conn.Exec(
+	_, err := db.conn.ExecContext(ctx,
 		`INSERT INTO search_filters (id, name, keywords, location, source)
 		 VALUES (?, ?, ?, ?, ?)`,
 		id, name, keywords, location, source,
@@ -55,8 +56,8 @@ func (db *DB) CreateFilter(name, keywords, location, source string) (string, err
 
 // GetFilter retrieves a single search filter by ID.
 // Returns nil and no error if the filter doesn't exist.
-func (db *DB) GetFilter(id string) (*SearchFilter, error) {
-	row := db.conn.QueryRow(
+func (db *DB) GetFilter(ctx context.Context, id string) (*SearchFilter, error) {
+	row := db.conn.QueryRowContext(ctx,
 		`SELECT id, name, keywords, location, source, enabled, created_at, updated_at
 		 FROM search_filters WHERE id = ?`, id,
 	)
@@ -69,8 +70,8 @@ func (db *DB) GetFilter(id string) (*SearchFilter, error) {
 }
 
 // ListFilters returns all search filters, ordered by creation date (newest first).
-func (db *DB) ListFilters() ([]SearchFilter, error) {
-	rows, err := db.conn.Query(
+func (db *DB) ListFilters(ctx context.Context) ([]SearchFilter, error) {
+	rows, err := db.conn.QueryContext(ctx,
 		`SELECT id, name, keywords, location, source, enabled, created_at, updated_at
 		 FROM search_filters ORDER BY created_at DESC`,
 	)
@@ -84,8 +85,8 @@ func (db *DB) ListFilters() ([]SearchFilter, error) {
 
 // ListEnabledFilters returns only filters where enabled = true.
 // This is what the scheduler calls to decide which filters to poll.
-func (db *DB) ListEnabledFilters() ([]SearchFilter, error) {
-	rows, err := db.conn.Query(
+func (db *DB) ListEnabledFilters(ctx context.Context) ([]SearchFilter, error) {
+	rows, err := db.conn.QueryContext(ctx,
 		`SELECT id, name, keywords, location, source, enabled, created_at, updated_at
 		 FROM search_filters WHERE enabled = 1 ORDER BY created_at DESC`,
 	)
@@ -98,13 +99,25 @@ func (db *DB) ListEnabledFilters() ([]SearchFilter, error) {
 }
 
 // UpdateFilter updates a filter's mutable fields and bumps updated_at.
-func (db *DB) UpdateFilter(id, name, keywords, location, source string, enabled bool) error {
+// Returns ErrInvalidInput if name, keywords, or source are empty.
+func (db *DB) UpdateFilter(ctx context.Context, id, name, keywords, location, source string, enabled bool) error {
+	// Same validation as CreateFilter — enforce consistent invariants.
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("name cannot be empty: %w", ErrInvalidInput)
+	}
+	if strings.TrimSpace(keywords) == "" {
+		return fmt.Errorf("keywords cannot be empty: %w", ErrInvalidInput)
+	}
+	if strings.TrimSpace(source) == "" {
+		return fmt.Errorf("source cannot be empty: %w", ErrInvalidInput)
+	}
+
 	enabledInt := 0
 	if enabled {
 		enabledInt = 1
 	}
 
-	result, err := db.conn.Exec(
+	result, err := db.conn.ExecContext(ctx,
 		`UPDATE search_filters
 		 SET name = ?, keywords = ?, location = ?, source = ?, enabled = ?,
 		     updated_at = datetime('now')
@@ -128,8 +141,8 @@ func (db *DB) UpdateFilter(id, name, keywords, location, source string, enabled 
 
 // DeleteFilter removes a search filter by ID.
 // Returns ErrFilterNotFound if the filter doesn't exist.
-func (db *DB) DeleteFilter(id string) error {
-	result, err := db.conn.Exec("DELETE FROM search_filters WHERE id = ?", id)
+func (db *DB) DeleteFilter(ctx context.Context, id string) error {
+	result, err := db.conn.ExecContext(ctx, "DELETE FROM search_filters WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("deleting filter %q: %w", id, err)
 	}

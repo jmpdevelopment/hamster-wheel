@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"testing"
 )
 
@@ -17,7 +18,7 @@ func closedDB(t *testing.T) *DB {
 
 func TestCreateFilterOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.CreateFilter("Test", "go", "London", "indeed_uk")
+	_, err := db.CreateFilter(context.Background(),"Test", "go", "London", "indeed_uk")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -25,7 +26,7 @@ func TestCreateFilterOnClosedDBReturnsError(t *testing.T) {
 
 func TestGetFilterOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.GetFilter("some-id")
+	_, err := db.GetFilter(context.Background(),"some-id")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -33,7 +34,7 @@ func TestGetFilterOnClosedDBReturnsError(t *testing.T) {
 
 func TestListFiltersOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.ListFilters()
+	_, err := db.ListFilters(context.Background())
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -41,7 +42,7 @@ func TestListFiltersOnClosedDBReturnsError(t *testing.T) {
 
 func TestListEnabledFiltersOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.ListEnabledFilters()
+	_, err := db.ListEnabledFilters(context.Background())
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -49,7 +50,7 @@ func TestListEnabledFiltersOnClosedDBReturnsError(t *testing.T) {
 
 func TestUpdateFilterOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	err := db.UpdateFilter("some-id", "Name", "kw", "loc", "indeed_uk", true)
+	err := db.UpdateFilter(context.Background(),"some-id", "Name", "kw", "loc", "indeed_uk", true)
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -57,7 +58,7 @@ func TestUpdateFilterOnClosedDBReturnsError(t *testing.T) {
 
 func TestDeleteFilterOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	err := db.DeleteFilter("some-id")
+	err := db.DeleteFilter(context.Background(),"some-id")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -68,7 +69,7 @@ func TestDeleteFilterOnClosedDBReturnsError(t *testing.T) {
 func TestInsertJobOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
 	job := makeTestJob("closed-db-job")
-	_, err := db.InsertJob(job)
+	_, err := db.InsertJob(context.Background(),job)
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -76,7 +77,7 @@ func TestInsertJobOnClosedDBReturnsError(t *testing.T) {
 
 func TestGetJobOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.GetJob("some-id")
+	_, err := db.GetJob(context.Background(),"some-id")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -84,7 +85,7 @@ func TestGetJobOnClosedDBReturnsError(t *testing.T) {
 
 func TestJobExistsBySourceIDOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.JobExistsBySourceID("indeed_uk", "some-id")
+	_, err := db.JobExistsBySourceID(context.Background(),"indeed_uk", "some-id")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -92,7 +93,7 @@ func TestJobExistsBySourceIDOnClosedDBReturnsError(t *testing.T) {
 
 func TestListJobsOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.ListJobs(0)
+	_, err := db.ListJobs(context.Background(),0)
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -100,7 +101,7 @@ func TestListJobsOnClosedDBReturnsError(t *testing.T) {
 
 func TestListJobsByFilterOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.ListJobsByFilter("some-filter")
+	_, err := db.ListJobsByFilter(context.Background(),"some-filter")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -108,7 +109,7 @@ func TestListJobsByFilterOnClosedDBReturnsError(t *testing.T) {
 
 func TestDeleteJobOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	err := db.DeleteJob("some-id")
+	err := db.DeleteJob(context.Background(),"some-id")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -116,7 +117,7 @@ func TestDeleteJobOnClosedDBReturnsError(t *testing.T) {
 
 func TestCountJobsOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.CountJobs()
+	_, err := db.CountJobs(context.Background())
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -126,7 +127,7 @@ func TestCountJobsOnClosedDBReturnsError(t *testing.T) {
 
 func TestGetSettingOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	_, err := db.GetSetting("key")
+	_, err := db.GetSetting(context.Background(),"key")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -134,7 +135,7 @@ func TestGetSettingOnClosedDBReturnsError(t *testing.T) {
 
 func TestSetSettingOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	err := db.SetSetting("key", "value")
+	err := db.SetSetting(context.Background(),"key", "value")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}
@@ -142,7 +143,7 @@ func TestSetSettingOnClosedDBReturnsError(t *testing.T) {
 
 func TestDeleteSettingOnClosedDBReturnsError(t *testing.T) {
 	db := closedDB(t)
-	err := db.DeleteSetting("key")
+	err := db.DeleteSetting(context.Background(),"key")
 	if err == nil {
 		t.Error("expected error on closed DB, got nil")
 	}

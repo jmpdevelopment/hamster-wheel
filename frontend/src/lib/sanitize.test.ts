@@ -60,11 +60,12 @@ describe("sanitizeHTML", () => {
     expect(result).toContain('href="https://example.com"');
   });
 
-  it("removes style elements but keeps inline styles", () => {
+  it("removes style elements and inline style attributes", () => {
     const html =
       '<style>body{display:none}</style><p style="color:red">Text</p>';
     const result = sanitizeHTML(html);
     expect(result).not.toContain("<style>");
+    expect(result).not.toContain("color:red");
     expect(result).toContain("Text");
   });
 

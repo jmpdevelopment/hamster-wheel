@@ -1,3 +1,5 @@
+import DOMPurify from "dompurify";
+
 /**
  * Returns true if the string contains HTML tags.
  */
@@ -6,33 +8,21 @@ export function containsHTML(text: string): boolean {
 }
 
 /**
- * Sanitizes HTML by removing dangerous elements and attributes.
- * Uses the browser's built-in DOMParser — no external dependency needed.
+ * Sanitizes HTML using DOMPurify (allowlist-based).
+ * Only permits safe formatting tags — strips scripts, iframes, forms,
+ * event handlers, javascript: URLs, and all other dangerous content.
  */
 export function sanitizeHTML(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-
-  // Remove dangerous elements.
-  doc
-    .querySelectorAll(
-      "script, style, iframe, object, embed, form, input, textarea, button, link, meta"
-    )
-    .forEach((el) => el.remove());
-
-  // Remove event handler attributes and javascript: URLs.
-  doc.querySelectorAll("*").forEach((el) => {
-    for (const attr of Array.from(el.attributes)) {
-      if (
-        attr.name.startsWith("on") ||
-        (attr.name === "href" &&
-          attr.value.trim().toLowerCase().startsWith("javascript:")) ||
-        (attr.name === "src" &&
-          attr.value.trim().toLowerCase().startsWith("javascript:"))
-      ) {
-        el.removeAttribute(attr.name);
-      }
-    }
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      "p", "br", "b", "i", "em", "strong", "u", "s",
+      "h1", "h2", "h3", "h4", "h5", "h6",
+      "ul", "ol", "li",
+      "a", "span", "div",
+      "table", "thead", "tbody", "tr", "th", "td",
+      "blockquote", "pre", "code", "hr", "sub", "sup",
+    ],
+    ALLOWED_ATTR: ["href", "target", "rel"],
+    ALLOW_DATA_ATTR: false,
   });
-
-  return doc.body.innerHTML;
 }

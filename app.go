@@ -59,61 +59,68 @@ func (a *AppService) ServiceShutdown() error {
 // GetJobs returns jobs ordered by discovery date (newest first).
 // Pass limit=0 for all jobs.
 func (a *AppService) GetJobs(limit int) ([]db.Job, error) {
-	return a.db.ListJobs(limit)
+	return a.db.ListJobs(context.Background(), limit)
 }
 
 // GetJob returns a single job by ID, or nil if not found.
 func (a *AppService) GetJob(id string) (*db.Job, error) {
-	return a.db.GetJob(id)
+	return a.db.GetJob(context.Background(), id)
 }
 
 // GetJobsByFilter returns jobs discovered through a specific filter.
 func (a *AppService) GetJobsByFilter(filterID string) ([]db.Job, error) {
-	return a.db.ListJobsByFilter(filterID)
+	return a.db.ListJobsByFilter(context.Background(), filterID)
 }
 
 // GetJobCount returns the total number of jobs in the database.
 func (a *AppService) GetJobCount() (int, error) {
-	return a.db.CountJobs()
+	return a.db.CountJobs(context.Background())
 }
 
 // DeleteJob removes a job by ID.
 func (a *AppService) DeleteJob(id string) error {
-	return a.db.DeleteJob(id)
+	return a.db.DeleteJob(context.Background(), id)
 }
 
 // --- Filter methods (exposed to frontend) ---
 
 // GetFilters returns all search filters.
 func (a *AppService) GetFilters() ([]db.SearchFilter, error) {
-	return a.db.ListFilters()
+	return a.db.ListFilters(context.Background())
 }
 
 // GetFilter returns a single filter by ID, or nil if not found.
 func (a *AppService) GetFilter(id string) (*db.SearchFilter, error) {
-	return a.db.GetFilter(id)
+	return a.db.GetFilter(context.Background(), id)
 }
 
 // CreateFilter creates a new search filter and returns its ID.
 func (a *AppService) CreateFilter(name, keywords, location, source string) (string, error) {
-	return a.db.CreateFilter(name, keywords, location, source)
+	return a.db.CreateFilter(context.Background(), name, keywords, location, source)
 }
 
 // UpdateFilter updates an existing search filter.
 func (a *AppService) UpdateFilter(id, name, keywords, location, source string, enabled bool) error {
-	return a.db.UpdateFilter(id, name, keywords, location, source, enabled)
+	return a.db.UpdateFilter(context.Background(), id, name, keywords, location, source, enabled)
 }
 
 // DeleteFilter removes a search filter by ID.
 func (a *AppService) DeleteFilter(id string) error {
-	return a.db.DeleteFilter(id)
+	return a.db.DeleteFilter(context.Background(), id)
 }
 
 // --- Scheduler methods (exposed to frontend) ---
 
+// pollNowTimeout caps how long a manual poll can run before being cancelled.
+// This prevents the Wails binding from blocking the UI indefinitely if the
+// Reed API is slow or unresponsive.
+const pollNowTimeout = 5 * time.Minute
+
 // PollNow triggers an immediate poll cycle and returns the results.
 func (a *AppService) PollNow() []scheduler.PollResult {
-	return a.scheduler.PollOnce(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), pollNowTimeout)
+	defer cancel()
+	return a.scheduler.PollOnce(ctx)
 }
 
 // --- Polling control methods (exposed to frontend) ---
@@ -146,12 +153,12 @@ func (a *AppService) SetPollingPaused(paused bool) {
 
 // GetReedAPIKey returns the stored Reed API key (empty if not set).
 func (a *AppService) GetReedAPIKey() (string, error) {
-	return a.db.GetSetting(settingReedAPIKey)
+	return a.db.GetSetting(context.Background(), settingReedAPIKey)
 }
 
 // SetReedAPIKey saves the Reed API key and updates the adapter immediately.
 func (a *AppService) SetReedAPIKey(key string) error {
-	if err := a.db.SetSetting(settingReedAPIKey, key); err != nil {
+	if err := a.db.SetSetting(context.Background(), settingReedAPIKey, key); err != nil {
 		return err
 	}
 	a.reedAdapter.SetAPIKey(key)

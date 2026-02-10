@@ -12,6 +12,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -30,7 +31,7 @@ type Scheduler struct {
 	cancel context.CancelFunc // cancels the background goroutine
 	done   chan struct{}       // closed when the background goroutine exits
 
-	// stateMu protects paused, nextPollAt, and running state
+	// stateMu protects running, paused, nextPollAt, cancel, and done
 	stateMu    sync.RWMutex
 	paused     bool
 	nextPollAt time.Time
@@ -56,11 +57,11 @@ func (s *Scheduler) Start() {
 		return // Already running, ignore
 	}
 	s.running = true
-	s.stateMu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.done = make(chan struct{})
+	s.stateMu.Unlock()
 
 	go func() {
 		defer close(s.done)
@@ -151,10 +152,12 @@ func (s *Scheduler) NextPollAt() time.Time {
 // Stop cancels the polling loop and waits for it to finish.
 // Thread-safe: calling Stop() when not running is a no-op.
 func (s *Scheduler) Stop() {
-	s.stateMu.RLock()
+	s.stateMu.Lock()
 	cancel := s.cancel
 	done := s.done
-	s.stateMu.RUnlock()
+	s.cancel = nil
+	s.done = nil
+	s.stateMu.Unlock()
 
 	if cancel != nil {
 		cancel()
@@ -201,7 +204,7 @@ type filterFetchResult struct {
 //
 // This is the core logic, separated from the ticker so it's directly testable.
 func (s *Scheduler) PollOnce(ctx context.Context) []PollResult {
-	filters, err := s.db.ListEnabledFilters()
+	filters, err := s.db.ListEnabledFilters(ctx)
 	if err != nil {
 		slog.Error("failed to list enabled filters", "error", err)
 		return nil
@@ -284,9 +287,9 @@ func (s *Scheduler) PollOnce(ctx context.Context) []PollResult {
 				break
 			}
 
-			_, err := s.db.InsertJob(fj.job)
+			_, err := s.db.InsertJob(ctx, fj.job)
 			if err != nil {
-				if err == db.ErrDuplicateJob {
+				if errors.Is(err, db.ErrDuplicateJob) {
 					// Race between dedup read and insert (rare but possible
 					// if two filters find the same job). Just skip.
 					result.Skipped++
@@ -378,7 +381,7 @@ func (s *Scheduler) fetchFilter(ctx context.Context, filter db.SearchFilter) fil
 		}
 
 		// Dedup check — this is a read, safe to do concurrently.
-		exists, err := s.db.JobExistsBySourceID(a.Name(), summary.SourceID)
+		exists, err := s.db.JobExistsBySourceID(ctx, a.Name(), summary.SourceID)
 		if err != nil {
 			slog.Error("dedup check failed",
 				"source_id", summary.SourceID,

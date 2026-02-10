@@ -1,17 +1,20 @@
 package db
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestSetAndGetSetting(t *testing.T) {
 	db := testDB(t)
 
 	// Set a value.
-	if err := db.SetSetting("poll_interval_minutes", "30"); err != nil {
+	if err := db.SetSetting(context.Background(),"poll_interval_minutes", "30"); err != nil {
 		t.Fatalf("setting value: %v", err)
 	}
 
 	// Read it back.
-	val, err := db.GetSetting("poll_interval_minutes")
+	val, err := db.GetSetting(context.Background(),"poll_interval_minutes")
 	if err != nil {
 		t.Fatalf("getting value: %v", err)
 	}
@@ -23,7 +26,7 @@ func TestSetAndGetSetting(t *testing.T) {
 func TestGetSettingReturnsEmptyForMissing(t *testing.T) {
 	db := testDB(t)
 
-	val, err := db.GetSetting("nonexistent_key")
+	val, err := db.GetSetting(context.Background(),"nonexistent_key")
 	if err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
@@ -35,10 +38,10 @@ func TestGetSettingReturnsEmptyForMissing(t *testing.T) {
 func TestSetSettingOverwrites(t *testing.T) {
 	db := testDB(t)
 
-	db.SetSetting("theme", "light")
-	db.SetSetting("theme", "dark")
+	db.SetSetting(context.Background(),"theme", "light")
+	db.SetSetting(context.Background(),"theme", "dark")
 
-	val, err := db.GetSetting("theme")
+	val, err := db.GetSetting(context.Background(),"theme")
 	if err != nil {
 		t.Fatalf("getting value: %v", err)
 	}
@@ -50,13 +53,13 @@ func TestSetSettingOverwrites(t *testing.T) {
 func TestDeleteSetting(t *testing.T) {
 	db := testDB(t)
 
-	db.SetSetting("temp_key", "temp_value")
+	db.SetSetting(context.Background(),"temp_key", "temp_value")
 
-	if err := db.DeleteSetting("temp_key"); err != nil {
+	if err := db.DeleteSetting(context.Background(),"temp_key"); err != nil {
 		t.Fatalf("deleting setting: %v", err)
 	}
 
-	val, err := db.GetSetting("temp_key")
+	val, err := db.GetSetting(context.Background(),"temp_key")
 	if err != nil {
 		t.Fatalf("getting deleted setting: %v", err)
 	}
@@ -69,7 +72,7 @@ func TestDeleteSettingNonexistent(t *testing.T) {
 	db := testDB(t)
 
 	// Should not error when deleting a key that doesn't exist.
-	if err := db.DeleteSetting("never_existed"); err != nil {
+	if err := db.DeleteSetting(context.Background(),"never_existed"); err != nil {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 }

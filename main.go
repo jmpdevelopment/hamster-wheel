@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"log"
@@ -37,7 +38,7 @@ func main() {
 	}
 
 	// Load Reed API key: DB first, then env var fallback.
-	reedAPIKey, _ := database.GetSetting("reed_api_key")
+	reedAPIKey, _ := database.GetSetting(context.Background(), "reed_api_key")
 	if reedAPIKey == "" {
 		reedAPIKey = os.Getenv("REED_API_KEY")
 	}
