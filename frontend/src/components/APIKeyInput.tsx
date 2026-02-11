@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { GetReedAPIKey, SetReedAPIKey } from "../../bindings/hamster-wheel/appservice";
+import { GetReedAPIKey, SetReedAPIKey } from "../../bindings/hamster-wheel/settingsservice";
 
 interface APIKeyInputProps {
   onError: (msg: string) => void;

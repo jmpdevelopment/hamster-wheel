@@ -4,7 +4,7 @@ import {
   CreateFilter,
   UpdateFilter,
   DeleteFilter,
-} from "../../bindings/hamster-wheel/appservice";
+} from "../../bindings/hamster-wheel/filterservice";
 import { SearchFilter } from "../../bindings/hamster-wheel/internal/db/models";
 
 export interface UseFiltersReturn {

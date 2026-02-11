@@ -6,7 +6,7 @@ import { APIKeyInput } from "./APIKeyInput";
 const mockGetReedAPIKey = vi.fn();
 const mockSetReedAPIKey = vi.fn();
 
-vi.mock("../../bindings/hamster-wheel/appservice", () => ({
+vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   GetReedAPIKey: (...args: unknown[]) => mockGetReedAPIKey(...args),
   SetReedAPIKey: (...args: unknown[]) => mockSetReedAPIKey(...args),
 }));

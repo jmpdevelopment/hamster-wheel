@@ -3,7 +3,7 @@ import {
   GetJobs,
   GetJobCount,
   DeleteJob,
-} from "../../bindings/hamster-wheel/appservice";
+} from "../../bindings/hamster-wheel/jobservice";
 import { Job } from "../../bindings/hamster-wheel/internal/db/models";
 
 export interface UseJobsReturn {

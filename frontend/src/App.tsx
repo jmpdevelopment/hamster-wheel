@@ -3,7 +3,7 @@ import {
   PollNow,
   GetPollingStatus,
   SetPollingPaused,
-} from "../bindings/hamster-wheel/appservice";
+} from "../bindings/hamster-wheel/pollingservice";
 import { PollResult } from "../bindings/hamster-wheel/internal/scheduler/models";
 import { useJobs } from "./hooks/useJobs";
 import { useFilters } from "./hooks/useFilters";

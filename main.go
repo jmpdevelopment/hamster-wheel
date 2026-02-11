@@ -58,8 +58,12 @@ func main() {
 	pollInterval := 30 * time.Minute
 	sched := scheduler.New(database, adapters, pollInterval)
 
-	// Create the app service with all dependencies injected.
-	appService := NewAppService(database, sched, reedAdapter)
+	// Create all services with their dependencies injected.
+	appService := NewAppService(database, sched)
+	jobService := NewJobService(database)
+	filterService := NewFilterService(database)
+	pollingService := NewPollingService(sched)
+	settingsService := NewSettingsService(database, reedAdapter)
 
 	// Create the Wails v3 application.
 	// Strip the "frontend/dist" prefix from the embedded filesystem.
@@ -71,7 +75,11 @@ func main() {
 	app := application.New(application.Options{
 		Name: "Hamster Wheel",
 		Services: []application.Service{
-			application.NewService(appService),
+			application.NewService(appService),       // lifecycle (startup/shutdown)
+			application.NewService(jobService),       // job CRUD
+			application.NewService(filterService),    // filter CRUD
+			application.NewService(pollingService),   // scheduler control
+			application.NewService(settingsService),  // settings + API keys
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assetsFS),

@@ -7,7 +7,7 @@ const mockGetJobs = vi.fn();
 const mockGetJobCount = vi.fn();
 const mockDeleteJob = vi.fn();
 
-vi.mock("../../bindings/hamster-wheel/appservice", () => ({
+vi.mock("../../bindings/hamster-wheel/jobservice", () => ({
   GetJobs: (...args: unknown[]) => mockGetJobs(...args),
   GetJobCount: (...args: unknown[]) => mockGetJobCount(...args),
   DeleteJob: (...args: unknown[]) => mockDeleteJob(...args),

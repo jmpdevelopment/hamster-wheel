@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { FilterPanel } from "./FilterPanel";
 
-vi.mock("../../bindings/hamster-wheel/appservice", () => ({
+vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   GetReedAPIKey: vi.fn().mockResolvedValue(""),
   SetReedAPIKey: vi.fn().mockResolvedValue(undefined),
 }));

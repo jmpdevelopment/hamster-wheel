@@ -8,7 +8,7 @@ const mockCreateFilter = vi.fn();
 const mockUpdateFilter = vi.fn();
 const mockDeleteFilter = vi.fn();
 
-vi.mock("../../bindings/hamster-wheel/appservice", () => ({
+vi.mock("../../bindings/hamster-wheel/filterservice", () => ({
   GetFilters: (...args: unknown[]) => mockGetFilters(...args),
   CreateFilter: (...args: unknown[]) => mockCreateFilter(...args),
   UpdateFilter: (...args: unknown[]) => mockUpdateFilter(...args),

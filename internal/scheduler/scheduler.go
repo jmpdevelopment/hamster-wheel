@@ -22,9 +22,18 @@ import (
 	"hamster-wheel/internal/db"
 )
 
+// JobStore is the database interface the scheduler uses for job operations.
+// Defined here (not in db package) per Go convention: interfaces belong
+// to the consumer, not the provider.
+type JobStore interface {
+	ListEnabledFilters(ctx context.Context) ([]db.SearchFilter, error)
+	JobExistsBySourceID(ctx context.Context, source, sourceID string) (bool, error)
+	InsertJob(ctx context.Context, job *db.Job) (string, error)
+}
+
 // Scheduler manages periodic polling of job sources.
 type Scheduler struct {
-	db       *db.DB
+	store    JobStore
 	adapters *adapter.Registry
 	interval time.Duration
 
@@ -39,9 +48,9 @@ type Scheduler struct {
 }
 
 // New creates a scheduler. Call Start() to begin polling.
-func New(database *db.DB, adapters *adapter.Registry, interval time.Duration) *Scheduler {
+func New(store JobStore, adapters *adapter.Registry, interval time.Duration) *Scheduler {
 	return &Scheduler{
-		db:       database,
+		store:    store,
 		adapters: adapters,
 		interval: interval,
 	}
@@ -204,7 +213,7 @@ type filterFetchResult struct {
 //
 // This is the core logic, separated from the ticker so it's directly testable.
 func (s *Scheduler) PollOnce(ctx context.Context) []PollResult {
-	filters, err := s.db.ListEnabledFilters(ctx)
+	filters, err := s.store.ListEnabledFilters(ctx)
 	if err != nil {
 		slog.Error("failed to list enabled filters", "error", err)
 		return nil
@@ -287,7 +296,7 @@ func (s *Scheduler) PollOnce(ctx context.Context) []PollResult {
 				break
 			}
 
-			_, err := s.db.InsertJob(ctx, fj.job)
+			_, err := s.store.InsertJob(ctx, fj.job)
 			if err != nil {
 				if errors.Is(err, db.ErrDuplicateJob) {
 					// Race between dedup read and insert (rare but possible
@@ -381,7 +390,7 @@ func (s *Scheduler) fetchFilter(ctx context.Context, filter db.SearchFilter) fil
 		}
 
 		// Dedup check — this is a read, safe to do concurrently.
-		exists, err := s.db.JobExistsBySourceID(ctx, a.Name(), summary.SourceID)
+		exists, err := s.store.JobExistsBySourceID(ctx, a.Name(), summary.SourceID)
 		if err != nil {
 			slog.Error("dedup check failed",
 				"source_id", summary.SourceID,
