@@ -5,16 +5,16 @@ export default {
     extend: {
       colors: {
         hw: {
-          bg: "#1b2636",
-          surface: "#243044",
-          "surface-hover": "#2d3d55",
-          border: "#374357",
-          text: "#e2e8f0",
-          "text-muted": "#94a3b8",
-          accent: "#f59e0b",
-          "accent-hover": "#d97706",
-          danger: "#ef4444",
-          success: "#22c55e",
+          bg: "rgb(var(--hw-bg) / <alpha-value>)",
+          surface: "rgb(var(--hw-surface) / <alpha-value>)",
+          "surface-hover": "rgb(var(--hw-surface-hover) / <alpha-value>)",
+          border: "rgb(var(--hw-border) / <alpha-value>)",
+          text: "rgb(var(--hw-text) / <alpha-value>)",
+          "text-muted": "rgb(var(--hw-text-muted) / <alpha-value>)",
+          accent: "rgb(var(--hw-accent) / <alpha-value>)",
+          "accent-hover": "rgb(var(--hw-accent-hover) / <alpha-value>)",
+          danger: "rgb(var(--hw-danger) / <alpha-value>)",
+          success: "rgb(var(--hw-success) / <alpha-value>)",
         },
       },
       fontFamily: {
@@ -31,4 +31,3 @@ export default {
   },
   plugins: [],
 }
-

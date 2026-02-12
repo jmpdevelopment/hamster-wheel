@@ -2,6 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --hw-bg: 27 38 54;
+    --hw-surface: 36 48 68;
+    --hw-surface-hover: 45 61 85;
+    --hw-border: 55 67 87;
+    --hw-text: 226 232 240;
+    --hw-text-muted: 148 163 184;
+    --hw-accent: 245 158 11;
+    --hw-accent-hover: 217 119 6;
+    --hw-danger: 239 68 68;
+    --hw-success: 34 197 94;
+  }
+
+  .light {
+    --hw-bg: 248 250 252;
+    --hw-surface: 255 255 255;
+    --hw-surface-hover: 241 245 249;
+    --hw-border: 226 232 240;
+    --hw-text: 30 41 59;
+    --hw-text-muted: 100 116 139;
+    --hw-accent: 217 119 6;
+    --hw-accent-hover: 180 83 9;
+    --hw-danger: 220 38 38;
+    --hw-success: 22 163 106;
+  }
+}
+
 @font-face {
   font-family: "Nunito";
   font-style: normal;
@@ -11,12 +39,12 @@
 }
 
 html {
-  background-color: #1b2636;
+  background-color: rgb(var(--hw-bg));
 }
 
 body {
   margin: 0;
-  color: #e2e8f0;
+  color: rgb(var(--hw-text));
   font-family: "Nunito", -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
     "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
