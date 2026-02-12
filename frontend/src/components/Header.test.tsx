@@ -10,6 +10,8 @@ const defaultProps = {
   pollingPaused: false,
   nextPollAt: "",
   onTogglePolling: vi.fn(),
+  hasFilters: true,
+  hasEnabledFilters: true,
 };
 
 describe("Header", () => {
@@ -81,5 +83,68 @@ describe("Header", () => {
       screen.getByRole("button", { name: /pause auto-polling/i })
     );
     expect(onTogglePolling).toHaveBeenCalledOnce();
+  });
+
+  describe("when no filters exist", () => {
+    const noFilterProps = {
+      ...defaultProps,
+      hasFilters: false,
+      hasEnabledFilters: false,
+    };
+
+    it("disables Poll Now button", () => {
+      render(<Header {...noFilterProps} />);
+      expect(screen.getByRole("button", { name: /poll now/i })).toBeDisabled();
+    });
+
+    it("disables Pause/Resume button", () => {
+      render(<Header {...noFilterProps} />);
+      expect(
+        screen.getByRole("button", { name: /no filters configured/i })
+      ).toBeDisabled();
+    });
+
+    it("shows guidance to add a filter", () => {
+      render(<Header {...noFilterProps} />);
+      expect(
+        screen.getByText("Add a filter to start monitoring")
+      ).toBeInTheDocument();
+    });
+
+    it("does not call onPollNow when clicked", async () => {
+      const onPollNow = vi.fn();
+      render(<Header {...noFilterProps} onPollNow={onPollNow} />);
+
+      const button = screen.getByRole("button", { name: /poll now/i });
+      await userEvent.click(button);
+      expect(onPollNow).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("when filters exist but none enabled", () => {
+    const noEnabledProps = {
+      ...defaultProps,
+      hasFilters: true,
+      hasEnabledFilters: false,
+    };
+
+    it("disables Poll Now button", () => {
+      render(<Header {...noEnabledProps} />);
+      expect(screen.getByRole("button", { name: /poll now/i })).toBeDisabled();
+    });
+
+    it("disables Pause/Resume button", () => {
+      render(<Header {...noEnabledProps} />);
+      expect(
+        screen.getByRole("button", { name: /no filters enabled/i })
+      ).toBeDisabled();
+    });
+
+    it("shows guidance to enable a filter", () => {
+      render(<Header {...noEnabledProps} />);
+      expect(
+        screen.getByText("Enable a filter to start monitoring")
+      ).toBeInTheDocument();
+    });
   });
 });

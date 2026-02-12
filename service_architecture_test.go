@@ -15,6 +15,7 @@ import (
 	"hamster-wheel/internal/adapter"
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
+	"hamster-wheel/internal/keychain"
 	"hamster-wheel/internal/scheduler"
 )
 
@@ -47,12 +48,13 @@ func testServices(t *testing.T) (
 	}
 
 	sched := scheduler.New(database, adapters, 1*time.Hour)
+	kc := keychain.NewMemoryStore()
 
 	appSvc := NewAppService(database, sched)
-	jobSvc := NewJobService(database)
+	jobSvc := NewJobService(database, adapters)
 	filterSvc := NewFilterService(database)
 	pollSvc := NewPollingService(sched)
-	settingsSvc := NewSettingsService(database, reedAdapter)
+	settingsSvc := NewSettingsService(database, kc, reedAdapter)
 
 	return appSvc, jobSvc, filterSvc, pollSvc, settingsSvc, database, sched, reedAdapter
 }
@@ -221,7 +223,8 @@ func TestServiceDependencies(t *testing.T) {
 			name:        "JobService",
 			serviceType: reflect.TypeOf(JobService{}),
 			expectedFields: map[string]string{
-				"db": "*db.DB",
+				"db":       "*db.DB",
+				"adapters": "*adapter.Registry",
 			},
 		},
 		{
@@ -243,6 +246,7 @@ func TestServiceDependencies(t *testing.T) {
 			serviceType: reflect.TypeOf(SettingsService{}),
 			expectedFields: map[string]string{
 				"db":          "*db.DB",
+				"keychain":    "keychain.Store",
 				"reedAdapter": "*reed.Adapter",
 			},
 		},
@@ -550,21 +554,24 @@ func TestDBErrorInFilterServiceDoesNotCrash(t *testing.T) {
 	}
 }
 
-func TestDBErrorInSettingsServiceDoesNotCrash(t *testing.T) {
+func TestSettingsServiceAPIKeysWorkWithClosedDB(t *testing.T) {
 	_, _, _, _, settingsSvc, database, _, _ := testServices(t)
 
 	// Close the database to simulate a failure.
 	database.Close()
 
-	// SettingsService operations should return errors, not panic.
-	_, err := settingsSvc.GetReedAPIKey()
-	if err == nil {
-		t.Error("expected error from GetReedAPIKey after DB close, got nil")
+	// API key operations use the keychain, not the DB — they should still work.
+	err := settingsSvc.SetReedAPIKey("key-after-db-close")
+	if err != nil {
+		t.Errorf("expected no error from SetReedAPIKey after DB close, got: %v", err)
 	}
 
-	err = settingsSvc.SetReedAPIKey("should-fail")
-	if err == nil {
-		t.Error("expected error from SetReedAPIKey after DB close, got nil")
+	key, err := settingsSvc.GetReedAPIKey()
+	if err != nil {
+		t.Errorf("expected no error from GetReedAPIKey after DB close, got: %v", err)
+	}
+	if key != "key-after-db-close" {
+		t.Errorf("expected %q, got %q", "key-after-db-close", key)
 	}
 }
 
@@ -592,7 +599,9 @@ func TestServiceFailureIsolation(t *testing.T) {
 	if _, err := filterSvc.GetFilters(); err == nil {
 		t.Error("FilterService should error after DB closure")
 	}
-	if _, err := settingsSvc.GetReedAPIKey(); err == nil {
-		t.Error("SettingsService should error after DB closure")
+	// SettingsService API key operations use keychain, not DB — they still work.
+	if _, err := settingsSvc.GetReedAPIKey(); err != nil {
+		t.Errorf("SettingsService API key should work after DB closure, got: %v", err)
 	}
 }
+

@@ -113,6 +113,8 @@ function App() {
         pollingPaused={pollingPaused}
         nextPollAt={nextPollAt}
         onTogglePolling={handleTogglePolling}
+        hasFilters={filters.filters.length > 0}
+        hasEnabledFilters={filters.filters.some((f) => f.Enabled)}
       />
 
       <ErrorBanner message={error} onDismiss={handleDismissError} />
@@ -150,6 +152,7 @@ function App() {
               job={selectedJob}
               onDelete={handleDeleteJob}
               onClose={() => setSelectedJobId(null)}
+              onRefresh={jobs.refresh}
             />
           </div>
         )}

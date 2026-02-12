@@ -151,6 +151,28 @@ func (db *DB) DeleteJob(ctx context.Context, id string) error {
 	return nil
 }
 
+// UpdateJobDescription updates the description of a job by ID.
+// Returns ErrJobNotFound if the job doesn't exist.
+func (db *DB) UpdateJobDescription(ctx context.Context, id, description string) error {
+	result, err := db.conn.ExecContext(ctx,
+		"UPDATE jobs SET description = ? WHERE id = ?",
+		description, id,
+	)
+	if err != nil {
+		return fmt.Errorf("updating job description %q: %w", id, err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking update result: %w", err)
+	}
+	if rows == 0 {
+		return ErrJobNotFound
+	}
+
+	return nil
+}
+
 // CountJobs returns the total number of jobs in the database.
 func (db *DB) CountJobs(ctx context.Context) (int, error) {
 	var count int

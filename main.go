@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"io/fs"
 	"log"
@@ -15,6 +14,7 @@ import (
 	"hamster-wheel/internal/adapter"
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
+	"hamster-wheel/internal/keychain"
 	"hamster-wheel/internal/scheduler"
 )
 
@@ -37,8 +37,11 @@ func main() {
 		log.Fatalf("failed to open database: %v", err)
 	}
 
-	// Load Reed API key: DB first, then env var fallback.
-	reedAPIKey, _ := database.GetSetting(context.Background(), "reed_api_key")
+	// Create keychain store for secure API key storage.
+	keychainStore := keychain.NewOSStore()
+
+	// Load Reed API key: keychain first, then env var fallback.
+	reedAPIKey, _ := keychainStore.Get("reed_api_key")
 	if reedAPIKey == "" {
 		reedAPIKey = os.Getenv("REED_API_KEY")
 	}
@@ -60,10 +63,10 @@ func main() {
 
 	// Create all services with their dependencies injected.
 	appService := NewAppService(database, sched)
-	jobService := NewJobService(database)
+	jobService := NewJobService(database, adapters)
 	filterService := NewFilterService(database)
 	pollingService := NewPollingService(sched)
-	settingsService := NewSettingsService(database, reedAdapter)
+	settingsService := NewSettingsService(database, keychainStore, reedAdapter)
 
 	// Create the Wails v3 application.
 	// Strip the "frontend/dist" prefix from the embedded filesystem.

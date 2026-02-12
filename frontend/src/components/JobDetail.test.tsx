@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { JobDetail } from "./JobDetail";
 
 // Mock Wails runtime.
@@ -8,7 +8,17 @@ vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: vi.fn() },
 }));
 
+// Mock jobservice bindings.
+vi.mock("../../bindings/hamster-wheel/jobservice", () => ({
+  RetryFetchDescription: vi.fn(),
+}));
+
 import { Browser } from "@wailsio/runtime";
+import { RetryFetchDescription } from "../../bindings/hamster-wheel/jobservice";
+
+const mockedRetry = vi.mocked(RetryFetchDescription);
+
+const noop = async () => {};
 
 const fakeJob = (overrides = {}) => ({
   ID: "j1",
@@ -25,9 +35,13 @@ const fakeJob = (overrides = {}) => ({
   ...overrides,
 });
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
 describe("JobDetail", () => {
   it("renders job title and details", () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} />);
+    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
 
     expect(screen.getByText("Senior Go Developer")).toBeInTheDocument();
     expect(screen.getByText(/Acme Corp/)).toBeInTheDocument();
@@ -35,7 +49,7 @@ describe("JobDetail", () => {
   });
 
   it("renders plain text description", () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} />);
+    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
     expect(screen.getByText(/Build backend services in Go/)).toBeInTheDocument();
   });
 
@@ -47,25 +61,73 @@ describe("JobDetail", () => {
         })}
         onDelete={() => {}}
         onClose={() => {}}
+        onRefresh={noop}
       />
     );
     expect(screen.getByText(/Looking for a/)).toBeInTheDocument();
     expect(screen.getByText("Go Developer")).toBeInTheDocument();
   });
 
-  it("shows 'No description available' when description is empty", () => {
+  it("shows retry button when description is empty", () => {
     render(
       <JobDetail
         job={fakeJob({ Description: "" })}
         onDelete={() => {}}
         onClose={() => {}}
+        onRefresh={noop}
       />
     );
-    expect(screen.getByText("No description available.")).toBeInTheDocument();
+    expect(screen.getByText("Description couldn't be loaded.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("does not show retry button when description is present", () => {
+    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
+    expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+  });
+
+  it("calls RetryFetchDescription and onRefresh on successful retry", async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    mockedRetry.mockResolvedValue(undefined);
+
+    render(
+      <JobDetail
+        job={fakeJob({ Description: "" })}
+        onDelete={() => {}}
+        onClose={() => {}}
+        onRefresh={onRefresh}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(mockedRetry).toHaveBeenCalledWith("j1");
+      expect(onRefresh).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("shows error message when retry fails", async () => {
+    mockedRetry.mockRejectedValue(new Error("Network timeout"));
+
+    render(
+      <JobDetail
+        job={fakeJob({ Description: "" })}
+        onDelete={() => {}}
+        onClose={() => {}}
+        onRefresh={noop}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Network timeout")).toBeInTheDocument();
+    });
   });
 
   it("calls BrowserOpenURL when Open in Browser is clicked", async () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} />);
+    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
 
     await userEvent.click(
       screen.getByRole("button", { name: /open in browser/i })
@@ -79,6 +141,7 @@ describe("JobDetail", () => {
         job={fakeJob({ URL: "" })}
         onDelete={() => {}}
         onClose={() => {}}
+        onRefresh={noop}
       />
     );
     expect(
@@ -87,7 +150,7 @@ describe("JobDetail", () => {
   });
 
   it("shows confirm buttons when delete is clicked", async () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} />);
+    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
 
     await userEvent.click(screen.getByRole("button", { name: /delete/i }));
 
@@ -102,7 +165,7 @@ describe("JobDetail", () => {
   it("calls onDelete when delete is confirmed", async () => {
     const onDelete = vi.fn();
 
-    render(<JobDetail job={fakeJob()} onDelete={onDelete} onClose={() => {}} />);
+    render(<JobDetail job={fakeJob()} onDelete={onDelete} onClose={() => {}} onRefresh={noop} />);
 
     await userEvent.click(screen.getByRole("button", { name: /delete/i }));
     await userEvent.click(
@@ -114,7 +177,7 @@ describe("JobDetail", () => {
   it("does not call onDelete when delete is cancelled", async () => {
     const onDelete = vi.fn();
 
-    render(<JobDetail job={fakeJob()} onDelete={onDelete} onClose={() => {}} />);
+    render(<JobDetail job={fakeJob()} onDelete={onDelete} onClose={() => {}} onRefresh={noop} />);
 
     await userEvent.click(screen.getByRole("button", { name: /delete/i }));
     await userEvent.click(
@@ -129,14 +192,14 @@ describe("JobDetail", () => {
 
   it("calls onClose when close button is clicked", async () => {
     const onClose = vi.fn();
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={onClose} />);
+    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={onClose} onRefresh={noop} />);
 
     await userEvent.click(screen.getByRole("button", { name: /close/i }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("shows source and dates", () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} />);
+    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
     expect(screen.getByText(/reed_uk/)).toBeInTheDocument();
     expect(screen.getByText(/Posted:/)).toBeInTheDocument();
     expect(screen.getByText(/Found:/)).toBeInTheDocument();

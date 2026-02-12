@@ -445,6 +445,39 @@ func TestCountJobs(t *testing.T) {
 	}
 }
 
+func TestUpdateJobDescriptionSuccess(t *testing.T) {
+	db := testDB(t)
+
+	job := makeTestJob("update-desc")
+	job.Description = ""
+	id, err := db.InsertJob(context.Background(), job)
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+
+	err = db.UpdateJobDescription(context.Background(), id, "Updated description text")
+	if err != nil {
+		t.Fatalf("updating description: %v", err)
+	}
+
+	got, err := db.GetJob(context.Background(), id)
+	if err != nil {
+		t.Fatalf("getting job: %v", err)
+	}
+	if got.Description != "Updated description text" {
+		t.Errorf("expected %q, got %q", "Updated description text", got.Description)
+	}
+}
+
+func TestUpdateJobDescriptionNotFound(t *testing.T) {
+	db := testDB(t)
+
+	err := db.UpdateJobDescription(context.Background(), "nonexistent-id", "some text")
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Errorf("expected ErrJobNotFound, got: %v", err)
+	}
+}
+
 func TestInsertJobWithEmptyOptionalFields(t *testing.T) {
 	db := testDB(t)
 

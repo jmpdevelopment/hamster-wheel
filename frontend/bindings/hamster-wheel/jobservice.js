@@ -66,6 +66,16 @@ export function GetJobsByFilter(filterID) {
     }));
 }
 
+/**
+ * RetryFetchDescription re-fetches the full description for a job from the
+ * original source. Used when the initial detail fetch failed during polling.
+ * @param {string} jobID
+ * @returns {$CancellablePromise<void>}
+ */
+export function RetryFetchDescription(jobID) {
+    return $Call.ByID(492434294, jobID);
+}
+
 // Private type creation functions
 const $$createType0 = db$0.Job.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Job } from "../../bindings/hamster-wheel/internal/db/models";
+import { RetryFetchDescription } from "../../bindings/hamster-wheel/jobservice";
 import { formatDate, relativeTime } from "../lib/format";
 import { containsHTML, sanitizeHTML } from "../lib/sanitize";
 import { Browser } from "@wailsio/runtime";
@@ -8,10 +9,13 @@ interface JobDetailProps {
   job: Job;
   onDelete: (id: string) => void;
   onClose: () => void;
+  onRefresh: () => Promise<void>;
 }
 
-export function JobDetail({ job, onDelete, onClose }: JobDetailProps) {
+export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps) {
   const [confirming, setConfirming] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   const handleDelete = () => {
     if (confirming) {
@@ -25,6 +29,20 @@ export function JobDetail({ job, onDelete, onClose }: JobDetailProps) {
   const handleOpenInBrowser = () => {
     if (job.URL) {
       Browser.OpenURL(job.URL);
+    }
+  };
+
+  const handleRetryDescription = async () => {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await RetryFetchDescription(job.ID);
+      await onRefresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      setRetryError(message);
+    } finally {
+      setRetrying(false);
     }
   };
 
@@ -109,9 +127,21 @@ export function JobDetail({ job, onDelete, onClose }: JobDetailProps) {
             </pre>
           )
         ) : (
-          <p className="text-sm text-hw-text-muted italic">
-            No description available.
-          </p>
+          <div className="space-y-3">
+            <p className="text-sm text-hw-text-muted italic">
+              Description couldn't be loaded.
+            </p>
+            <button
+              onClick={handleRetryDescription}
+              disabled={retrying}
+              className="px-3 py-1.5 text-xs font-medium rounded bg-hw-accent text-hw-bg hover:bg-hw-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {retrying ? "Retrying..." : "Retry"}
+            </button>
+            {retryError && (
+              <p className="text-xs text-hw-danger">{retryError}</p>
+            )}
+          </div>
         )}
       </div>
     </div>
