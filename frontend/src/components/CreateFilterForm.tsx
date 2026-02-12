@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Button } from "./Button";
+import { Input } from "./Input";
 
 interface CreateFilterFormProps {
   onSubmit: (
@@ -39,48 +41,52 @@ export function CreateFilterForm({ onSubmit, onCancel }: CreateFilterFormProps) 
 
   return (
     <form onSubmit={handleSubmit} className="p-3 rounded border border-hw-accent/30 bg-hw-surface space-y-2">
-      <input
+      <Input
         type="text"
+        size="md"
         placeholder="Filter name"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="w-full px-2 py-1.5 text-sm rounded bg-hw-bg border border-hw-border text-hw-text placeholder-hw-text-muted focus:outline-none focus:border-hw-accent"
         aria-label="Filter name"
       />
-      <input
+      <Input
         type="text"
+        size="md"
         placeholder="Keywords (e.g., go developer)"
         value={keywords}
         onChange={(e) => setKeywords(e.target.value)}
-        className="w-full px-2 py-1.5 text-sm rounded bg-hw-bg border border-hw-border text-hw-text placeholder-hw-text-muted focus:outline-none focus:border-hw-accent"
         aria-label="Keywords"
       />
-      <input
+      <Input
         type="text"
+        size="md"
         placeholder="Location (optional)"
         value={location}
         onChange={(e) => setLocation(e.target.value)}
-        className="w-full px-2 py-1.5 text-sm rounded bg-hw-bg border border-hw-border text-hw-text placeholder-hw-text-muted focus:outline-none focus:border-hw-accent"
         aria-label="Location"
       />
       <div className="text-xs text-hw-text-muted">
         Source: {source}
       </div>
       <div className="flex gap-2">
-        <button
+        <Button
+          variant="primary"
+          size="md"
           type="submit"
           disabled={!canSubmit}
-          className="flex-1 px-2 py-1.5 text-sm font-medium rounded bg-hw-accent text-hw-bg hover:bg-hw-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          loading={submitting}
+          className="flex-1"
         >
-          {submitting ? "Creating..." : "Create"}
-        </button>
-        <button
+          Create
+        </Button>
+        <Button
+          variant="secondary"
+          size="md"
           type="button"
           onClick={onCancel}
-          className="px-2 py-1.5 text-sm rounded border border-hw-border text-hw-text-muted hover:text-hw-text hover:border-hw-text-muted transition-colors"
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

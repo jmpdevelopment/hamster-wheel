@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { SearchFilter } from "../../bindings/hamster-wheel/internal/db/models";
+import { Button } from "./Button";
+import { IconButton } from "./IconButton";
 
 interface FilterCardProps {
   filter: SearchFilter;
@@ -29,50 +31,54 @@ export function FilterCard({ filter, onToggle, onDelete }: FilterCardProps) {
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-hw-text truncate">
+          <p className="text-sm font-semibold text-hw-text truncate leading-relaxed">
             {filter.Name}
           </p>
-          <p className="text-xs text-hw-text-muted truncate mt-0.5">
+          <p className="text-xs text-hw-text-muted truncate mt-0.5 leading-relaxed">
             {filter.Keywords}
             {filter.Location && ` \u00B7 ${filter.Location}`}
           </p>
         </div>
         {confirming ? (
           <div className="flex gap-1 shrink-0">
-            <button
+            <Button
+              variant="danger"
+              size="sm"
               onClick={handleDelete}
-              className="text-xs px-1.5 py-0.5 rounded bg-hw-danger text-white"
               aria-label={`Confirm delete filter ${filter.Name}`}
             >
               Delete
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => setConfirming(false)}
-              className="text-xs px-1.5 py-0.5 rounded border border-hw-border text-hw-text-muted"
               aria-label="Cancel delete"
             >
               No
-            </button>
+            </Button>
           </div>
         ) : (
-          <button
-            onClick={handleDelete}
-            className="shrink-0 text-hw-text-muted hover:text-hw-danger text-xs"
+          <IconButton
             aria-label={`Delete filter ${filter.Name}`}
+            onClick={handleDelete}
+            className="shrink-0 hover:text-hw-danger"
           >
             ✕
-          </button>
+          </IconButton>
         )}
       </div>
 
       <div className="flex items-center justify-between mt-2">
         <span className="text-xs text-hw-text-muted">{filter.Source}</span>
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => onToggle(!filter.Enabled)}
-          className={`text-xs px-2 py-0.5 rounded font-medium transition-colors ${
+          className={`font-medium ${
             filter.Enabled
-              ? "bg-hw-success/20 text-hw-success"
-              : "bg-hw-text-muted/20 text-hw-text-muted"
+              ? "bg-hw-success/20 text-hw-success hover:bg-hw-success/30"
+              : "bg-hw-text-muted/20 hover:bg-hw-text-muted/30"
           }`}
           aria-label={
             filter.Enabled
@@ -81,7 +87,7 @@ export function FilterCard({ filter, onToggle, onDelete }: FilterCardProps) {
           }
         >
           {filter.Enabled ? "ON" : "OFF"}
-        </button>
+        </Button>
       </div>
     </div>
   );

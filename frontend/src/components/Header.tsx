@@ -1,3 +1,5 @@
+import { Button } from "./Button";
+
 interface HeaderProps {
   jobCount: number;
   onPollNow: () => void;
@@ -56,10 +58,11 @@ export function Header({
           {statusText}
         </span>
 
-        <button
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={onTogglePolling}
           disabled={!canPoll}
-          className="px-2 py-1 text-xs rounded border border-hw-border text-hw-text-muted hover:text-hw-text disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           aria-label={
             !canPoll
               ? disabledReason
@@ -70,16 +73,18 @@ export function Header({
           title={!canPoll ? disabledReason : undefined}
         >
           {pollingPaused ? "Resume" : "Pause"}
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant="primary"
+          size="md"
           onClick={onPollNow}
-          disabled={isPolling || !canPoll}
-          className="px-3 py-1.5 text-sm font-medium rounded bg-hw-accent text-hw-bg hover:bg-hw-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          disabled={!canPoll}
+          loading={isPolling}
           title={!canPoll ? disabledReason : undefined}
         >
           {isPolling ? "Polling..." : "Poll Now"}
-        </button>
+        </Button>
       </div>
     </header>
   );

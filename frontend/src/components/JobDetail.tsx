@@ -4,6 +4,8 @@ import { RetryFetchDescription } from "../../bindings/hamster-wheel/jobservice";
 import { formatDate, relativeTime } from "../lib/format";
 import { containsHTML, sanitizeHTML } from "../lib/sanitize";
 import { Browser } from "@wailsio/runtime";
+import { Button } from "./Button";
+import { IconButton } from "./IconButton";
 
 interface JobDetailProps {
   job: Job;
@@ -52,20 +54,20 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
       <div className="shrink-0 px-4 py-3 border-b border-hw-border">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-hw-text">{job.Title}</h2>
-            <p className="text-sm text-hw-text-muted mt-0.5">
+            <h2 className="text-lg font-bold text-hw-text leading-relaxed">{job.Title}</h2>
+            <p className="text-sm text-hw-text-muted mt-0.5 leading-relaxed">
               {job.Company}
               {job.Company && job.Location && " \u00B7 "}
               {job.Location}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 text-hw-text-muted hover:text-hw-text text-lg"
+          <IconButton
             aria-label="Close detail"
+            onClick={onClose}
+            className="shrink-0"
           >
             ✕
-          </button>
+          </IconButton>
         </div>
 
         <div className="flex items-center gap-4 mt-2 text-xs text-hw-text-muted">
@@ -76,37 +78,42 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
 
         <div className="flex gap-2 mt-3">
           {job.URL && (
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleOpenInBrowser}
-              className="px-3 py-1.5 text-xs font-medium rounded bg-hw-accent text-hw-bg hover:bg-hw-accent-hover transition-colors"
             >
               Open in Browser
-            </button>
+            </Button>
           )}
           {confirming ? (
             <>
-              <button
+              <Button
+                variant="danger"
+                size="sm"
                 onClick={handleDelete}
-                className="px-3 py-1.5 text-xs font-medium rounded bg-hw-danger text-white hover:bg-hw-danger/80 transition-colors"
                 aria-label="Confirm delete"
               >
                 Confirm Delete
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setConfirming(false)}
-                className="px-3 py-1.5 text-xs font-medium rounded border border-hw-border text-hw-text-muted hover:text-hw-text transition-colors"
                 aria-label="Cancel delete"
               >
                 Cancel
-              </button>
+              </Button>
             </>
           ) : (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleDelete}
-              className="px-3 py-1.5 text-xs font-medium rounded border border-hw-danger/40 text-hw-danger hover:bg-hw-danger/10 transition-colors"
+              className="border border-hw-danger/40 text-hw-danger hover:bg-hw-danger/10"
             >
               Delete
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -128,18 +135,36 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
           )
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-hw-text-muted italic">
+            <p className="text-sm text-hw-text-muted italic leading-relaxed">
               Description couldn't be loaded.
             </p>
-            <button
+            <Button
+              variant="primary"
+              size="sm"
               onClick={handleRetryDescription}
               disabled={retrying}
-              className="px-3 py-1.5 text-xs font-medium rounded bg-hw-accent text-hw-bg hover:bg-hw-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              loading={retrying}
             >
               {retrying ? "Retrying..." : "Retry"}
-            </button>
+            </Button>
             {retryError && (
-              <p className="text-xs text-hw-danger">{retryError}</p>
+              <p className="text-xs text-hw-danger flex items-center gap-1 leading-relaxed">
+                <svg
+                  aria-hidden="true"
+                  className="shrink-0 w-3 h-3"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                  <line x1="12" y1="9" x2="12" y2="13" />
+                  <line x1="12" y1="17" x2="12.01" y2="17" />
+                </svg>
+                {retryError}
+              </p>
             )}
           </div>
         )}

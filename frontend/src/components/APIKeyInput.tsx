@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { GetReedAPIKey, SetReedAPIKey } from "../../bindings/hamster-wheel/settingsservice";
+import { Button } from "./Button";
+import { Input } from "./Input";
 
 interface APIKeyInputProps {
   onError: (msg: string) => void;
@@ -70,27 +72,31 @@ export function APIKeyInput({ onError }: APIKeyInputProps) {
         Reed API Key
       </label>
       <div className="flex gap-1">
-        <input
+        <Input
           type="password"
+          size="sm"
           value={key}
           onChange={(e) => {
             setKey(e.target.value);
             setSaved(false);
           }}
           placeholder="Enter API key"
-          className="flex-1 min-w-0 px-2 py-1 text-xs rounded bg-hw-bg border border-hw-border text-hw-text placeholder-hw-text-muted focus:outline-none focus:border-hw-accent"
+          className="flex-1 min-w-0"
           aria-label="Reed API Key"
         />
-        <button
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleSave}
-          disabled={saving || !key.trim()}
-          className="px-2 py-1 text-xs rounded bg-hw-accent text-hw-bg hover:bg-hw-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+          disabled={!key.trim()}
+          loading={saving}
+          className="shrink-0"
         >
-          {saving ? "..." : saved ? "Saved" : "Save"}
-        </button>
+          {saved ? "Saved" : "Save"}
+        </Button>
       </div>
       {!hasKey && (
-        <p className="text-xs text-hw-accent mt-1">
+        <p className="text-xs text-hw-accent mt-1 leading-relaxed">
           Get a free key at reed.co.uk/developers
         </p>
       )}
