@@ -15,7 +15,7 @@ export interface UseJobsReturn {
   deleteJob: (id: string) => Promise<void>;
 }
 
-export function useJobs(limit: number = 100): UseJobsReturn {
+export function useJobs(limit: number = 0): UseJobsReturn {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobCount, setJobCount] = useState(0);
   const [loading, setLoading] = useState(true);
