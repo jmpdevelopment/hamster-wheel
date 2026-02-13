@@ -53,6 +53,14 @@ vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: vi.fn() },
 }));
 
+vi.mock("react-virtualized-auto-sizer", () => ({
+  AutoSizer: ({
+    renderProp,
+  }: {
+    renderProp: (size: { height: number; width: number }) => React.ReactNode;
+  }) => renderProp({ height: 600, width: 400 }),
+}));
+
 beforeEach(() => {
   mockGetJobs.mockResolvedValue([]);
   mockGetJobCount.mockResolvedValue(0);

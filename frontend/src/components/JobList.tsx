@@ -1,6 +1,16 @@
-import { Job, SearchFilter } from "../../bindings/hamster-wheel/internal/db/models";
+import { useCallback } from "react";
+import { FixedSizeList, ListChildComponentProps } from "react-window";
+import { AutoSizer } from "react-virtualized-auto-sizer";
+import {
+  Job,
+  SearchFilter,
+} from "../../bindings/hamster-wheel/internal/db/models";
 import { JobCard } from "./JobCard";
+import { SearchInput } from "./SearchInput";
 import { EmptyState } from "./EmptyState";
+import { useJobSearch } from "../hooks/useJobSearch";
+
+const ITEM_HEIGHT = 74;
 
 interface JobListProps {
   jobs: Job[];
@@ -21,14 +31,35 @@ export function JobList({
   filterByFilterId,
   onFilterChange,
 }: JobListProps) {
-  const filteredJobs = filterByFilterId
-    ? jobs.filter((j) => j.FilterID === filterByFilterId)
-    : jobs;
+  const { searchTerm, setSearchTerm, filteredJobs } = useJobSearch(
+    jobs,
+    filterByFilterId
+  );
+
+  const hasSearch = searchTerm.trim().length > 0;
+  const hasFilter = filterByFilterId !== null;
+
+  const Row = useCallback(
+    ({ index, style }: ListChildComponentProps) => {
+      const job = filteredJobs[index];
+      return (
+        <JobCard
+          key={job.ID}
+          job={job}
+          isSelected={job.ID === selectedJobId}
+          onClick={() => onSelectJob(job.ID)}
+          style={style}
+        />
+      );
+    },
+    [filteredJobs, selectedJobId, onSelectJob]
+  );
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Filter dropdown */}
-      <div className="shrink-0 px-3 py-2 border-b border-hw-border">
+      {/* Header: Search + Filter */}
+      <div className="shrink-0 px-3 py-2 border-b border-hw-border space-y-2">
+        <SearchInput value={searchTerm} onChange={setSearchTerm} />
         <select
           value={filterByFilterId ?? ""}
           onChange={(e) => onFilterChange(e.target.value || null)}
@@ -42,28 +73,47 @@ export function JobList({
             </option>
           ))}
         </select>
+        {!loading && jobs.length > 0 && (
+          <p className="text-xs text-hw-text-muted">
+            {filteredJobs.length === jobs.length
+              ? `${jobs.length} jobs`
+              : `${filteredJobs.length} of ${jobs.length} jobs`}
+          </p>
+        )}
       </div>
 
-      {/* Job list */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Job list (virtualized) */}
+      <div className="flex-1">
         {loading ? (
           <p className="text-sm text-hw-text-muted px-3 py-8 text-center">
             Loading...
           </p>
         ) : filteredJobs.length === 0 ? (
           <EmptyState
-            title="No jobs yet"
-            description="Make sure you have enabled filters and try polling."
+            title={hasSearch || hasFilter ? "No matching jobs" : "No jobs yet"}
+            description={
+              hasSearch || hasFilter
+                ? "Try adjusting your search or filter."
+                : "Make sure you have enabled filters and try polling."
+            }
           />
         ) : (
-          filteredJobs.map((job) => (
-            <JobCard
-              key={job.ID}
-              job={job}
-              isSelected={job.ID === selectedJobId}
-              onClick={() => onSelectJob(job.ID)}
-            />
-          ))
+          <AutoSizer
+            renderProp={({ height, width }) =>
+              height && width ? (
+                <FixedSizeList
+                  height={height}
+                  width={width}
+                  itemCount={filteredJobs.length}
+                  itemSize={ITEM_HEIGHT}
+                  itemKey={(index) => filteredJobs[index].ID}
+                  overscanCount={5}
+                >
+                  {Row}
+                </FixedSizeList>
+              ) : null
+            }
+          />
         )}
       </div>
     </div>

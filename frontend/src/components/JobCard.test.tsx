@@ -72,4 +72,23 @@ describe("JobCard", () => {
     const button = container.querySelector("button");
     expect(button?.className).toContain("bg-hw-accent/10");
   });
+
+  it("is wrapped in React.memo", () => {
+    expect((JobCard as any).$$typeof).toBe(Symbol.for("react.memo"));
+  });
+
+  it("applies style prop for virtual scrolling", () => {
+    const style = { position: "absolute" as const, top: 0, height: 74 };
+    const { container } = render(
+      <JobCard
+        job={fakeJob()}
+        isSelected={false}
+        onClick={() => {}}
+        style={style}
+      />
+    );
+    const wrapper = container.firstChild as HTMLElement;
+    expect(wrapper.style.position).toBe("absolute");
+    expect(wrapper.style.height).toBe("74px");
+  });
 });
