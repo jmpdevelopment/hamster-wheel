@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 
 	"hamster-wheel/internal/adapter/reed"
@@ -8,7 +10,10 @@ import (
 	"hamster-wheel/internal/keychain"
 )
 
-const settingReedAPIKey = "reed_api_key"
+const (
+	settingReedAPIKey = "reed_api_key"
+	settingTheme     = "theme"
+)
 
 // SettingsService handles application settings operations exposed to the frontend.
 type SettingsService struct {
@@ -38,6 +43,29 @@ func (s *SettingsService) SetReedAPIKey(key string) error {
 	}
 	s.reedAdapter.SetAPIKey(key)
 	slog.Info("Reed API key updated")
+	return nil
+}
+
+// GetTheme returns the stored theme preference ("dark", "light", "system", or "" if unset).
+func (s *SettingsService) GetTheme() (string, error) {
+	theme, err := s.db.GetSetting(context.Background(), settingTheme)
+	if err != nil {
+		return "", fmt.Errorf("getting theme setting: %w", err)
+	}
+	return theme, nil
+}
+
+// SetTheme saves the theme preference. Must be "dark", "light", or "system".
+func (s *SettingsService) SetTheme(theme string) error {
+	switch theme {
+	case "dark", "light", "system":
+	default:
+		return fmt.Errorf("invalid theme %q: must be dark, light, or system", theme)
+	}
+	if err := s.db.SetSetting(context.Background(), settingTheme, theme); err != nil {
+		return fmt.Errorf("setting theme: %w", err)
+	}
+	slog.Info("theme preference updated", "theme", theme)
 	return nil
 }
 

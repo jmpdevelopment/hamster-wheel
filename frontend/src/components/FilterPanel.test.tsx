@@ -3,11 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { FilterPanel } from "./FilterPanel";
 
-vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
-  GetReedAPIKey: vi.fn().mockResolvedValue(""),
-  SetReedAPIKey: vi.fn().mockResolvedValue(undefined),
-}));
-
 const fakeFilter = (id: string, name: string, enabled = true) => ({
   ID: id,
   Name: name,
@@ -25,7 +20,6 @@ const defaultProps = {
   onCreateFilter: vi.fn().mockResolvedValue(undefined),
   onToggleFilter: vi.fn(),
   onDeleteFilter: vi.fn(),
-  onError: vi.fn(),
 };
 
 describe("FilterPanel", () => {

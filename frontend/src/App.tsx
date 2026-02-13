@@ -13,12 +13,16 @@ import { FilterPanel } from "./components/FilterPanel";
 import { JobList } from "./components/JobList";
 import { JobDetail } from "./components/JobDetail";
 import { PollResultToast } from "./components/PollResultToast";
+import { SettingsPanel } from "./components/SettingsPanel";
+import { useTheme } from "./hooks/useTheme";
 
 function App() {
   const jobs = useJobs();
   const filters = useFilters();
+  const { theme, setTheme } = useTheme();
 
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [filterByFilterId, setFilterByFilterId] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const [pollResults, setPollResults] = useState<PollResult[] | null>(
@@ -115,11 +119,12 @@ function App() {
         onTogglePolling={handleTogglePolling}
         hasFilters={filters.filters.length > 0}
         hasEnabledFilters={filters.filters.some((f) => f.Enabled)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       <ErrorBanner message={error} onDismiss={handleDismissError} />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* Left: Filters */}
         <FilterPanel
           filters={filters.filters}
@@ -129,7 +134,6 @@ function App() {
           }}
           onToggleFilter={handleToggleFilter}
           onDeleteFilter={filters.deleteFilter}
-          onError={setAppError}
         />
 
         {/* Center: Job List */}
@@ -139,7 +143,10 @@ function App() {
             filters={filters.filters}
             loading={jobs.loading}
             selectedJobId={selectedJobId}
-            onSelectJob={setSelectedJobId}
+            onSelectJob={(id) => {
+              setSelectedJobId(id);
+              if (id) setSettingsOpen(false);
+            }}
             filterByFilterId={filterByFilterId}
             onFilterChange={setFilterByFilterId}
           />
@@ -155,6 +162,16 @@ function App() {
               onRefresh={jobs.refresh}
             />
           </div>
+        )}
+
+        {/* Settings Panel (overlays right side) */}
+        {settingsOpen && (
+          <SettingsPanel
+            onClose={() => setSettingsOpen(false)}
+            theme={theme}
+            onSetTheme={setTheme}
+            onError={setAppError}
+          />
         )}
       </div>
 

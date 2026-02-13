@@ -208,6 +208,38 @@ func TestSettingsServiceUpdatesReedAdapter(t *testing.T) {
 	}
 }
 
+func TestSettingsServiceTheme(t *testing.T) {
+	_, _, _, _, settingsSvc, _, _, _ := testServices(t)
+
+	// Default theme is empty string (no preference set).
+	theme, err := settingsSvc.GetTheme()
+	if err != nil {
+		t.Fatalf("getting default theme: %v", err)
+	}
+	if theme != "" {
+		t.Errorf("expected empty default theme, got %q", theme)
+	}
+
+	// Set theme to each valid value.
+	for _, valid := range []string{"dark", "light", "system"} {
+		if err := settingsSvc.SetTheme(valid); err != nil {
+			t.Fatalf("setting theme to %q: %v", valid, err)
+		}
+		got, err := settingsSvc.GetTheme()
+		if err != nil {
+			t.Fatalf("getting theme after setting %q: %v", valid, err)
+		}
+		if got != valid {
+			t.Errorf("expected theme %q, got %q", valid, got)
+		}
+	}
+
+	// Invalid theme should return error.
+	if err := settingsSvc.SetTheme("purple"); err == nil {
+		t.Error("expected error for invalid theme, got nil")
+	}
+}
+
 // --- 2. Service Boundary Validation ---
 
 func TestServiceDependencies(t *testing.T) {
@@ -573,6 +605,14 @@ func TestSettingsServiceAPIKeysWorkWithClosedDB(t *testing.T) {
 	if key != "key-after-db-close" {
 		t.Errorf("expected %q, got %q", "key-after-db-close", key)
 	}
+
+	// Theme operations use the DB — they should error with closed DB.
+	if _, err := settingsSvc.GetTheme(); err == nil {
+		t.Error("expected error from GetTheme after DB close, got nil")
+	}
+	if err := settingsSvc.SetTheme("dark"); err == nil {
+		t.Error("expected error from SetTheme after DB close, got nil")
+	}
 }
 
 func TestServiceFailureIsolation(t *testing.T) {
@@ -602,6 +642,10 @@ func TestServiceFailureIsolation(t *testing.T) {
 	// SettingsService API key operations use keychain, not DB — they still work.
 	if _, err := settingsSvc.GetReedAPIKey(); err != nil {
 		t.Errorf("SettingsService API key should work after DB closure, got: %v", err)
+	}
+	// SettingsService theme operations use DB — they should error.
+	if _, err := settingsSvc.GetTheme(); err == nil {
+		t.Error("SettingsService GetTheme should error after DB closure")
 	}
 }
 

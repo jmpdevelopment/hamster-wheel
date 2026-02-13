@@ -12,6 +12,7 @@ const defaultProps = {
   onTogglePolling: vi.fn(),
   hasFilters: true,
   hasEnabledFilters: true,
+  onOpenSettings: vi.fn(),
 };
 
 describe("Header", () => {
@@ -83,6 +84,22 @@ describe("Header", () => {
       screen.getByRole("button", { name: /pause auto-polling/i })
     );
     expect(onTogglePolling).toHaveBeenCalledOnce();
+  });
+
+  it("renders settings gear button", () => {
+    render(<Header {...defaultProps} />);
+    expect(
+      screen.getByRole("button", { name: /open settings/i })
+    ).toBeInTheDocument();
+  });
+
+  it("calls onOpenSettings when gear button is clicked", async () => {
+    const onOpenSettings = vi.fn();
+    render(<Header {...defaultProps} onOpenSettings={onOpenSettings} />);
+    await userEvent.click(
+      screen.getByRole("button", { name: /open settings/i })
+    );
+    expect(onOpenSettings).toHaveBeenCalledOnce();
   });
 
   describe("when no filters exist", () => {

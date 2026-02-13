@@ -20,10 +20,27 @@ export function GetReedAPIKey() {
 }
 
 /**
+ * GetTheme returns the stored theme preference ("dark", "light", "system", or "" if unset).
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetTheme() {
+    return $Call.ByID(1377976733);
+}
+
+/**
  * SetReedAPIKey saves the Reed API key and updates the adapter immediately.
  * @param {string} key
  * @returns {$CancellablePromise<void>}
  */
 export function SetReedAPIKey(key) {
     return $Call.ByID(528752499, key);
+}
+
+/**
+ * SetTheme saves the theme preference. Must be "dark", "light", or "system".
+ * @param {string} theme
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetTheme(theme) {
+    return $Call.ByID(466396097, theme);
 }

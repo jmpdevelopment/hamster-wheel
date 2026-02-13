@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { SearchFilter } from "../../bindings/hamster-wheel/internal/db/models";
-import { APIKeyInput } from "./APIKeyInput";
 import { FilterCard } from "./FilterCard";
 import { CreateFilterForm } from "./CreateFilterForm";
 import { EmptyState } from "./EmptyState";
@@ -16,7 +15,6 @@ interface FilterPanelProps {
   ) => Promise<void>;
   onToggleFilter: (filter: SearchFilter, enabled: boolean) => void;
   onDeleteFilter: (id: string) => void;
-  onError: (msg: string) => void;
 }
 
 export function FilterPanel({
@@ -25,7 +23,6 @@ export function FilterPanel({
   onCreateFilter,
   onToggleFilter,
   onDeleteFilter,
-  onError,
 }: FilterPanelProps) {
   const [showForm, setShowForm] = useState(false);
 
@@ -41,8 +38,6 @@ export function FilterPanel({
 
   return (
     <aside className="w-64 shrink-0 border-r border-hw-border bg-hw-bg overflow-y-auto">
-      <APIKeyInput onError={onError} />
-
       <div className="flex items-center justify-between px-3 py-2 border-b border-hw-border">
         <h2 className="text-sm font-semibold text-hw-text">Filters</h2>
         {!showForm && (

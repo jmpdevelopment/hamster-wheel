@@ -1,0 +1,151 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { SettingsPanel } from "./SettingsPanel";
+
+const mockGetReedAPIKey = vi.fn();
+const mockSetReedAPIKey = vi.fn();
+
+vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
+  GetReedAPIKey: (...args: unknown[]) => mockGetReedAPIKey(...args),
+  SetReedAPIKey: (...args: unknown[]) => mockSetReedAPIKey(...args),
+}));
+
+const defaultProps = {
+  onClose: vi.fn(),
+  theme: "system" as const,
+  onSetTheme: vi.fn().mockResolvedValue(undefined),
+  onError: vi.fn(),
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockGetReedAPIKey.mockResolvedValue("");
+  mockSetReedAPIKey.mockResolvedValue(undefined);
+  defaultProps.onClose = vi.fn();
+  defaultProps.onSetTheme = vi.fn().mockResolvedValue(undefined);
+  defaultProps.onError = vi.fn();
+});
+
+describe("SettingsPanel", () => {
+  // --- Structure ---
+
+  it("renders Settings title", () => {
+    render(<SettingsPanel {...defaultProps} />);
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
+  it("has dialog role with Settings label", () => {
+    render(<SettingsPanel {...defaultProps} />);
+    expect(
+      screen.getByRole("dialog", { name: "Settings" })
+    ).toBeInTheDocument();
+  });
+
+  it("calls onClose when close button is clicked", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await userEvent.click(
+      screen.getByRole("button", { name: /close settings/i })
+    );
+    expect(defaultProps.onClose).toHaveBeenCalledOnce();
+  });
+
+  // --- API Key Section ---
+
+  it("renders Reed API Key input", () => {
+    render(<SettingsPanel {...defaultProps} />);
+    expect(screen.getByLabelText("Reed API Key")).toBeInTheDocument();
+  });
+
+  it("shows hint when no key is set", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await waitFor(() => {
+      expect(
+        screen.getByText(/reed\.co\.uk\/developers/i)
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("hides hint when key exists", async () => {
+    mockGetReedAPIKey.mockResolvedValue("existing-key");
+    render(<SettingsPanel {...defaultProps} />);
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/reed\.co\.uk\/developers/i)
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("disables Save when input is empty", () => {
+    render(<SettingsPanel {...defaultProps} />);
+    expect(screen.getByRole("button", { name: /save/i })).toBeDisabled();
+  });
+
+  it("saves API key when Save is clicked", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    const input = screen.getByLabelText("Reed API Key");
+    await userEvent.type(input, "my-key");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    expect(mockSetReedAPIKey).toHaveBeenCalledWith("my-key");
+  });
+
+  it("shows Saved confirmation after save", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    const input = screen.getByLabelText("Reed API Key");
+    await userEvent.type(input, "my-key");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+    });
+  });
+
+  it("calls onError when save fails", async () => {
+    mockSetReedAPIKey.mockRejectedValue(new Error("save failed"));
+    render(<SettingsPanel {...defaultProps} />);
+    const input = screen.getByLabelText("Reed API Key");
+    await userEvent.type(input, "bad-key");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => {
+      expect(defaultProps.onError).toHaveBeenCalledWith("save failed");
+    });
+  });
+
+  // --- Theme Section ---
+
+  it("renders theme buttons", () => {
+    render(<SettingsPanel {...defaultProps} />);
+    expect(screen.getByRole("button", { name: "System" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dark" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Light" })).toBeInTheDocument();
+  });
+
+  it("marks the active theme button as pressed", () => {
+    render(<SettingsPanel {...defaultProps} theme="dark" />);
+    expect(screen.getByRole("button", { name: "Dark" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Light" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+    expect(screen.getByRole("button", { name: "System" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+  });
+
+  it("calls onSetTheme when a theme button is clicked", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await userEvent.click(screen.getByRole("button", { name: "Light" }));
+    expect(defaultProps.onSetTheme).toHaveBeenCalledWith("light");
+  });
+
+  it("highlights system button when theme is system", () => {
+    render(<SettingsPanel {...defaultProps} theme="system" />);
+    expect(screen.getByRole("button", { name: "System" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+  });
+});
