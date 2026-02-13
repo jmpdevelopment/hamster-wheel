@@ -3,6 +3,7 @@ import {
   GetReedAPIKey,
   SetReedAPIKey,
 } from "../../bindings/hamster-wheel/settingsservice";
+import { Browser } from "@wailsio/runtime";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import { Input } from "./Input";
@@ -128,9 +129,18 @@ export function SettingsPanel({
             </Button>
           </div>
           {!hasKey && (
-            <p className="text-xs text-hw-accent mt-1 leading-relaxed">
-              Get a free key at reed.co.uk/developers
-            </p>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="mt-1"
+              onClick={() =>
+                Browser.OpenURL(
+                  "https://www.reed.co.uk/developers/Jobseeker"
+                )
+              }
+            >
+              Obtain a Key
+            </Button>
           )}
         </section>
 

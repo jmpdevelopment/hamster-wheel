@@ -5,10 +5,15 @@ import { SettingsPanel } from "./SettingsPanel";
 
 const mockGetReedAPIKey = vi.fn();
 const mockSetReedAPIKey = vi.fn();
+const mockOpenURL = vi.fn();
 
 vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   GetReedAPIKey: (...args: unknown[]) => mockGetReedAPIKey(...args),
   SetReedAPIKey: (...args: unknown[]) => mockSetReedAPIKey(...args),
+}));
+
+vi.mock("@wailsio/runtime", () => ({
+  Browser: { OpenURL: (...args: unknown[]) => mockOpenURL(...args) },
 }));
 
 const defaultProps = {
@@ -57,23 +62,38 @@ describe("SettingsPanel", () => {
     expect(screen.getByLabelText("Reed API Key")).toBeInTheDocument();
   });
 
-  it("shows hint when no key is set", async () => {
+  it("shows Obtain a Key button when no key is set", async () => {
     render(<SettingsPanel {...defaultProps} />);
     await waitFor(() => {
       expect(
-        screen.getByText(/reed\.co\.uk\/developers/i)
+        screen.getByRole("button", { name: "Obtain a Key" })
       ).toBeInTheDocument();
     });
   });
 
-  it("hides hint when key exists", async () => {
+  it("hides Obtain a Key button when key exists", async () => {
     mockGetReedAPIKey.mockResolvedValue("existing-key");
     render(<SettingsPanel {...defaultProps} />);
     await waitFor(() => {
       expect(
-        screen.queryByText(/reed\.co\.uk\/developers/i)
+        screen.queryByRole("button", { name: "Obtain a Key" })
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("opens Reed developer page when Obtain a Key is clicked", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Obtain a Key" })
+      ).toBeInTheDocument();
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Obtain a Key" })
+    );
+    expect(mockOpenURL).toHaveBeenCalledWith(
+      "https://www.reed.co.uk/developers/Jobseeker"
+    );
   });
 
   it("disables Save when input is empty", () => {
