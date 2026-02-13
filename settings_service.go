@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	settingReedAPIKey = "reed_api_key"
-	settingTheme     = "theme"
+	settingReedAPIKey          = "reed_api_key"
+	settingTheme               = "theme"
+	settingKeyboardShortcuts   = "keyboard_shortcuts"
 )
 
 // SettingsService handles application settings operations exposed to the frontend.
@@ -66,6 +67,30 @@ func (s *SettingsService) SetTheme(theme string) error {
 		return fmt.Errorf("setting theme: %w", err)
 	}
 	slog.Info("theme preference updated", "theme", theme)
+	return nil
+}
+
+// GetKeyboardShortcuts returns whether keyboard shortcuts are enabled ("true", "false", or "" if unset).
+// Empty string means default (enabled).
+func (s *SettingsService) GetKeyboardShortcuts() (string, error) {
+	val, err := s.db.GetSetting(context.Background(), settingKeyboardShortcuts)
+	if err != nil {
+		return "", fmt.Errorf("getting keyboard shortcuts setting: %w", err)
+	}
+	return val, nil
+}
+
+// SetKeyboardShortcuts saves the keyboard shortcuts preference. Must be "true" or "false".
+func (s *SettingsService) SetKeyboardShortcuts(enabled string) error {
+	switch enabled {
+	case "true", "false":
+	default:
+		return fmt.Errorf("invalid keyboard shortcuts value %q: must be true or false", enabled)
+	}
+	if err := s.db.SetSetting(context.Background(), settingKeyboardShortcuts, enabled); err != nil {
+		return fmt.Errorf("setting keyboard shortcuts: %w", err)
+	}
+	slog.Info("keyboard shortcuts preference updated", "enabled", enabled)
 	return nil
 }
 

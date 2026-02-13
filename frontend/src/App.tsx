@@ -1,12 +1,14 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   PollNow,
   GetPollingStatus,
   SetPollingPaused,
 } from "../bindings/hamster-wheel/pollingservice";
+import { GetKeyboardShortcuts } from "../bindings/hamster-wheel/settingsservice";
 import { PollResult } from "../bindings/hamster-wheel/internal/scheduler/models";
 import { useJobs } from "./hooks/useJobs";
 import { useFilters } from "./hooks/useFilters";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { Header } from "./components/Header";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { FilterPanel } from "./components/FilterPanel";
@@ -14,6 +16,8 @@ import { JobList } from "./components/JobList";
 import { JobDetail } from "./components/JobDetail";
 import { PollResultToast } from "./components/PollResultToast";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { Toast } from "./components/Toast";
+import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { useTheme } from "./hooks/useTheme";
 
 function App() {
@@ -31,12 +35,20 @@ function App() {
   const [appError, setAppError] = useState<string | null>(null);
   const [pollingPaused, setPollingPaused] = useState(false);
   const [nextPollAt, setNextPollAt] = useState("");
+  const [filteredJobIds, setFilteredJobIds] = useState<string[]>([]);
+  const [keyboardShortcutsEnabled, setKeyboardShortcutsEnabled] =
+    useState(true);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch polling status on mount.
+  // Fetch polling status and keyboard shortcuts setting on mount.
   useEffect(() => {
     GetPollingStatus().then((status) => {
       setPollingPaused(status.paused);
       setNextPollAt(status.nextPollAt);
+    });
+    GetKeyboardShortcuts().then((val) => {
+      // Empty string means default (enabled).
+      if (val === "false") setKeyboardShortcutsEnabled(false);
     });
   }, []);
 
@@ -108,6 +120,33 @@ function App() {
     ? jobs.jobs.find((j) => j.ID === selectedJobId) ?? null
     : null;
 
+  const handleSelectJob = useCallback(
+    (id: string | null) => {
+      setSelectedJobId(id);
+      if (id) setSettingsOpen(false);
+    },
+    []
+  );
+
+  const { pendingDeleteId, clearPendingDelete, shortcutsHelpOpen, closeShortcutsHelp } = useKeyboardShortcuts({
+    enabled: keyboardShortcutsEnabled,
+    filteredJobIds,
+    selectedJobId,
+    settingsOpen,
+    jobDetailOpen: selectedJob !== null,
+    onSelectJob: handleSelectJob,
+    onCloseJobDetail: () => setSelectedJobId(null),
+    onCloseSettings: () => setSettingsOpen(false),
+    onOpenSettings: () => setSettingsOpen(true),
+    onPollNow: handlePollNow,
+    onDeleteJob: handleDeleteJob,
+    onFocusSearch: () => searchInputRef.current?.focus(),
+    isPolling,
+    canPoll:
+      filters.filters.length > 0 &&
+      filters.filters.some((f) => f.Enabled),
+  });
+
   return (
     <div className="flex flex-col h-screen bg-hw-bg text-hw-text">
       <Header
@@ -143,12 +182,11 @@ function App() {
             filters={filters.filters}
             loading={jobs.loading}
             selectedJobId={selectedJobId}
-            onSelectJob={(id) => {
-              setSelectedJobId(id);
-              if (id) setSettingsOpen(false);
-            }}
+            onSelectJob={(id) => handleSelectJob(id)}
             filterByFilterId={filterByFilterId}
             onFilterChange={setFilterByFilterId}
+            onFilteredJobsChange={setFilteredJobIds}
+            searchInputRef={searchInputRef}
           />
         </div>
 
@@ -171,6 +209,8 @@ function App() {
             theme={theme}
             onSetTheme={setTheme}
             onError={setAppError}
+            keyboardShortcuts={keyboardShortcutsEnabled}
+            onSetKeyboardShortcuts={setKeyboardShortcutsEnabled}
           />
         )}
       </div>
@@ -179,6 +219,21 @@ function App() {
         results={pollResults}
         onDismiss={() => setPollResults(null)}
       />
+
+      {shortcutsHelpOpen && (
+        <ShortcutsHelp onClose={closeShortcutsHelp} />
+      )}
+
+      {pendingDeleteId && (
+        <Toast
+          variant="info"
+          title="Press Delete again to confirm"
+          duration={0}
+          onDismiss={clearPendingDelete}
+        >
+          Press Escape to cancel.
+        </Toast>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 import { AutoSizer } from "react-virtualized-auto-sizer";
 import {
@@ -20,6 +20,8 @@ interface JobListProps {
   onSelectJob: (id: string) => void;
   filterByFilterId: string | null;
   onFilterChange: (filterId: string | null) => void;
+  onFilteredJobsChange?: (jobIds: string[]) => void;
+  searchInputRef?: React.Ref<HTMLInputElement>;
 }
 
 export function JobList({
@@ -30,14 +32,31 @@ export function JobList({
   onSelectJob,
   filterByFilterId,
   onFilterChange,
+  onFilteredJobsChange,
+  searchInputRef,
 }: JobListProps) {
   const { searchTerm, setSearchTerm, filteredJobs } = useJobSearch(
     jobs,
     filterByFilterId
   );
+  const listRef = useRef<FixedSizeList>(null);
 
   const hasSearch = searchTerm.trim().length > 0;
   const hasFilter = filterByFilterId !== null;
+
+  // Notify parent when filtered jobs change.
+  useEffect(() => {
+    onFilteredJobsChange?.(filteredJobs.map((j) => j.ID));
+  }, [filteredJobs, onFilteredJobsChange]);
+
+  // Scroll to selected job when selection changes.
+  useEffect(() => {
+    if (!selectedJobId || !listRef.current) return;
+    const index = filteredJobs.findIndex((j) => j.ID === selectedJobId);
+    if (index >= 0) {
+      listRef.current.scrollToItem(index, "smart");
+    }
+  }, [selectedJobId, filteredJobs]);
 
   const Row = useCallback(
     ({ index, style }: ListChildComponentProps) => {
@@ -59,7 +78,11 @@ export function JobList({
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header: Search + Filter */}
       <div className="shrink-0 px-3 py-2 border-b border-hw-border space-y-2">
-        <SearchInput value={searchTerm} onChange={setSearchTerm} />
+        <SearchInput
+          ref={searchInputRef}
+          value={searchTerm}
+          onChange={setSearchTerm}
+        />
         <select
           value={filterByFilterId ?? ""}
           onChange={(e) => onFilterChange(e.target.value || null)}
@@ -102,6 +125,7 @@ export function JobList({
             renderProp={({ height, width }) =>
               height && width ? (
                 <FixedSizeList
+                  ref={listRef}
                   height={height}
                   width={width}
                   itemCount={filteredJobs.length}

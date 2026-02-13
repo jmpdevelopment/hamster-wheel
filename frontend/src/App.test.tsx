@@ -1,13 +1,13 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import App from "./App";
 
-const fakeJob = {
-  ID: "j1",
+const fakeJob = (id = "j1", title = "Go Developer") => ({
+  ID: id,
   Source: "reed_uk",
-  SourceID: "src-1",
-  Title: "Go Developer",
+  SourceID: `src-${id}`,
+  Title: title,
   Company: "Acme",
   Location: "London",
   Description: "A job",
@@ -15,7 +15,7 @@ const fakeJob = {
   PostedAt: "2026-02-08T10:00:00Z",
   DiscoveredAt: "2026-02-08T11:00:00Z",
   FilterID: "f1",
-};
+});
 
 const mockGetJobs = vi.fn();
 const mockGetJobCount = vi.fn();
@@ -47,6 +47,8 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
   SetReedAPIKey: vi.fn().mockResolvedValue(undefined),
   GetTheme: vi.fn().mockResolvedValue(""),
   SetTheme: vi.fn().mockResolvedValue(undefined),
+  GetKeyboardShortcuts: vi.fn().mockResolvedValue(""),
+  SetKeyboardShortcuts: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("@wailsio/runtime", () => ({
@@ -127,7 +129,7 @@ describe("App", () => {
   });
 
   it("closes settings panel when a job is selected", async () => {
-    mockGetJobs.mockResolvedValue([fakeJob]);
+    mockGetJobs.mockResolvedValue([fakeJob()]);
     mockGetJobCount.mockResolvedValue(1);
 
     render(<App />);
@@ -150,6 +152,139 @@ describe("App", () => {
     // Settings should auto-close.
     expect(
       screen.queryByRole("dialog", { name: "Settings" })
+    ).not.toBeInTheDocument();
+  });
+
+  // --- Keyboard Shortcut Integration ---
+
+  it("Escape closes settings panel", async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+    });
+
+    // Open settings via click.
+    await userEvent.click(
+      screen.getByRole("button", { name: /open settings/i })
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Settings" })
+    ).toBeInTheDocument();
+
+    // Press Escape.
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+
+    expect(
+      screen.queryByRole("dialog", { name: "Settings" })
+    ).not.toBeInTheDocument();
+  });
+
+  it(", opens settings panel", async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+    });
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: ",", bubbles: true })
+      );
+    });
+
+    expect(
+      screen.getByRole("dialog", { name: "Settings" })
+    ).toBeInTheDocument();
+  });
+
+  it("/ focuses search input", async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Search jobs")).toBeInTheDocument();
+    });
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "/", bubbles: true })
+      );
+    });
+
+    expect(document.activeElement).toBe(screen.getByLabelText("Search jobs"));
+  });
+
+  it("j selects first job in the list", async () => {
+    mockGetJobs.mockResolvedValue([fakeJob("j1", "Go Dev"), fakeJob("j2", "React Dev")]);
+    mockGetJobCount.mockResolvedValue(2);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Go Dev")).toBeInTheDocument();
+    });
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "j", bubbles: true })
+      );
+    });
+
+    // Job detail should open for the first job.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /close detail/i })
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("? opens shortcuts help overlay", async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+    });
+
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "?", bubbles: true })
+      );
+    });
+
+    expect(
+      screen.getByRole("dialog", { name: "Keyboard shortcuts" })
+    ).toBeInTheDocument();
+  });
+
+  it("Escape closes job detail panel", async () => {
+    mockGetJobs.mockResolvedValue([fakeJob()]);
+    mockGetJobCount.mockResolvedValue(1);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Go Developer")).toBeInTheDocument();
+    });
+
+    // Select a job by clicking.
+    await userEvent.click(screen.getByText("Go Developer"));
+    expect(
+      screen.getByRole("button", { name: /close detail/i })
+    ).toBeInTheDocument();
+
+    // Press Escape to close.
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+
+    expect(
+      screen.queryByRole("button", { name: /close detail/i })
     ).not.toBeInTheDocument();
   });
 });

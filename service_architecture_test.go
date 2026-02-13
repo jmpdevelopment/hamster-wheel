@@ -240,6 +240,38 @@ func TestSettingsServiceTheme(t *testing.T) {
 	}
 }
 
+func TestSettingsServiceKeyboardShortcuts(t *testing.T) {
+	_, _, _, _, settingsSvc, _, _, _ := testServices(t)
+
+	// Default is empty string (no preference set — frontend treats as enabled).
+	val, err := settingsSvc.GetKeyboardShortcuts()
+	if err != nil {
+		t.Fatalf("getting default keyboard shortcuts: %v", err)
+	}
+	if val != "" {
+		t.Errorf("expected empty default, got %q", val)
+	}
+
+	// Set to each valid value.
+	for _, valid := range []string{"true", "false"} {
+		if err := settingsSvc.SetKeyboardShortcuts(valid); err != nil {
+			t.Fatalf("setting keyboard shortcuts to %q: %v", valid, err)
+		}
+		got, err := settingsSvc.GetKeyboardShortcuts()
+		if err != nil {
+			t.Fatalf("getting keyboard shortcuts after setting %q: %v", valid, err)
+		}
+		if got != valid {
+			t.Errorf("expected %q, got %q", valid, got)
+		}
+	}
+
+	// Invalid value should return error.
+	if err := settingsSvc.SetKeyboardShortcuts("maybe"); err == nil {
+		t.Error("expected error for invalid value, got nil")
+	}
+}
+
 // --- 2. Service Boundary Validation ---
 
 func TestServiceDependencies(t *testing.T) {

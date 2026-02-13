@@ -12,6 +12,15 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
+ * GetKeyboardShortcuts returns whether keyboard shortcuts are enabled ("true", "false", or "" if unset).
+ * Empty string means default (enabled).
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetKeyboardShortcuts() {
+    return $Call.ByID(961249936);
+}
+
+/**
  * GetReedAPIKey returns the stored Reed API key (empty if not set).
  * @returns {$CancellablePromise<string>}
  */
@@ -25,6 +34,15 @@ export function GetReedAPIKey() {
  */
 export function GetTheme() {
     return $Call.ByID(1377976733);
+}
+
+/**
+ * SetKeyboardShortcuts saves the keyboard shortcuts preference. Must be "true" or "false".
+ * @param {string} enabled
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetKeyboardShortcuts(enabled) {
+    return $Call.ByID(248813052, enabled);
 }
 
 /**

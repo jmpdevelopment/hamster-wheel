@@ -7,9 +7,13 @@ const mockGetReedAPIKey = vi.fn();
 const mockSetReedAPIKey = vi.fn();
 const mockOpenURL = vi.fn();
 
+const mockSetKeyboardShortcuts = vi.fn();
+
 vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   GetReedAPIKey: (...args: unknown[]) => mockGetReedAPIKey(...args),
   SetReedAPIKey: (...args: unknown[]) => mockSetReedAPIKey(...args),
+  SetKeyboardShortcuts: (...args: unknown[]) =>
+    mockSetKeyboardShortcuts(...args),
 }));
 
 vi.mock("@wailsio/runtime", () => ({
@@ -21,15 +25,19 @@ const defaultProps = {
   theme: "system" as const,
   onSetTheme: vi.fn().mockResolvedValue(undefined),
   onError: vi.fn(),
+  keyboardShortcuts: true,
+  onSetKeyboardShortcuts: vi.fn(),
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetReedAPIKey.mockResolvedValue("");
   mockSetReedAPIKey.mockResolvedValue(undefined);
+  mockSetKeyboardShortcuts.mockResolvedValue(undefined);
   defaultProps.onClose = vi.fn();
   defaultProps.onSetTheme = vi.fn().mockResolvedValue(undefined);
   defaultProps.onError = vi.fn();
+  defaultProps.onSetKeyboardShortcuts = vi.fn();
 });
 
 describe("SettingsPanel", () => {
@@ -167,5 +175,78 @@ describe("SettingsPanel", () => {
       "aria-pressed",
       "true"
     );
+  });
+
+  // --- Keyboard Shortcuts Section ---
+
+  it("renders keyboard shortcuts toggle buttons", () => {
+    render(<SettingsPanel {...defaultProps} />);
+    expect(
+      screen.getByRole("button", { name: "Enabled" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Disabled" })
+    ).toBeInTheDocument();
+  });
+
+  it("marks Enabled as pressed when shortcuts are enabled", () => {
+    render(<SettingsPanel {...defaultProps} keyboardShortcuts={true} />);
+    expect(screen.getByRole("button", { name: "Enabled" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Disabled" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+  });
+
+  it("marks Disabled as pressed when shortcuts are disabled", () => {
+    render(<SettingsPanel {...defaultProps} keyboardShortcuts={false} />);
+    expect(screen.getByRole("button", { name: "Disabled" })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getByRole("button", { name: "Enabled" })).toHaveAttribute(
+      "aria-pressed",
+      "false"
+    );
+  });
+
+  it("calls SetKeyboardShortcuts and onSetKeyboardShortcuts when Disabled is clicked", async () => {
+    render(<SettingsPanel {...defaultProps} keyboardShortcuts={true} />);
+    await userEvent.click(screen.getByRole("button", { name: "Disabled" }));
+    expect(mockSetKeyboardShortcuts).toHaveBeenCalledWith("false");
+    await waitFor(() => {
+      expect(defaultProps.onSetKeyboardShortcuts).toHaveBeenCalledWith(false);
+    });
+  });
+
+  it("calls SetKeyboardShortcuts and onSetKeyboardShortcuts when Enabled is clicked", async () => {
+    render(<SettingsPanel {...defaultProps} keyboardShortcuts={false} />);
+    await userEvent.click(screen.getByRole("button", { name: "Enabled" }));
+    expect(mockSetKeyboardShortcuts).toHaveBeenCalledWith("true");
+    await waitFor(() => {
+      expect(defaultProps.onSetKeyboardShortcuts).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it("calls onError when keyboard shortcuts save fails", async () => {
+    mockSetKeyboardShortcuts.mockRejectedValue(new Error("save failed"));
+    render(<SettingsPanel {...defaultProps} keyboardShortcuts={true} />);
+    await userEvent.click(screen.getByRole("button", { name: "Disabled" }));
+    await waitFor(() => {
+      expect(defaultProps.onError).toHaveBeenCalledWith("save failed");
+    });
+  });
+
+  it("opens shortcuts help overlay when ? button is clicked", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await userEvent.click(
+      screen.getByRole("button", { name: /show keyboard shortcuts/i })
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Keyboard shortcuts" })
+    ).toBeInTheDocument();
   });
 });

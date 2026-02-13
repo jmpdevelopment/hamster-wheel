@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from "react";
+import { ShortcutsHelp } from "./ShortcutsHelp";
 import {
   GetReedAPIKey,
   SetReedAPIKey,
+  SetKeyboardShortcuts,
 } from "../../bindings/hamster-wheel/settingsservice";
 import { Browser } from "@wailsio/runtime";
 import { Button } from "./Button";
@@ -14,6 +16,8 @@ interface SettingsPanelProps {
   theme: ThemePreference;
   onSetTheme: (theme: ThemePreference) => Promise<void>;
   onError: (msg: string) => void;
+  keyboardShortcuts: boolean;
+  onSetKeyboardShortcuts: (enabled: boolean) => void;
 }
 
 const themeOptions: { value: ThemePreference; label: string }[] = [
@@ -27,12 +31,15 @@ export function SettingsPanel({
   theme,
   onSetTheme,
   onError,
+  keyboardShortcuts,
+  onSetKeyboardShortcuts,
 }: SettingsPanelProps) {
   // --- Reed API Key state (migrated from APIKeyInput) ---
   const [apiKey, setApiKey] = useState("");
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasKey, setHasKey] = useState(false);
+  const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const savedTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -55,6 +62,17 @@ export function SettingsPanel({
       }
     };
   }, []);
+
+  const handleSetKeyboardShortcuts = async (enabled: boolean) => {
+    try {
+      await SetKeyboardShortcuts(enabled ? "true" : "false");
+      onSetKeyboardShortcuts(enabled);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save keyboard shortcuts setting:", message);
+      onError(message);
+    }
+  };
 
   const handleSaveKey = async () => {
     const trimmed = apiKey.trim();
@@ -161,7 +179,44 @@ export function SettingsPanel({
             ))}
           </div>
         </section>
+
+        {/* Keyboard Shortcuts Section */}
+        <section>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-hw-text">
+              Keyboard Shortcuts
+            </h3>
+            <IconButton
+              aria-label="Show keyboard shortcuts"
+              onClick={() => setShortcutsHelpOpen(true)}
+            >
+              ?
+            </IconButton>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant={keyboardShortcuts ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => handleSetKeyboardShortcuts(true)}
+              aria-pressed={keyboardShortcuts}
+            >
+              Enabled
+            </Button>
+            <Button
+              variant={!keyboardShortcuts ? "primary" : "secondary"}
+              size="sm"
+              onClick={() => handleSetKeyboardShortcuts(false)}
+              aria-pressed={!keyboardShortcuts}
+            >
+              Disabled
+            </Button>
+          </div>
+        </section>
       </div>
+
+      {shortcutsHelpOpen && (
+        <ShortcutsHelp onClose={() => setShortcutsHelpOpen(false)} />
+      )}
     </div>
   );
 }

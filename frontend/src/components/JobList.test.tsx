@@ -255,4 +255,43 @@ describe("JobList", () => {
     render(<JobList {...defaultProps} jobs={[]} />);
     expect(screen.queryByText(/^\d+ jobs$/)).not.toBeInTheDocument();
   });
+
+  // onFilteredJobsChange tests
+
+  it("calls onFilteredJobsChange with all job IDs initially", () => {
+    const onFilteredJobsChange = vi.fn();
+    render(
+      <JobList {...defaultProps} onFilteredJobsChange={onFilteredJobsChange} />
+    );
+
+    expect(onFilteredJobsChange).toHaveBeenCalledWith(["j1", "j2"]);
+  });
+
+  it("calls onFilteredJobsChange with filtered IDs after search", async () => {
+    const onFilteredJobsChange = vi.fn();
+    render(
+      <JobList {...defaultProps} onFilteredJobsChange={onFilteredJobsChange} />
+    );
+
+    const searchInput = screen.getByLabelText("Search jobs");
+    await userEvent.type(searchInput, "react");
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+
+    expect(onFilteredJobsChange).toHaveBeenLastCalledWith(["j2"]);
+  });
+
+  it("calls onFilteredJobsChange with filtered IDs when filter is active", () => {
+    const onFilteredJobsChange = vi.fn();
+    render(
+      <JobList
+        {...defaultProps}
+        filterByFilterId="f1"
+        onFilteredJobsChange={onFilteredJobsChange}
+      />
+    );
+
+    expect(onFilteredJobsChange).toHaveBeenCalledWith(["j1"]);
+  });
 });
