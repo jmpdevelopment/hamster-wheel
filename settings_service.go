@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"hamster-wheel/internal/adapter/reed"
+	"hamster-wheel/internal/cv"
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/keychain"
 )
@@ -21,6 +22,7 @@ const (
 	settingLLMProvider       = "llm_provider"
 	settingLLMModel          = "llm_model"
 	settingLLMBaseURL        = "llm_base_url"
+	settingCVPath            = "cv_path"
 
 	defaultLLMProvider = "openai"
 	defaultLLMModel    = "gpt-4o-mini"
@@ -238,5 +240,31 @@ func (s *SettingsService) SetLLMBaseURL(baseURL string) error {
 		return fmt.Errorf("setting llm base url: %w", err)
 	}
 	slog.Info("llm base url updated", "has_value", baseURL != "")
+	return nil
+}
+
+// GetCVPath returns the configured CV file path used for matching context.
+func (s *SettingsService) GetCVPath() (string, error) {
+	cvPath, err := s.db.GetSetting(context.Background(), settingCVPath)
+	if err != nil {
+		return "", fmt.Errorf("getting cv path setting: %w", err)
+	}
+	return strings.TrimSpace(cvPath), nil
+}
+
+// SetCVPath saves the CV file path used for matching context.
+// Empty value clears the stored path.
+func (s *SettingsService) SetCVPath(cvPath string) error {
+	cvPath = strings.TrimSpace(cvPath)
+	if cvPath != "" {
+		if _, err := cv.ExtractProfile(cvPath); err != nil {
+			return fmt.Errorf("invalid cv path %q: %w", cvPath, err)
+		}
+	}
+
+	if err := s.db.SetSetting(context.Background(), settingCVPath, cvPath); err != nil {
+		return fmt.Errorf("setting cv path: %w", err)
+	}
+	slog.Info("cv path updated", "configured", cvPath != "")
 	return nil
 }

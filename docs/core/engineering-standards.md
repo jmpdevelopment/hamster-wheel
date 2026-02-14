@@ -28,6 +28,7 @@ A step is complete only when all are true:
 - Wrap errors with operation context (`fmt.Errorf("...: %w", err)`).
 - Use sentinel errors and `errors.Is` for branching when needed.
 - Surface friendly messages to UI; keep internals in logs.
+- Validate known-unsupported user inputs at submission boundaries and reject early with clear errors (do not defer predictable format/validation failures to background pipelines).
 
 ### Logging
 

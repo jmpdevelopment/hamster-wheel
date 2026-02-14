@@ -383,14 +383,18 @@ func TestExtractJSONObjectAndStripCodeFence(t *testing.T) {
 
 func TestPromptAndTokenHelpers(t *testing.T) {
 	prompt := buildMatchUserPrompt(llm.MatchRequest{
-		Query:          "",
-		JobTitle:       "",
-		JobCompany:     "",
-		JobLocation:    "",
-		JobDescription: "",
-	}, "")
+		Query:            "",
+		CandidateProfile: "",
+		JobTitle:         "",
+		JobCompany:       "",
+		JobLocation:      "",
+		JobDescription:   "",
+	}, "", "")
 	if !strings.Contains(prompt, "(empty)") {
 		t.Fatalf("expected placeholder for empty values, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "Candidate CV profile:\n(empty)") {
+		t.Fatalf("expected prompt to include empty CV profile section, got %q", prompt)
 	}
 
 	if estimatePromptTokens("") != 0 {

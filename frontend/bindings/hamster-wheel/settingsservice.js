@@ -28,6 +28,14 @@ export function ClearReedAPIKey() {
 }
 
 /**
+ * GetCVPath returns the configured CV file path used for matching context.
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetCVPath() {
+    return $Call.ByID(4209720150);
+}
+
+/**
  * GetKeyboardShortcuts returns whether keyboard shortcuts are enabled ("true", "false", or "" if unset).
  * Empty string means default (enabled).
  * @returns {$CancellablePromise<string>}
@@ -86,6 +94,16 @@ export function HasOpenAIAPIKey() {
  */
 export function HasReedAPIKey() {
     return $Call.ByID(3464400619);
+}
+
+/**
+ * SetCVPath saves the CV file path used for matching context.
+ * Empty value clears the stored path.
+ * @param {string} cvPath
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetCVPath(cvPath) {
+    return $Call.ByID(2451022818, cvPath);
 }
 
 /**

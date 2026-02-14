@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { Browser } from "@wailsio/runtime";
+import { Browser, Dialogs } from "@wailsio/runtime";
 import {
   ClearOpenAIAPIKey,
   ClearReedAPIKey,
+  GetCVPath,
   GetLLMModel,
   GetLLMProvider,
   HasOpenAIAPIKey,
   HasReedAPIKey,
+  SetCVPath,
   SetKeyboardShortcuts,
   SetLLMModel,
   SetLLMProvider,
@@ -90,10 +92,14 @@ export function SettingsPanel({
   const [llmModel, setLLMModelState] = useState("gpt-4o-mini");
   const [llmConfigSaving, setLLMConfigSaving] = useState(false);
   const [llmConfigSaved, setLLMConfigSaved] = useState(false);
+  const [cvPath, setCVPathState] = useState("");
+  const [cvPathSaving, setCVPathSaving] = useState(false);
+  const [cvPathSaved, setCVPathSaved] = useState(false);
 
   const reedSavedTimeoutRef = useRef<number | null>(null);
   const openAISavedTimeoutRef = useRef<number | null>(null);
   const llmSavedTimeoutRef = useRef<number | null>(null);
+  const cvSavedTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,6 +157,15 @@ export function SettingsPanel({
       } catch (err: unknown) {
         reportError("Failed to load LLM model:", err);
       }
+
+      try {
+        const storedPath = await GetCVPath();
+        if (!cancelled) {
+          setCVPathState(storedPath || "");
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load CV path:", err);
+      }
     };
 
     void load();
@@ -169,6 +184,9 @@ export function SettingsPanel({
       }
       if (llmSavedTimeoutRef.current !== null) {
         clearTimeout(llmSavedTimeoutRef.current);
+      }
+      if (cvSavedTimeoutRef.current !== null) {
+        clearTimeout(cvSavedTimeoutRef.current);
       }
     };
   }, []);
@@ -308,6 +326,66 @@ export function SettingsPanel({
       onError(message);
     } finally {
       setLLMConfigSaving(false);
+    }
+  };
+
+  const handleBrowseCVPath = async () => {
+    try {
+      const picked = await Dialogs.OpenFile({
+        Title: "Select CV File",
+        Message: "Choose a CV file (PDF or plain text) for matching context.",
+        CanChooseFiles: true,
+        CanChooseDirectories: false,
+        AllowsMultipleSelection: false,
+        Filters: [
+          { DisplayName: "PDF files", Pattern: "*.pdf" },
+          { DisplayName: "Text files", Pattern: "*.txt;*.md;*.markdown" },
+          { DisplayName: "All files", Pattern: "*" },
+        ],
+      });
+      const nextPath = Array.isArray(picked) ? picked[0] ?? "" : picked;
+      if (nextPath) {
+        setCVPathState(nextPath);
+        setCVPathSaved(false);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to browse CV path:", message);
+      onError(message);
+    }
+  };
+
+  const handleSaveCVPath = async () => {
+    const trimmed = cvPath.trim();
+    if (!trimmed) return;
+
+    setCVPathSaving(true);
+    setCVPathSaved(false);
+    try {
+      await SetCVPath(trimmed);
+      setCVPathState(trimmed);
+      setTimedSavedState(setCVPathSaved, cvSavedTimeoutRef);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save CV path:", message);
+      onError(message);
+    } finally {
+      setCVPathSaving(false);
+    }
+  };
+
+  const handleClearCVPath = async () => {
+    setCVPathSaving(true);
+    setCVPathSaved(false);
+    try {
+      await SetCVPath("");
+      setCVPathState("");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to clear CV path:", message);
+      onError(message);
+    } finally {
+      setCVPathSaving(false);
     }
   };
 
@@ -485,6 +563,63 @@ export function SettingsPanel({
           hidden={activeTab !== "llm-providers"}
           className="space-y-6"
         >
+          <section>
+            <h3 className="text-sm font-semibold text-hw-text mb-2">
+              CV Context for Matching
+            </h3>
+            <p className="text-xs text-hw-text-muted mb-2">
+              Add a CV file so match scoring uses your profile context.
+            </p>
+            <div className="space-y-2">
+              <Input
+                type="text"
+                size="sm"
+                value={cvPath}
+                onChange={(e) => {
+                  setCVPathState(e.target.value);
+                  setCVPathSaved(false);
+                }}
+                placeholder="/path/to/cv.txt"
+                className="w-full"
+                aria-label="CV File Path"
+              />
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    void handleBrowseCVPath();
+                  }}
+                >
+                  Browse
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSaveCVPath}
+                  disabled={!cvPath.trim()}
+                  loading={cvPathSaving}
+                >
+                  {cvPathSaved ? "Saved" : "Save CV path"}
+                </Button>
+                {cvPath.trim() && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={handleClearCVPath}
+                    loading={cvPathSaving}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-hw-text-muted">
+                Supported CV formats: PDF and plain text (`.txt`, `.md`,
+                `.markdown`). Unsupported formats are rejected on save.
+              </p>
+            </div>
+          </section>
+
           <section>
             <h3 className="text-sm font-semibold text-hw-text mb-2">
               Provider Configuration

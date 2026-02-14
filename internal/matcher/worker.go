@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"hamster-wheel/internal/cv"
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/llm"
 )
@@ -21,6 +23,7 @@ const (
 	defaultProviderName    = "heuristic_v1"
 	defaultMatchTimeout    = 20 * time.Second
 	defaultStaleProcessing = 2 * time.Minute
+	settingCVPath          = "cv_path"
 )
 
 // Store is the DB contract required by the matcher worker.
@@ -31,6 +34,7 @@ type Store interface {
 	RequeueStaleProcessingJobMatches(ctx context.Context, staleBefore time.Time) (int, error)
 	GetJob(ctx context.Context, id string) (*db.Job, error)
 	GetFilter(ctx context.Context, id string) (*db.SearchFilter, error)
+	GetSetting(ctx context.Context, key string) (string, error)
 }
 
 // ProviderResolver returns the provider that should be used for the current
@@ -61,6 +65,11 @@ type Worker struct {
 	staleAfter       time.Duration
 	descriptionRunes int
 	providerResolver ProviderResolver
+	cvCacheMu        sync.Mutex
+	cvCachePath      string
+	cvCacheModTime   time.Time
+	cvCacheSize      int64
+	cvCacheProfile   string
 
 	statusChangedHook func(jobID, status string)
 
@@ -284,6 +293,7 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 
 	result, err := provider.Match(matchCtx, llm.MatchRequest{
 		Query:               query,
+		CandidateProfile:    w.cvProfileForJob(ctx),
 		JobTitle:            job.Title,
 		JobCompany:          job.Company,
 		JobLocation:         job.Location,
@@ -332,6 +342,69 @@ func (w *Worker) queryForJob(ctx context.Context, job *db.Job) string {
 
 	// Fallback keeps scoring deterministic even when filter data is unavailable.
 	return strings.TrimSpace(job.Title + " " + job.Location)
+}
+
+func (w *Worker) cvProfileForJob(ctx context.Context) string {
+	cvPath, err := w.store.GetSetting(ctx, settingCVPath)
+	if err != nil {
+		w.log().Warn("failed to load cv path for matching context", "error", err)
+		return ""
+	}
+
+	cvPath = strings.TrimSpace(cvPath)
+	if cvPath == "" {
+		w.clearCVCache()
+		return ""
+	}
+
+	profile, err := w.loadCVProfile(cvPath)
+	if err != nil {
+		w.log().Warn(
+			"cv profile unavailable; continuing without cv context",
+			"cv_path", cvPath,
+			"error", err,
+		)
+		return ""
+	}
+	return profile
+}
+
+func (w *Worker) clearCVCache() {
+	w.cvCacheMu.Lock()
+	w.cvCachePath = ""
+	w.cvCacheModTime = time.Time{}
+	w.cvCacheSize = 0
+	w.cvCacheProfile = ""
+	w.cvCacheMu.Unlock()
+}
+
+func (w *Worker) loadCVProfile(cvPath string) (string, error) {
+	info, err := os.Stat(cvPath)
+	if err != nil {
+		return "", fmt.Errorf("checking cv file metadata: %w", err)
+	}
+	if info.IsDir() {
+		return "", errors.New("cv path points to a directory")
+	}
+
+	w.cvCacheMu.Lock()
+	defer w.cvCacheMu.Unlock()
+	if w.cvCachePath == cvPath &&
+		w.cvCacheModTime.Equal(info.ModTime()) &&
+		w.cvCacheSize == info.Size() &&
+		w.cvCacheProfile != "" {
+		return w.cvCacheProfile, nil
+	}
+
+	profile, err := cv.ExtractProfile(cvPath)
+	if err != nil {
+		return "", err
+	}
+	w.cvCachePath = cvPath
+	w.cvCacheModTime = info.ModTime()
+	w.cvCacheSize = info.Size()
+	w.cvCacheProfile = profile
+	return profile, nil
 }
 
 func (w *Worker) failMatch(ctx context.Context, jobID, providerName, reason string) error {

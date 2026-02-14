@@ -26,6 +26,11 @@
 - Default scorer is local heuristic until external providers are integrated.
 - OpenAI provider implementation exists in `internal/llm/openai` with deterministic response parsing and classified timeout/auth/malformed failure handling.
 - Settings APIs/UI now persist LLM provider/model/base-URL and OpenAI key lifecycle in `SettingsService` + Settings panel tabs.
+- CV path submission and matcher-context ingestion are implemented for PDF + plain-text CV files:
+  - `cv_path` is persisted via `SettingsService` and configurable in Settings UI.
+  - Unsupported CV formats are rejected at submission-time validation.
+  - Matcher parses/caches CV text and includes compact profile context in `MatchRequest`.
+  - Runtime CV parse/load issues fail open to query-only scoring.
 
 ## Phase 2 Immediate Implementation Queue (OpenAI-First)
 
@@ -37,19 +42,15 @@
    - Why: allow users to switch providers safely without app restart assumptions.
    - Build (remaining): apply persisted settings to matcher runtime selection and provider construction, including safe reconfiguration without fragile restart assumptions.
    - Done when: changing provider/model/base URL from settings changes active scoring path with clear validation/runtime errors surfaced to UI/logs.
-3. CV parser path for matching inputs.
-   - Why: improve score quality by grounding prompts on actual candidate profile rather than filter keywords alone.
-   - Build: parse and cache CV text (bounded size), then include compact profile context in `MatchRequest`.
-   - Done when: matching uses parsed CV context with tests for parse failure fallback behavior.
-4. Token-efficiency controls.
+3. Token-efficiency controls.
    - Why: constrain cost and response time under continuous polling.
    - Build: compact prompt shaping, description truncation bounds, prefilter thresholds, and bounded context windows.
    - Done when: per-match token budgets are configurable and logged; scoring remains stable under large job descriptions.
-5. Match-threshold settings and notifications.
+4. Match-threshold settings and notifications.
    - Why: deliver actionable alerts without noisy low-signal matches.
    - Build: user-configurable threshold + native notification path for high-score transitions.
    - Done when: only matches meeting threshold trigger notifications and this behavior is test-covered.
-6. Deferred UI sorting enhancement (later step, not blocking core matching).
+5. Deferred UI sorting enhancement (later step, not blocking core matching).
    - Build: sort controls for posted date and match score.
    - Done when: sorting is deterministic, persisted if appropriate, and does not regress list virtualization performance.
 

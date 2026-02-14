@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -438,4 +441,125 @@ func TestLLMBaseURLDatabaseErrors(t *testing.T) {
 	if err := svc.SetLLMBaseURL("https://example.com/v1"); err == nil {
 		t.Fatal("expected SetLLMBaseURL to fail on closed DB")
 	}
+}
+
+func TestCVPathLifecycleAndValidation(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	cvPath, err := svc.GetCVPath()
+	if err != nil {
+		t.Fatalf("getting default cv path: %v", err)
+	}
+	if cvPath != "" {
+		t.Fatalf("expected empty default cv path, got %q", cvPath)
+	}
+
+	file := filepath.Join(t.TempDir(), "cv.txt")
+	if err := os.WriteFile(file, []byte("Go backend engineer with 8 years of experience."), 0o600); err != nil {
+		t.Fatalf("writing temp cv file: %v", err)
+	}
+
+	if err := svc.SetCVPath("  " + file + "  "); err != nil {
+		t.Fatalf("setting cv path: %v", err)
+	}
+	cvPath, err = svc.GetCVPath()
+	if err != nil {
+		t.Fatalf("getting cv path after set: %v", err)
+	}
+	if cvPath != file {
+		t.Fatalf("expected cv path %q, got %q", file, cvPath)
+	}
+
+	if err := svc.SetCVPath(""); err != nil {
+		t.Fatalf("clearing cv path via empty value: %v", err)
+	}
+	cvPath, err = svc.GetCVPath()
+	if err != nil {
+		t.Fatalf("getting cv path after clear: %v", err)
+	}
+	if cvPath != "" {
+		t.Fatalf("expected empty cv path after clear, got %q", cvPath)
+	}
+
+	if err := svc.SetCVPath(filepath.Join(t.TempDir(), "missing.txt")); err == nil {
+		t.Fatal("expected validation error for missing cv file")
+	}
+	if err := svc.SetCVPath(t.TempDir()); err == nil {
+		t.Fatal("expected validation error for cv directory path")
+	}
+
+	pdfPath := filepath.Join(t.TempDir(), "cv.pdf")
+	if err := os.WriteFile(pdfPath, buildMinimalPDF("Go backend engineer"), 0o600); err != nil {
+		t.Fatalf("writing pdf cv file: %v", err)
+	}
+	if err := svc.SetCVPath(pdfPath); err != nil {
+		t.Fatalf("expected pdf cv path to be accepted, got %v", err)
+	}
+
+	unsupportedPath := filepath.Join(t.TempDir(), "cv.docx")
+	if err := os.WriteFile(unsupportedPath, append([]byte("PK\x03\x04"), []byte("fake-docx")...), 0o600); err != nil {
+		t.Fatalf("writing unsupported docx-like file: %v", err)
+	}
+	if err := svc.SetCVPath(unsupportedPath); err == nil {
+		t.Fatal("expected unsupported docx-like cv to be rejected at submission")
+	}
+}
+
+func TestCVPathDatabaseErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	if _, err := svc.GetCVPath(); err == nil {
+		t.Fatal("expected GetCVPath to fail on closed DB")
+	}
+	if err := svc.SetCVPath(""); err == nil {
+		t.Fatal("expected SetCVPath to fail on closed DB")
+	}
+}
+
+func buildMinimalPDF(text string) []byte {
+	escaped := escapePDFText(text)
+	stream := fmt.Sprintf("BT\n/F1 12 Tf\n72 720 Td\n(%s) Tj\nET\n", escaped)
+
+	objects := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
+		fmt.Sprintf("<< /Length %d >>\nstream\n%sendstream", len(stream), stream),
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+	}
+
+	var out bytes.Buffer
+	out.WriteString("%PDF-1.4\n")
+	offsets := make([]int, len(objects)+1)
+	for i, obj := range objects {
+		offsets[i+1] = out.Len()
+		fmt.Fprintf(&out, "%d 0 obj\n%s\nendobj\n", i+1, obj)
+	}
+
+	xrefOffset := out.Len()
+	fmt.Fprintf(&out, "xref\n0 %d\n", len(objects)+1)
+	out.WriteString("0000000000 65535 f \n")
+	for i := 1; i <= len(objects); i++ {
+		fmt.Fprintf(&out, "%010d 00000 n \n", offsets[i])
+	}
+	fmt.Fprintf(&out, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xrefOffset)
+
+	return out.Bytes()
+}
+
+func escapePDFText(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, "(", `\(`)
+	value = strings.ReplaceAll(value, ")", `\)`)
+	return value
 }

@@ -51,3 +51,39 @@ func TestMatchHandlesEmptyQuery(t *testing.T) {
 		t.Fatalf("expected score 0 for empty query, got %.3f", result.Score)
 	}
 }
+
+func TestMatchUsesCandidateProfileSignal(t *testing.T) {
+	provider := New()
+
+	relevantProfile, err := provider.Match(context.Background(), llm.MatchRequest{
+		Query:            "",
+		CandidateProfile: "Go backend APIs distributed systems microservices",
+		JobTitle:         "Senior Go Backend Engineer",
+		JobCompany:       "Acme",
+		JobLocation:      "Remote",
+		JobDescription:   "Build distributed backend API services in Go.",
+	})
+	if err != nil {
+		t.Fatalf("matching relevant profile: %v", err)
+	}
+
+	unrelatedProfile, err := provider.Match(context.Background(), llm.MatchRequest{
+		Query:            "",
+		CandidateProfile: "social media influencer campaigns graphic design",
+		JobTitle:         "Senior Go Backend Engineer",
+		JobCompany:       "Acme",
+		JobLocation:      "Remote",
+		JobDescription:   "Build distributed backend API services in Go.",
+	})
+	if err != nil {
+		t.Fatalf("matching unrelated profile: %v", err)
+	}
+
+	if relevantProfile.Score <= unrelatedProfile.Score {
+		t.Fatalf(
+			"expected relevant CV profile score > unrelated profile score, got relevant=%.3f unrelated=%.3f",
+			relevantProfile.Score,
+			unrelatedProfile.Score,
+		)
+	}
+}

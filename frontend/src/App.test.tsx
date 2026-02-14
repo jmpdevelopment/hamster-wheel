@@ -82,6 +82,8 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
   SetLLMModel: vi.fn().mockResolvedValue(undefined),
   GetLLMBaseURL: vi.fn().mockResolvedValue(""),
   SetLLMBaseURL: vi.fn().mockResolvedValue(undefined),
+  GetCVPath: vi.fn().mockResolvedValue(""),
+  SetCVPath: vi.fn().mockResolvedValue(undefined),
   GetTheme: vi.fn().mockResolvedValue(""),
   SetTheme: vi.fn().mockResolvedValue(undefined),
   GetKeyboardShortcuts: (...args: unknown[]) =>
@@ -91,7 +93,10 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
 
 vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: vi.fn() },
-  Dialogs: { SaveFile: vi.fn().mockResolvedValue("") },
+  Dialogs: {
+    SaveFile: vi.fn().mockResolvedValue(""),
+    OpenFile: vi.fn().mockResolvedValue(""),
+  },
   Create: {
     Array:
       (factory: (value: unknown) => unknown) =>

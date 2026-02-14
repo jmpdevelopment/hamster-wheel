@@ -38,14 +38,6 @@ func (p *Provider) Validate(context.Context) error {
 
 func (p *Provider) Match(_ context.Context, req llm.MatchRequest) (llm.MatchResult, error) {
 	query := strings.TrimSpace(req.Query)
-	if query == "" {
-		return llm.MatchResult{
-			Score:                 0,
-			Summary:               "No query keywords available for scoring.",
-			EstimatedPromptTokens: estimateTokens(req),
-		}, nil
-	}
-
 	desc := req.JobDescription
 	maxRunes := req.MaxDescriptionRunes
 	if maxRunes <= 0 {
@@ -54,10 +46,11 @@ func (p *Provider) Match(_ context.Context, req llm.MatchRequest) (llm.MatchResu
 	desc = truncateRunes(desc, maxRunes)
 
 	querySet := tokenSet(query)
-	if len(querySet) == 0 {
+	profileSet := tokenSet(req.CandidateProfile)
+	if len(querySet) == 0 && len(profileSet) == 0 {
 		return llm.MatchResult{
 			Score:                 0,
-			Summary:               "No usable query tokens after normalization.",
+			Summary:               "No usable query or CV profile tokens after normalization.",
 			EstimatedPromptTokens: estimateTokens(req),
 		}, nil
 	}
@@ -67,10 +60,25 @@ func (p *Provider) Match(_ context.Context, req llm.MatchRequest) (llm.MatchResu
 	locationOverlap := overlapRatio(querySet, tokenSet(req.JobLocation))
 	descriptionOverlap := overlapRatio(querySet, tokenSet(desc))
 
-	score := (0.50 * titleOverlap) +
+	queryScore := (0.50 * titleOverlap) +
 		(0.20 * descriptionOverlap) +
 		(0.20 * companyOverlap) +
 		(0.10 * locationOverlap)
+
+	jobContext := tokenSet(req.JobTitle + " " + req.JobCompany + " " + req.JobLocation + " " + desc)
+	profileScore := overlapRatio(profileSet, jobContext)
+
+	var score float64
+	switch {
+	case len(querySet) == 0:
+		score = profileScore
+	case len(profileSet) == 0:
+		score = queryScore
+	default:
+		// Keep query relevance primary while still incorporating CV signal.
+		score = (0.75 * queryScore) + (0.25 * profileScore)
+	}
+
 	if score < 0 {
 		score = 0
 	}
@@ -78,13 +86,20 @@ func (p *Provider) Match(_ context.Context, req llm.MatchRequest) (llm.MatchResu
 		score = 1
 	}
 
-	summary := fmt.Sprintf(
-		"Heuristic overlap: title %.0f%%, description %.0f%%, company %.0f%%, location %.0f%%.",
-		titleOverlap*100,
-		descriptionOverlap*100,
-		companyOverlap*100,
-		locationOverlap*100,
-	)
+	summary := "Heuristic overlap:"
+	if len(querySet) > 0 {
+		summary = fmt.Sprintf(
+			"%s query title %.0f%%, description %.0f%%, company %.0f%%, location %.0f%%.",
+			summary,
+			titleOverlap*100,
+			descriptionOverlap*100,
+			companyOverlap*100,
+			locationOverlap*100,
+		)
+	}
+	if len(profileSet) > 0 {
+		summary = fmt.Sprintf("%s CV-to-job %.0f%%.", summary, profileScore*100)
+	}
 
 	return llm.MatchResult{
 		Score:                 score,
@@ -123,7 +138,7 @@ func overlapRatio(base map[string]struct{}, candidate map[string]struct{}) float
 
 func estimateTokens(req llm.MatchRequest) int {
 	const charsPerToken = 4
-	content := req.Query + " " + req.JobTitle + " " + req.JobCompany + " " + req.JobLocation + " " + req.JobDescription
+	content := req.Query + " " + req.CandidateProfile + " " + req.JobTitle + " " + req.JobCompany + " " + req.JobLocation + " " + req.JobDescription
 	if content == "" {
 		return 0
 	}

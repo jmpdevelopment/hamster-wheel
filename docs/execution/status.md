@@ -26,6 +26,12 @@ Last updated: 2026-02-14
 - Backend coverage floor hardening is complete:
   - Coverage gate defaults now enforce backend `>= 80%`.
   - Added branch-focused matcher/OpenAI/settings tests to keep sustained headroom above gate.
+- Phase 2 CV matching-context path is complete (PDF + plain-text scope):
+  - Settings now support CV file-path submission (`cv_path`) in the Settings panel.
+  - CV path submission performs immediate parse validation and rejects unsupported formats.
+  - Matcher loads, parses, and caches CV text context from configured file paths.
+  - Match requests now include compact CV profile context for provider scoring.
+  - Runtime CV parse/load failures (for example moved/deleted files after save) degrade gracefully to query-only scoring.
 
 ## Current Runtime Posture (Preserve)
 
@@ -36,13 +42,14 @@ Last updated: 2026-02-14
 - Keep LLM settings persisted via `SettingsService` while runtime hot-switch wiring remains in the next queue step.
 - Keep event-driven updates (`polling:status-changed`, `matching:status-changed`) with bounded/coalesced UI refresh.
 - Keep SQLite runtime safeguards (single shared connection + busy retry on writes).
+- Keep CV-context matching fail-open: missing/invalid CV path logs warning and falls back to query-only matching.
 
 ## Verification Baseline (Latest Pass: 2026-02-14)
 
 - `go test ./...`: passing
 - `go vet ./...`: passing
 - `./scripts/check-coverage.sh`: passing
-- Backend total coverage: 82.7%
+- Backend total coverage: 82.6%
 - Frontend line coverage: 99.6%
 
 ## Next Work

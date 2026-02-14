@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -283,6 +284,104 @@ func TestRunOnceUsesProviderResolver(t *testing.T) {
 	}
 }
 
+func TestRunOnceIncludesCVProfileFromConfiguredPath(t *testing.T) {
+	database := testDB(t)
+	cvPath := filepath.Join(t.TempDir(), "candidate-cv.txt")
+	if err := os.WriteFile(cvPath, []byte("Go backend APIs distributed systems"), 0o600); err != nil {
+		t.Fatalf("writing cv file: %v", err)
+	}
+	if err := database.SetSetting(context.Background(), settingCVPath, cvPath); err != nil {
+		t.Fatalf("setting cv path: %v", err)
+	}
+
+	stub := &stubProvider{
+		name: heuristic.ProviderName,
+		result: llm.MatchResult{
+			Score:   0.52,
+			Summary: "Scored with CV context.",
+		},
+	}
+	worker := New(database, llm.NewRegistry(), WorkerConfig{
+		ProviderResolver: func(context.Context) (string, llm.Provider, error) {
+			return heuristic.ProviderName, stub, nil
+		},
+		BatchSize: 1,
+	})
+
+	jobID, err := database.InsertJob(context.Background(), &db.Job{
+		Source:      "reed_uk",
+		SourceID:    "matcher-cv-profile-1",
+		Title:       "Go Backend Engineer",
+		Company:     "Acme",
+		Location:    "Remote",
+		Description: "Build Go APIs and backend services.",
+		URL:         "https://example.com/jobs/cv",
+	})
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending row: %v", err)
+	}
+
+	processed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("running matcher once: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected 1 processed row, got %d", processed)
+	}
+	if !strings.Contains(stub.lastReq.CandidateProfile, "distributed systems") {
+		t.Fatalf("expected CV profile to be forwarded into match request, got %q", stub.lastReq.CandidateProfile)
+	}
+}
+
+func TestRunOnceFallsBackWhenCVProfileCannotBeParsed(t *testing.T) {
+	database := testDB(t)
+	if err := database.SetSetting(context.Background(), settingCVPath, filepath.Join(t.TempDir(), "missing-cv.txt")); err != nil {
+		t.Fatalf("setting cv path: %v", err)
+	}
+
+	stub := &stubProvider{
+		name: heuristic.ProviderName,
+		result: llm.MatchResult{
+			Score:   0.41,
+			Summary: "Scored without CV context.",
+		},
+	}
+	worker := New(database, llm.NewRegistry(), WorkerConfig{
+		ProviderResolver: func(context.Context) (string, llm.Provider, error) {
+			return heuristic.ProviderName, stub, nil
+		},
+		BatchSize: 1,
+	})
+
+	jobID, err := database.InsertJob(context.Background(), &db.Job{
+		Source:      "reed_uk",
+		SourceID:    "matcher-cv-profile-fallback-1",
+		Title:       "Go Backend Engineer",
+		Description: "Build APIs.",
+		URL:         "https://example.com/jobs/cv-fallback",
+	})
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending row: %v", err)
+	}
+
+	processed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("running matcher once: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected 1 processed row, got %d", processed)
+	}
+	if stub.lastReq.CandidateProfile != "" {
+		t.Fatalf("expected empty CV profile on parse failure fallback, got %q", stub.lastReq.CandidateProfile)
+	}
+}
+
 func TestWorkerStartStopIdempotent(t *testing.T) {
 	database := testDB(t)
 	worker := testWorker(t, database)
@@ -394,10 +493,15 @@ func (s requeueErrStore) GetFilter(context.Context, string) (*db.SearchFilter, e
 	return nil, nil
 }
 
+func (s requeueErrStore) GetSetting(context.Context, string) (string, error) {
+	return "", nil
+}
+
 type stubProvider struct {
-	name   string
-	result llm.MatchResult
-	err    error
+	name    string
+	result  llm.MatchResult
+	err     error
+	lastReq llm.MatchRequest
 }
 
 func (p *stubProvider) Name() string {
@@ -412,7 +516,8 @@ func (p *stubProvider) Validate(context.Context) error {
 	return nil
 }
 
-func (p *stubProvider) Match(context.Context, llm.MatchRequest) (llm.MatchResult, error) {
+func (p *stubProvider) Match(_ context.Context, req llm.MatchRequest) (llm.MatchResult, error) {
+	p.lastReq = req
 	if p.err != nil {
 		return llm.MatchResult{}, p.err
 	}

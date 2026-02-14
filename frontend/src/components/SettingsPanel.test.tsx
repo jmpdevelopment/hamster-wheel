@@ -13,8 +13,11 @@ const mockGetLLMProvider = vi.fn();
 const mockSetLLMProvider = vi.fn();
 const mockGetLLMModel = vi.fn();
 const mockSetLLMModel = vi.fn();
+const mockGetCVPath = vi.fn();
+const mockSetCVPath = vi.fn();
 const mockSetKeyboardShortcuts = vi.fn();
 const mockOpenURL = vi.fn();
+const mockOpenFile = vi.fn();
 
 vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   HasReedAPIKey: (...args: unknown[]) => mockHasReedAPIKey(...args),
@@ -27,13 +30,18 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   SetLLMProvider: (...args: unknown[]) => mockSetLLMProvider(...args),
   GetLLMModel: (...args: unknown[]) => mockGetLLMModel(...args),
   SetLLMModel: (...args: unknown[]) => mockSetLLMModel(...args),
+  GetCVPath: (...args: unknown[]) => mockGetCVPath(...args),
+  SetCVPath: (...args: unknown[]) => mockSetCVPath(...args),
   SetKeyboardShortcuts: (...args: unknown[]) =>
     mockSetKeyboardShortcuts(...args),
 }));
 
 vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: (...args: unknown[]) => mockOpenURL(...args) },
-  Dialogs: { SaveFile: vi.fn().mockResolvedValue("") },
+  Dialogs: {
+    SaveFile: vi.fn().mockResolvedValue(""),
+    OpenFile: (...args: unknown[]) => mockOpenFile(...args),
+  },
 }));
 
 const defaultProps = {
@@ -61,7 +69,10 @@ beforeEach(() => {
   mockSetLLMProvider.mockResolvedValue(undefined);
   mockGetLLMModel.mockResolvedValue("gpt-4o-mini");
   mockSetLLMModel.mockResolvedValue(undefined);
+  mockGetCVPath.mockResolvedValue("");
+  mockSetCVPath.mockResolvedValue(undefined);
   mockSetKeyboardShortcuts.mockResolvedValue(undefined);
+  mockOpenFile.mockResolvedValue("");
   defaultProps.onClose = vi.fn();
   defaultProps.onSetTheme = vi.fn().mockResolvedValue(undefined);
   defaultProps.onError = vi.fn();
@@ -269,6 +280,26 @@ describe("SettingsPanel", () => {
     expect(mockSetLLMModel).toHaveBeenCalledWith("gpt-4o");
   });
 
+  it("loads, browses, saves, and clears CV path", async () => {
+    mockGetCVPath.mockResolvedValue("/tmp/cv.txt");
+    mockOpenFile.mockResolvedValue("/tmp/next-cv.txt");
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("CV File Path")).toHaveValue("/tmp/cv.txt");
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Browse" }));
+    expect(screen.getByLabelText("CV File Path")).toHaveValue("/tmp/next-cv.txt");
+
+    await userEvent.click(screen.getByRole("button", { name: "Save CV path" }));
+    expect(mockSetCVPath).toHaveBeenCalledWith("/tmp/next-cv.txt");
+
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(mockSetCVPath).toHaveBeenCalledWith("");
+  });
+
   it("reports llm configuration save errors", async () => {
     mockSetLLMModel.mockRejectedValue(new Error("model save failed"));
     render(<SettingsPanel {...defaultProps} />);
@@ -312,6 +343,15 @@ describe("SettingsPanel", () => {
 
     await waitFor(() => {
       expect(defaultProps.onError).toHaveBeenCalledWith("provider load failed");
+    });
+  });
+
+  it("reports CV path load errors", async () => {
+    mockGetCVPath.mockRejectedValue(new Error("cv load failed"));
+    render(<SettingsPanel {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(defaultProps.onError).toHaveBeenCalledWith("cv load failed");
     });
   });
 

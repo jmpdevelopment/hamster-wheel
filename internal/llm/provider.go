@@ -6,6 +6,7 @@ import "context"
 // Keep fields intentionally narrow so providers can minimize prompt/token usage.
 type MatchRequest struct {
 	Query               string
+	CandidateProfile    string
 	JobTitle            string
 	JobCompany          string
 	JobLocation         string

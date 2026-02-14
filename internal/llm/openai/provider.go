@@ -23,6 +23,7 @@ const (
 	defaultBaseURL             = "https://api.openai.com"
 	defaultRequestTimeout      = 20 * time.Second
 	defaultMaxDescriptionRunes = 1400
+	defaultMaxProfileRunes     = 2000
 	defaultMaxSummaryRunes     = 220
 	maxResponseBytes           = 1 << 20 // 1 MiB
 )
@@ -135,7 +136,8 @@ func (p *Provider) Match(ctx context.Context, req llm.MatchRequest) (llm.MatchRe
 	}
 
 	description := truncateRunes(strings.TrimSpace(req.JobDescription), maxDescriptionRunes)
-	userPrompt := buildMatchUserPrompt(req, description)
+	profile := truncateRunes(strings.TrimSpace(req.CandidateProfile), defaultMaxProfileRunes)
+	userPrompt := buildMatchUserPrompt(req, description, profile)
 
 	content, promptTokens, err := p.chatCompletion(ctx, chatCompletionRequest{
 		Model:       p.model,
@@ -381,10 +383,11 @@ func stripCodeFence(value string) string {
 	return strings.TrimSpace(strings.Join(lines[1:len(lines)-1], "\n"))
 }
 
-func buildMatchUserPrompt(req llm.MatchRequest, truncatedDescription string) string {
+func buildMatchUserPrompt(req llm.MatchRequest, truncatedDescription string, truncatedProfile string) string {
 	return fmt.Sprintf(
-		"Candidate query:\n%s\n\nJob title: %s\nCompany: %s\nLocation: %s\nJob description:\n%s\n\nReturn only JSON with keys score and summary.",
+		"Candidate query:\n%s\n\nCandidate CV profile:\n%s\n\nJob title: %s\nCompany: %s\nLocation: %s\nJob description:\n%s\n\nReturn only JSON with keys score and summary.",
 		nonEmpty(req.Query),
+		nonEmpty(truncatedProfile),
 		nonEmpty(req.JobTitle),
 		nonEmpty(req.JobCompany),
 		nonEmpty(req.JobLocation),
