@@ -62,8 +62,9 @@ vi.mock("../bindings/hamster-wheel/pollingservice", () => ({
 }));
 
 vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
-  GetReedAPIKey: vi.fn().mockResolvedValue(""),
+  HasReedAPIKey: vi.fn().mockResolvedValue(false),
   SetReedAPIKey: vi.fn().mockResolvedValue(undefined),
+  ClearReedAPIKey: vi.fn().mockResolvedValue(undefined),
   GetTheme: vi.fn().mockResolvedValue(""),
   SetTheme: vi.fn().mockResolvedValue(undefined),
   GetKeyboardShortcuts: vi.fn().mockResolvedValue(""),
@@ -327,15 +328,17 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("Go Dev")).toBeInTheDocument();
     });
-
-    act(() => {
-      document.dispatchEvent(
-        new KeyboardEvent("keydown", { key: "j", bubbles: true })
-      );
-    });
+    // Ensure shortcuts are not suppressed by an input focus state.
+    (document.activeElement as HTMLElement | null)?.blur();
 
     // Job detail should open for the first job.
+    // Trigger inside waitFor to avoid races with async filtered-job-id wiring.
     await waitFor(() => {
+      act(() => {
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "j", bubbles: true })
+        );
+      });
       expect(
         screen.getByRole("button", { name: /close detail/i })
       ).toBeInTheDocument();

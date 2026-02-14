@@ -56,6 +56,14 @@ func newWithOptions(apiKey, baseURL string, client *http.Client) *Adapter {
 func (a *Adapter) Name() string        { return "reed_uk" }
 func (a *Adapter) DisplayName() string { return "Reed UK" }
 
+// HasAPIKey reports whether the adapter currently has a non-empty API key.
+// Used for tests and non-secret status checks.
+func (a *Adapter) HasAPIKey() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return strings.TrimSpace(a.apiKey) != ""
+}
+
 // SetAPIKey updates the API key used for authentication.
 // Called when the user sets the key via the UI.
 // Thread-safe: can be called concurrently with other operations.

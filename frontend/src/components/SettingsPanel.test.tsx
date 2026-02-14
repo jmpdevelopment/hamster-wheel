@@ -3,15 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SettingsPanel } from "./SettingsPanel";
 
-const mockGetReedAPIKey = vi.fn();
+const mockHasReedAPIKey = vi.fn();
 const mockSetReedAPIKey = vi.fn();
+const mockClearReedAPIKey = vi.fn();
 const mockOpenURL = vi.fn();
 
 const mockSetKeyboardShortcuts = vi.fn();
 
 vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
-  GetReedAPIKey: (...args: unknown[]) => mockGetReedAPIKey(...args),
+  HasReedAPIKey: (...args: unknown[]) => mockHasReedAPIKey(...args),
   SetReedAPIKey: (...args: unknown[]) => mockSetReedAPIKey(...args),
+  ClearReedAPIKey: (...args: unknown[]) => mockClearReedAPIKey(...args),
   SetKeyboardShortcuts: (...args: unknown[]) =>
     mockSetKeyboardShortcuts(...args),
 }));
@@ -32,8 +34,9 @@ const defaultProps = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGetReedAPIKey.mockResolvedValue("");
+  mockHasReedAPIKey.mockResolvedValue(false);
   mockSetReedAPIKey.mockResolvedValue(undefined);
+  mockClearReedAPIKey.mockResolvedValue(undefined);
   mockSetKeyboardShortcuts.mockResolvedValue(undefined);
   defaultProps.onClose = vi.fn();
   defaultProps.onSetTheme = vi.fn().mockResolvedValue(undefined);
@@ -81,13 +84,25 @@ describe("SettingsPanel", () => {
   });
 
   it("hides Obtain a Key button when key exists", async () => {
-    mockGetReedAPIKey.mockResolvedValue("existing-key");
+    mockHasReedAPIKey.mockResolvedValue(true);
     render(<SettingsPanel {...defaultProps} />);
     await waitFor(() => {
       expect(
         screen.queryByRole("button", { name: "Obtain a Key" })
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("shows Clear button and secure-status text when key exists", async () => {
+    mockHasReedAPIKey.mockResolvedValue(true);
+    render(<SettingsPanel {...defaultProps} />);
+
+    expect(
+      await screen.findByRole("button", { name: "Clear" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Key is stored securely in your OS keychain.")
+    ).toBeInTheDocument();
   });
 
   it("opens Reed developer page when Obtain a Key is clicked", async () => {
@@ -128,6 +143,17 @@ describe("SettingsPanel", () => {
     });
   });
 
+  it("clears input after save", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    const input = screen.getByLabelText("Reed API Key");
+    await userEvent.type(input, "my-key");
+    await userEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Reed API Key") as HTMLInputElement).value).toBe("");
+    });
+  });
+
   it("calls onError when save fails", async () => {
     mockSetReedAPIKey.mockRejectedValue(new Error("save failed"));
     render(<SettingsPanel {...defaultProps} />);
@@ -136,6 +162,32 @@ describe("SettingsPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: /save/i }));
     await waitFor(() => {
       expect(defaultProps.onError).toHaveBeenCalledWith("save failed");
+    });
+  });
+
+  it("clears stored API key when Clear is clicked", async () => {
+    mockHasReedAPIKey.mockResolvedValue(true);
+    render(<SettingsPanel {...defaultProps} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Clear" }));
+    expect(mockClearReedAPIKey).toHaveBeenCalledOnce();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Obtain a Key" })
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("calls onError when clear fails", async () => {
+    mockHasReedAPIKey.mockResolvedValue(true);
+    mockClearReedAPIKey.mockRejectedValue(new Error("clear failed"));
+    render(<SettingsPanel {...defaultProps} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Clear" }));
+
+    await waitFor(() => {
+      expect(defaultProps.onError).toHaveBeenCalledWith("clear failed");
     });
   });
 

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
@@ -11,9 +13,9 @@ import (
 )
 
 const (
-	settingReedAPIKey          = "reed_api_key"
-	settingTheme               = "theme"
-	settingKeyboardShortcuts   = "keyboard_shortcuts"
+	settingReedAPIKey        = "reed_api_key"
+	settingTheme             = "theme"
+	settingKeyboardShortcuts = "keyboard_shortcuts"
 )
 
 // SettingsService handles application settings operations exposed to the frontend.
@@ -32,18 +34,38 @@ func NewSettingsService(database *db.DB, kc keychain.Store, reedAdapter *reed.Ad
 	}
 }
 
-// GetReedAPIKey returns the stored Reed API key (empty if not set).
-func (s *SettingsService) GetReedAPIKey() (string, error) {
-	return s.keychain.Get(settingReedAPIKey)
+// HasReedAPIKey reports whether a Reed API key is currently stored.
+// It never returns the secret to the frontend.
+func (s *SettingsService) HasReedAPIKey() (bool, error) {
+	key, err := s.keychain.Get(settingReedAPIKey)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(key) != "", nil
 }
 
 // SetReedAPIKey saves the Reed API key and updates the adapter immediately.
 func (s *SettingsService) SetReedAPIKey(key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("reed API key is required")
+	}
+
 	if err := s.keychain.Set(settingReedAPIKey, key); err != nil {
 		return err
 	}
 	s.reedAdapter.SetAPIKey(key)
 	slog.Info("Reed API key updated")
+	return nil
+}
+
+// ClearReedAPIKey removes the stored Reed API key and clears the active adapter key.
+func (s *SettingsService) ClearReedAPIKey() error {
+	if err := s.keychain.Delete(settingReedAPIKey); err != nil {
+		return err
+	}
+	s.reedAdapter.SetAPIKey("")
+	slog.Info("Reed API key cleared")
 	return nil
 }
 
@@ -93,4 +115,3 @@ func (s *SettingsService) SetKeyboardShortcuts(enabled string) error {
 	slog.Info("keyboard shortcuts preference updated", "enabled", enabled)
 	return nil
 }
-

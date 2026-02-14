@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import {
-  GetReedAPIKey,
+  HasReedAPIKey,
   SetReedAPIKey,
+  ClearReedAPIKey,
   SetKeyboardShortcuts,
 } from "../../bindings/hamster-wheel/settingsservice";
 import { Browser } from "@wailsio/runtime";
@@ -38,17 +39,15 @@ export function SettingsPanel({
   const [apiKey, setApiKey] = useState("");
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [hasKey, setHasKey] = useState(false);
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
   const savedTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
-    GetReedAPIKey()
-      .then((k) => {
-        if (k) {
-          setApiKey(k);
-          setHasKey(true);
-        }
+    HasReedAPIKey()
+      .then((present) => {
+        setHasKey(Boolean(present));
       })
       .catch((err: unknown) => {
         console.error("Failed to load API key:", err);
@@ -83,6 +82,7 @@ export function SettingsPanel({
     try {
       await SetReedAPIKey(trimmed);
       setHasKey(true);
+      setApiKey("");
       setSaved(true);
 
       if (savedTimeoutRef.current !== null) {
@@ -98,6 +98,22 @@ export function SettingsPanel({
       onError(message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleClearKey = async () => {
+    setClearing(true);
+    setSaved(false);
+    try {
+      await ClearReedAPIKey();
+      setApiKey("");
+      setHasKey(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to clear API key:", message);
+      onError(message);
+    } finally {
+      setClearing(false);
     }
   };
 
@@ -131,7 +147,11 @@ export function SettingsPanel({
                 setApiKey(e.target.value);
                 setSaved(false);
               }}
-              placeholder="Enter API key"
+              placeholder={
+                hasKey
+                  ? "Enter new API key to replace existing key"
+                  : "Enter API key"
+              }
               className="flex-1 min-w-0"
               aria-label="Reed API Key"
             />
@@ -145,7 +165,23 @@ export function SettingsPanel({
             >
               {saved ? "Saved" : "Save"}
             </Button>
+            {hasKey && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleClearKey}
+                loading={clearing}
+                className="shrink-0"
+              >
+                Clear
+              </Button>
+            )}
           </div>
+          {hasKey && (
+            <p className="mt-1 text-xs text-hw-text-muted">
+              Key is stored securely in your OS keychain.
+            </p>
+          )}
           {!hasKey && (
             <Button
               variant="secondary"

@@ -192,21 +192,47 @@ func TestAppServiceLifecycle(t *testing.T) {
 }
 
 func TestSettingsServiceUpdatesReedAdapter(t *testing.T) {
-	_, _, _, _, settingsSvc, _, _, _ := testServices(t)
+	_, _, _, _, settingsSvc, _, _, reedAdapter := testServices(t)
+
+	// No key should be set by default.
+	has, err := settingsSvc.HasReedAPIKey()
+	if err != nil {
+		t.Fatalf("checking initial Reed API key: %v", err)
+	}
+	if has {
+		t.Fatal("expected HasReedAPIKey=false initially")
+	}
 
 	// Set a new API key via SettingsService.
-	err := settingsSvc.SetReedAPIKey("new-test-key-123")
-	if err != nil {
+	if err := settingsSvc.SetReedAPIKey("new-test-key-123"); err != nil {
 		t.Fatalf("setting Reed API key: %v", err)
 	}
 
-	// Verify it persists (read back from DB via SettingsService).
-	key, err := settingsSvc.GetReedAPIKey()
+	// Verify it persists as non-secret state and updates adapter.
+	has, err = settingsSvc.HasReedAPIKey()
 	if err != nil {
-		t.Fatalf("getting Reed API key: %v", err)
+		t.Fatalf("checking Reed API key presence: %v", err)
 	}
-	if key != "new-test-key-123" {
-		t.Errorf("expected key %q, got %q", "new-test-key-123", key)
+	if !has {
+		t.Fatal("expected HasReedAPIKey=true after setting key")
+	}
+	if !reedAdapter.HasAPIKey() {
+		t.Fatal("expected adapter key to be set")
+	}
+
+	// Clear the key and verify adapter state is updated immediately.
+	if err := settingsSvc.ClearReedAPIKey(); err != nil {
+		t.Fatalf("clearing Reed API key: %v", err)
+	}
+	has, err = settingsSvc.HasReedAPIKey()
+	if err != nil {
+		t.Fatalf("checking Reed API key after clear: %v", err)
+	}
+	if has {
+		t.Fatal("expected HasReedAPIKey=false after clear")
+	}
+	if reedAdapter.HasAPIKey() {
+		t.Fatal("expected adapter key to be cleared")
 	}
 }
 
@@ -633,12 +659,22 @@ func TestSettingsServiceAPIKeysWorkWithClosedDB(t *testing.T) {
 		t.Errorf("expected no error from SetReedAPIKey after DB close, got: %v", err)
 	}
 
-	key, err := settingsSvc.GetReedAPIKey()
+	has, err := settingsSvc.HasReedAPIKey()
 	if err != nil {
-		t.Errorf("expected no error from GetReedAPIKey after DB close, got: %v", err)
+		t.Errorf("expected no error from HasReedAPIKey after DB close, got: %v", err)
 	}
-	if key != "key-after-db-close" {
-		t.Errorf("expected %q, got %q", "key-after-db-close", key)
+	if !has {
+		t.Error("expected HasReedAPIKey=true after setting key with closed DB")
+	}
+	if err := settingsSvc.ClearReedAPIKey(); err != nil {
+		t.Errorf("expected no error from ClearReedAPIKey after DB close, got: %v", err)
+	}
+	has, err = settingsSvc.HasReedAPIKey()
+	if err != nil {
+		t.Errorf("expected no error from HasReedAPIKey after clear, got: %v", err)
+	}
+	if has {
+		t.Error("expected HasReedAPIKey=false after clear")
 	}
 
 	// Theme operations use the DB — they should error with closed DB.
@@ -675,8 +711,8 @@ func TestServiceFailureIsolation(t *testing.T) {
 		t.Error("FilterService should error after DB closure")
 	}
 	// SettingsService API key operations use keychain, not DB — they still work.
-	if _, err := settingsSvc.GetReedAPIKey(); err != nil {
-		t.Errorf("SettingsService API key should work after DB closure, got: %v", err)
+	if _, err := settingsSvc.HasReedAPIKey(); err != nil {
+		t.Errorf("SettingsService API key status should work after DB closure, got: %v", err)
 	}
 	// SettingsService theme operations use DB — they should error.
 	if _, err := settingsSvc.GetTheme(); err == nil {
