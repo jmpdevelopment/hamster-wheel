@@ -20,6 +20,7 @@ Last updated: 2026-02-14
 - H6: Startup/settings async error handling hardened.
 - H7: Reed adapter rate limiting made concurrency-safe.
 - H8: Testing and coverage enforcement improved.
+- H9: Added targeted backend failure-path tests (poll diagnostics/report IO, DB open/migration errors, settings keyboard shortcuts) and covered `cmd/generate-icon`.
 
 ## Verification Baseline from Latest Status Pass
 

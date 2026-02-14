@@ -2,6 +2,16 @@ package keychain
 
 import "testing"
 
+func TestNewOSStoreImplementsStore(t *testing.T) {
+	var store Store = NewOSStore()
+	if store == nil {
+		t.Fatal("expected OS store instance")
+	}
+	if _, ok := store.(*OSStore); !ok {
+		t.Fatalf("expected Store to be *OSStore, got %T", store)
+	}
+}
+
 func TestSetAndGet(t *testing.T) {
 	store := NewMemoryStore()
 

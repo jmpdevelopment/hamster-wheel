@@ -49,3 +49,17 @@ func TestAppServiceShutdownWithoutStartup(t *testing.T) {
 		t.Fatalf("ServiceShutdown failed: %v", err)
 	}
 }
+
+func TestAppServiceShutdownAfterDatabaseAlreadyClosed(t *testing.T) {
+	database := openAppServiceTestDB(t)
+	sched := scheduler.New(database, adapter.NewRegistry(), time.Hour)
+	service := NewAppService(database, sched)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB before shutdown: %v", err)
+	}
+
+	if err := service.ServiceShutdown(); err != nil {
+		t.Fatalf("expected ServiceShutdown to treat already-closed DB as no-op, got %v", err)
+	}
+}

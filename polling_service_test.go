@@ -190,6 +190,34 @@ func TestPollNowNoEnabledFiltersSkipsDiagnosticsPersistence(t *testing.T) {
 	}
 }
 
+func TestPollNowReportsDiagnosticsStoreUnavailable(t *testing.T) {
+	database := testPollingServiceDB(t)
+	registry := adapter.NewRegistry()
+
+	okAdapter := &pollingTestAdapter{name: "ok_source"}
+	if err := registry.Register(okAdapter); err != nil {
+		t.Fatalf("registering adapter: %v", err)
+	}
+	if _, err := database.CreateFilter(context.Background(), "OK", "go", "london", "ok_source"); err != nil {
+		t.Fatalf("creating filter: %v", err)
+	}
+
+	sched := scheduler.New(database, registry, time.Hour)
+	service := NewPollingService(sched, nil)
+
+	result := service.PollNow()
+
+	if result.TotalFilters != 1 {
+		t.Fatalf("expected 1 filter in poll result, got %d", result.TotalFilters)
+	}
+	if result.DiagnosticsPath != "" {
+		t.Fatalf("expected empty diagnostics path when store unavailable, got %q", result.DiagnosticsPath)
+	}
+	if result.DiagnosticsError != "diagnostics store unavailable" {
+		t.Fatalf("expected diagnostics store unavailable error, got %q", result.DiagnosticsError)
+	}
+}
+
 func TestSavePollReportWritesFile(t *testing.T) {
 	database := testPollingServiceDB(t)
 	registry := adapter.NewRegistry()
@@ -230,5 +258,47 @@ func TestSavePollReportValidatesInputs(t *testing.T) {
 	oversized := strings.Repeat("x", maxPollReportBytes+1)
 	if err := service.SavePollReport(filepath.Join(t.TempDir(), "report.txt"), oversized); err == nil {
 		t.Fatal("expected error for oversized report")
+	}
+}
+
+func TestSavePollReportReturnsDirectoryCreationError(t *testing.T) {
+	database := testPollingServiceDB(t)
+	registry := adapter.NewRegistry()
+	sched := scheduler.New(database, registry, time.Hour)
+	store := diagnostics.NewStore(t.TempDir(), 20, 24*time.Hour)
+	service := NewPollingService(sched, store)
+
+	baseFile := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(baseFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("creating blocking file: %v", err)
+	}
+
+	err := service.SavePollReport(filepath.Join(baseFile, "report.txt"), "report")
+	if err == nil {
+		t.Fatal("expected directory creation error")
+	}
+	if !strings.Contains(err.Error(), "creating report directory") {
+		t.Fatalf("expected directory creation context, got %v", err)
+	}
+}
+
+func TestSavePollReportReturnsWriteError(t *testing.T) {
+	database := testPollingServiceDB(t)
+	registry := adapter.NewRegistry()
+	sched := scheduler.New(database, registry, time.Hour)
+	store := diagnostics.NewStore(t.TempDir(), 20, 24*time.Hour)
+	service := NewPollingService(sched, store)
+
+	targetDir := filepath.Join(t.TempDir(), "reports")
+	if err := os.MkdirAll(targetDir, 0o700); err != nil {
+		t.Fatalf("creating target directory: %v", err)
+	}
+
+	err := service.SavePollReport(targetDir, "report")
+	if err == nil {
+		t.Fatal("expected write error when target path is a directory")
+	}
+	if !strings.Contains(err.Error(), "writing poll report") {
+		t.Fatalf("expected write context, got %v", err)
 	}
 }

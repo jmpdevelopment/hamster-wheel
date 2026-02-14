@@ -36,7 +36,7 @@ BACKEND_COVERAGE_THRESHOLD=80 FRONTEND_COVERAGE_THRESHOLD=75 ./scripts/check-cov
 
 ## Baseline (2026-02-14)
 
-- Backend total statement coverage: 77.8%
+- Backend total statement coverage: 83.6%
 - Frontend line coverage: 99.5%
 
 ## Quality Expectations for New Tests

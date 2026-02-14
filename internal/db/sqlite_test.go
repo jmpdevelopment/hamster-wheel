@@ -3,6 +3,8 @@ package db
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -116,5 +118,50 @@ func TestForeignKeysEnabled(t *testing.T) {
 
 	if fk != 1 {
 		t.Error("foreign keys are not enabled")
+	}
+}
+
+func TestOpenUsesDefaultDataDir(t *testing.T) {
+	tempHome := t.TempDir()
+
+	switch runtime.GOOS {
+	case "windows":
+		t.Setenv("APPDATA", filepath.Join(tempHome, "AppData", "Roaming"))
+	default:
+		t.Setenv("HOME", tempHome)
+	}
+
+	database, err := Open()
+	if err != nil {
+		t.Fatalf("opening database at default path: %v", err)
+	}
+	defer database.Close()
+
+	expectedDir, err := dataDir()
+	if err != nil {
+		t.Fatalf("resolving expected data directory: %v", err)
+	}
+	expectedPath := filepath.Join(expectedDir, "hamsterwheel.db")
+
+	if database.Path() != expectedPath {
+		t.Fatalf("expected DB path %q, got %q", expectedPath, database.Path())
+	}
+	if _, err := os.Stat(expectedPath); err != nil {
+		t.Fatalf("expected database file at default path, stat failed: %v", err)
+	}
+}
+
+func TestOpenAtReturnsErrorWhenParentPathIsAFile(t *testing.T) {
+	parentFile := filepath.Join(t.TempDir(), "parent-file")
+	if err := os.WriteFile(parentFile, []byte("x"), 0o600); err != nil {
+		t.Fatalf("creating parent file: %v", err)
+	}
+
+	_, err := OpenAt(filepath.Join(parentFile, "test.db"))
+	if err == nil {
+		t.Fatal("expected error when parent path is a file")
+	}
+	if !strings.Contains(err.Error(), "creating data directory") {
+		t.Fatalf("expected data directory context in error, got %v", err)
 	}
 }

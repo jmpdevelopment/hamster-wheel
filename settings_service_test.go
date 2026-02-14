@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"hamster-wheel/internal/adapter/reed"
@@ -128,5 +129,77 @@ func TestSettingsServiceAPIKeyErrorsPropagate(t *testing.T) {
 	}
 	if reedAdapter.HasAPIKey() {
 		t.Fatal("expected adapter key to remain unchanged on failures")
+	}
+}
+
+func TestKeyboardShortcutsLifecycleAndValidation(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	current, err := svc.GetKeyboardShortcuts()
+	if err != nil {
+		t.Fatalf("reading default keyboard shortcuts setting: %v", err)
+	}
+	if current != "" {
+		t.Fatalf("expected empty default keyboard shortcuts setting, got %q", current)
+	}
+
+	if err := svc.SetKeyboardShortcuts("true"); err != nil {
+		t.Fatalf("setting keyboard shortcuts=true: %v", err)
+	}
+	current, err = svc.GetKeyboardShortcuts()
+	if err != nil {
+		t.Fatalf("reading keyboard shortcuts after true: %v", err)
+	}
+	if current != "true" {
+		t.Fatalf("expected keyboard shortcuts value true, got %q", current)
+	}
+
+	if err := svc.SetKeyboardShortcuts("false"); err != nil {
+		t.Fatalf("setting keyboard shortcuts=false: %v", err)
+	}
+	current, err = svc.GetKeyboardShortcuts()
+	if err != nil {
+		t.Fatalf("reading keyboard shortcuts after false: %v", err)
+	}
+	if current != "false" {
+		t.Fatalf("expected keyboard shortcuts value false, got %q", current)
+	}
+
+	err = svc.SetKeyboardShortcuts("yes")
+	if err == nil {
+		t.Fatal("expected validation error for invalid keyboard shortcuts value")
+	}
+	if !strings.Contains(err.Error(), "invalid keyboard shortcuts value") {
+		t.Fatalf("expected validation context in error, got %v", err)
+	}
+}
+
+func TestKeyboardShortcutsDatabaseErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	_, err := svc.GetKeyboardShortcuts()
+	if err == nil {
+		t.Fatal("expected GetKeyboardShortcuts to fail on closed DB")
+	}
+	if !strings.Contains(err.Error(), "getting keyboard shortcuts setting") {
+		t.Fatalf("expected get-setting context, got %v", err)
+	}
+
+	err = svc.SetKeyboardShortcuts("true")
+	if err == nil {
+		t.Fatal("expected SetKeyboardShortcuts to fail on closed DB")
+	}
+	if !strings.Contains(err.Error(), "setting keyboard shortcuts") {
+		t.Fatalf("expected set-setting context, got %v", err)
 	}
 }
