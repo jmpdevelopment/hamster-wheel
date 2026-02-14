@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"hamster-wheel/internal/adapter/reed"
@@ -14,8 +15,15 @@ import (
 
 const (
 	settingReedAPIKey        = "reed_api_key"
+	settingOpenAIAPIKey      = "openai_api_key"
 	settingTheme             = "theme"
 	settingKeyboardShortcuts = "keyboard_shortcuts"
+	settingLLMProvider       = "llm_provider"
+	settingLLMModel          = "llm_model"
+	settingLLMBaseURL        = "llm_base_url"
+
+	defaultLLMProvider = "openai"
+	defaultLLMModel    = "gpt-4o-mini"
 )
 
 // SettingsService handles application settings operations exposed to the frontend.
@@ -69,6 +77,39 @@ func (s *SettingsService) ClearReedAPIKey() error {
 	return nil
 }
 
+// HasOpenAIAPIKey reports whether an OpenAI API key is currently stored.
+// It never returns the secret to the frontend.
+func (s *SettingsService) HasOpenAIAPIKey() (bool, error) {
+	key, err := s.keychain.Get(settingOpenAIAPIKey)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(key) != "", nil
+}
+
+// SetOpenAIAPIKey saves the OpenAI API key.
+func (s *SettingsService) SetOpenAIAPIKey(key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("openai API key is required")
+	}
+
+	if err := s.keychain.Set(settingOpenAIAPIKey, key); err != nil {
+		return err
+	}
+	slog.Info("OpenAI API key updated")
+	return nil
+}
+
+// ClearOpenAIAPIKey removes the stored OpenAI API key.
+func (s *SettingsService) ClearOpenAIAPIKey() error {
+	if err := s.keychain.Delete(settingOpenAIAPIKey); err != nil {
+		return err
+	}
+	slog.Info("OpenAI API key cleared")
+	return nil
+}
+
 // GetTheme returns the stored theme preference ("dark", "light", "system", or "" if unset).
 func (s *SettingsService) GetTheme() (string, error) {
 	theme, err := s.db.GetSetting(context.Background(), settingTheme)
@@ -113,5 +154,89 @@ func (s *SettingsService) SetKeyboardShortcuts(enabled string) error {
 		return fmt.Errorf("setting keyboard shortcuts: %w", err)
 	}
 	slog.Info("keyboard shortcuts preference updated", "enabled", enabled)
+	return nil
+}
+
+// GetLLMProvider returns the stored LLM provider ("openai" or "heuristic_v1").
+// Empty string falls back to default provider.
+func (s *SettingsService) GetLLMProvider() (string, error) {
+	provider, err := s.db.GetSetting(context.Background(), settingLLMProvider)
+	if err != nil {
+		return "", fmt.Errorf("getting llm provider setting: %w", err)
+	}
+	provider = strings.TrimSpace(provider)
+	if provider == "" {
+		return defaultLLMProvider, nil
+	}
+	return provider, nil
+}
+
+// SetLLMProvider saves the LLM provider.
+func (s *SettingsService) SetLLMProvider(provider string) error {
+	provider = strings.TrimSpace(provider)
+	switch provider {
+	case "openai", "heuristic_v1":
+	default:
+		return fmt.Errorf("invalid llm provider %q: must be openai or heuristic_v1", provider)
+	}
+
+	if err := s.db.SetSetting(context.Background(), settingLLMProvider, provider); err != nil {
+		return fmt.Errorf("setting llm provider: %w", err)
+	}
+	slog.Info("llm provider updated", "provider", provider)
+	return nil
+}
+
+// GetLLMModel returns the configured LLM model.
+// Empty string falls back to default model.
+func (s *SettingsService) GetLLMModel() (string, error) {
+	model, err := s.db.GetSetting(context.Background(), settingLLMModel)
+	if err != nil {
+		return "", fmt.Errorf("getting llm model setting: %w", err)
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return defaultLLMModel, nil
+	}
+	return model, nil
+}
+
+// SetLLMModel saves the configured LLM model.
+func (s *SettingsService) SetLLMModel(model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return errors.New("llm model is required")
+	}
+	if err := s.db.SetSetting(context.Background(), settingLLMModel, model); err != nil {
+		return fmt.Errorf("setting llm model: %w", err)
+	}
+	slog.Info("llm model updated", "model", model)
+	return nil
+}
+
+// GetLLMBaseURL returns the configured provider base URL for OpenAI-compatible endpoints.
+func (s *SettingsService) GetLLMBaseURL() (string, error) {
+	baseURL, err := s.db.GetSetting(context.Background(), settingLLMBaseURL)
+	if err != nil {
+		return "", fmt.Errorf("getting llm base url setting: %w", err)
+	}
+	return strings.TrimSpace(baseURL), nil
+}
+
+// SetLLMBaseURL saves the provider base URL.
+// Empty value resets to provider default endpoint behavior.
+func (s *SettingsService) SetLLMBaseURL(baseURL string) error {
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL != "" {
+		parsed, err := url.ParseRequestURI(baseURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return fmt.Errorf("invalid llm base url %q", baseURL)
+		}
+	}
+
+	if err := s.db.SetSetting(context.Background(), settingLLMBaseURL, baseURL); err != nil {
+		return fmt.Errorf("setting llm base url: %w", err)
+	}
+	slog.Info("llm base url updated", "has_value", baseURL != "")
 	return nil
 }

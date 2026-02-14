@@ -20,6 +20,7 @@ import (
 	"hamster-wheel/internal/keychain"
 	"hamster-wheel/internal/llm"
 	"hamster-wheel/internal/llm/heuristic"
+	"hamster-wheel/internal/llm/openai"
 	"hamster-wheel/internal/matcher"
 	"hamster-wheel/internal/scheduler"
 )
@@ -58,6 +59,9 @@ func main() {
 	if err := adapters.Register(reedAdapter); err != nil {
 		log.Fatalf("failed to register Reed adapter: %v", err)
 	}
+	openAIEnvKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
+	openAIEnvModel := strings.TrimSpace(os.Getenv("OPENAI_MODEL"))
+	openAIEnvBaseURL := strings.TrimSpace(os.Getenv("OPENAI_BASE_URL"))
 
 	// Create the scheduler (default 30 minute interval).
 	// It starts polling when the app service receives ServiceStartup.
@@ -67,8 +71,23 @@ func main() {
 	if err := providers.Register(heuristic.New()); err != nil {
 		log.Fatalf("failed to register heuristic match provider: %v", err)
 	}
+	if err := providers.Register(openai.New(openai.Config{
+		APIKey:  openAIEnvKey,
+		Model:   openAIEnvModel,
+		BaseURL: openAIEnvBaseURL,
+	})); err != nil {
+		log.Fatalf("failed to register openai match provider: %v", err)
+	}
 	matchWorker := matcher.New(database, providers, matcher.WorkerConfig{
-		ProviderName: heuristic.ProviderName,
+		ProviderName: heuristic.ProviderName, // fallback when no setting is persisted yet
+		ProviderResolver: newMatcherProviderResolver(
+			database,
+			keychainStore,
+			providers,
+			openAIEnvKey,
+			openAIEnvModel,
+			openAIEnvBaseURL,
+		),
 		PollInterval: 3 * time.Second,
 		BatchSize:    3,
 	})

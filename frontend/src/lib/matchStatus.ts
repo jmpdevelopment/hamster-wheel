@@ -20,6 +20,29 @@ interface MatchReadable {
   MatchSummary?: unknown;
 }
 
+const providerPrefix = "provider:";
+
+function parseMatchSummary(value: unknown): { provider: string; summary: string } {
+  if (typeof value !== "string") {
+    return { provider: "", summary: "" };
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { provider: "", summary: "" };
+  }
+
+  const lines = trimmed.split(/\r?\n/);
+  const firstLine = lines[0].trim();
+  if (!firstLine.toLowerCase().startsWith(providerPrefix)) {
+    return { provider: "", summary: trimmed };
+  }
+
+  const provider = firstLine.slice(providerPrefix.length).trim();
+  const summary = lines.slice(1).join("\n").trim();
+  return { provider, summary };
+}
+
 export function readMatchStatus(job: MatchReadable): MatchStatus {
   const candidate = job.MatchStatus;
   if (typeof candidate !== "string") {
@@ -51,11 +74,11 @@ export function readMatchScore(job: MatchReadable): number | null {
 }
 
 export function readMatchSummary(job: MatchReadable): string {
-  const candidate = job.MatchSummary;
-  if (typeof candidate !== "string") {
-    return "";
-  }
-  return candidate.trim();
+  return parseMatchSummary(job.MatchSummary).summary;
+}
+
+export function readMatchProvider(job: MatchReadable): string {
+  return parseMatchSummary(job.MatchSummary).provider;
 }
 
 export function buildMatchStatusMeta(

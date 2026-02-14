@@ -24,34 +24,32 @@
 - Match queue uses atomic claim semantics with stale-processing recovery.
 - List/detail UI surfaces match status and score; users can manually requeue recalculation.
 - Default scorer is local heuristic until external providers are integrated.
+- OpenAI provider implementation exists in `internal/llm/openai` with deterministic response parsing and classified timeout/auth/malformed failure handling.
+- Settings APIs/UI now persist LLM provider/model/base-URL and OpenAI key lifecycle in `SettingsService` + Settings panel tabs.
 
 ## Phase 2 Immediate Implementation Queue (OpenAI-First)
 
-1. OpenAI provider implementation.
-   - Why: unlock production-grade LLM scoring while keeping current async architecture unchanged.
-   - Build: `internal/llm/openai` provider with `Match` and `Validate`, deterministic parsing, timeout/error classification, and token estimate reporting.
-   - Done when: matcher can score through OpenAI using configured key/model and tests cover success, malformed response, timeout, and auth failure paths.
-2. OpenAI-compatible provider path for self-hosted/local models (llama/deepseek-style deployments).
+1. OpenAI-compatible provider path for self-hosted/local models (llama/deepseek-style deployments).
    - Why: keep vendor lock-in low and support user-controlled infra.
    - Build: configurable base URL + model settings with OpenAI-compatible request/response contract.
-   - Done when: same provider workflow works against non-OpenAI compatible endpoints without code fork in matcher logic.
-3. Runtime provider selection and configuration wiring.
+   - Done when: same provider workflow works against OpenAI-compatible non-OpenAI endpoints without code fork in matcher logic.
+2. Runtime provider selection and configuration wiring.
    - Why: allow users to switch providers safely without app restart assumptions.
-   - Build: settings keys + service APIs for provider name/model/base URL and API-key lifecycle, then runtime selection in matcher worker.
-   - Done when: switching settings changes the active provider path and invalid configuration errors are surfaced clearly to UI/logs.
-4. CV parser path for matching inputs.
+   - Build (remaining): apply persisted settings to matcher runtime selection and provider construction, including safe reconfiguration without fragile restart assumptions.
+   - Done when: changing provider/model/base URL from settings changes active scoring path with clear validation/runtime errors surfaced to UI/logs.
+3. CV parser path for matching inputs.
    - Why: improve score quality by grounding prompts on actual candidate profile rather than filter keywords alone.
    - Build: parse and cache CV text (bounded size), then include compact profile context in `MatchRequest`.
    - Done when: matching uses parsed CV context with tests for parse failure fallback behavior.
-5. Token-efficiency controls.
+4. Token-efficiency controls.
    - Why: constrain cost and response time under continuous polling.
    - Build: compact prompt shaping, description truncation bounds, prefilter thresholds, and bounded context windows.
    - Done when: per-match token budgets are configurable and logged; scoring remains stable under large job descriptions.
-6. Match-threshold settings and notifications.
+5. Match-threshold settings and notifications.
    - Why: deliver actionable alerts without noisy low-signal matches.
    - Build: user-configurable threshold + native notification path for high-score transitions.
    - Done when: only matches meeting threshold trigger notifications and this behavior is test-covered.
-7. Deferred UI sorting enhancement (later step, not blocking core matching).
+6. Deferred UI sorting enhancement (later step, not blocking core matching).
    - Build: sort controls for posted date and match score.
    - Done when: sorting is deterministic, persisted if appropriate, and does not regress list virtualization performance.
 

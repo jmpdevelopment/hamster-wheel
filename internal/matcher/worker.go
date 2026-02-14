@@ -33,9 +33,14 @@ type Store interface {
 	GetFilter(ctx context.Context, id string) (*db.SearchFilter, error)
 }
 
+// ProviderResolver returns the provider that should be used for the current
+// match execution. It allows runtime switching without worker restart.
+type ProviderResolver func(ctx context.Context) (providerName string, provider llm.Provider, err error)
+
 // WorkerConfig controls queue polling and per-item processing behavior.
 type WorkerConfig struct {
 	ProviderName      string
+	ProviderResolver  ProviderResolver
 	PollInterval      time.Duration
 	BatchSize         int
 	MatchTimeout      time.Duration
@@ -55,6 +60,7 @@ type Worker struct {
 	matchTimeout     time.Duration
 	staleAfter       time.Duration
 	descriptionRunes int
+	providerResolver ProviderResolver
 
 	statusChangedHook func(jobID, status string)
 
@@ -89,12 +95,23 @@ func New(store Store, providers *llm.Registry, cfg WorkerConfig) *Worker {
 	if descriptionRunes <= 0 {
 		descriptionRunes = 1400
 	}
+	providerResolver := cfg.ProviderResolver
+	if providerResolver == nil {
+		providerResolver = func(context.Context) (string, llm.Provider, error) {
+			provider, ok := providers.Get(providerName)
+			if !ok {
+				return providerName, nil, fmt.Errorf("provider %q is not registered", providerName)
+			}
+			return providerName, provider, nil
+		}
+	}
 
 	return &Worker{
 		store:            store,
 		providers:        providers,
 		logger:           slog.Default().With("component", "matcher_worker"),
 		providerName:     providerName,
+		providerResolver: providerResolver,
 		pollInterval:     pollInterval,
 		batchSize:        batchSize,
 		matchTimeout:     matchTimeout,
@@ -118,7 +135,7 @@ func (w *Worker) Start() {
 	pollInterval := w.pollInterval
 	w.stateMu.Unlock()
 	w.log().Info("matcher worker starting",
-		"provider", w.providerName,
+		"configured_provider", w.providerName,
 		"poll_interval", pollInterval,
 		"batch_size", w.batchSize,
 		"match_timeout", w.matchTimeout,
@@ -219,13 +236,13 @@ func (w *Worker) processBatch(ctx context.Context) int {
 
 		w.log().Info("match calculation started",
 			"job_id", claimed.JobID,
-			"provider", w.providerName,
+			"configured_provider", w.providerName,
 		)
 		w.emitStatusChanged(claimed.JobID, db.JobMatchStatusProcessing)
 		if err := w.processOne(ctx, claimed.JobID); err != nil {
 			w.log().Error("matcher failed to process claimed row",
 				"job_id", claimed.JobID,
-				"provider", w.providerName,
+				"configured_provider", w.providerName,
 				"error", err,
 			)
 		}
@@ -234,7 +251,7 @@ func (w *Worker) processBatch(ctx context.Context) int {
 	if processed > 0 {
 		w.log().Info("match batch processed",
 			"count", processed,
-			"provider", w.providerName,
+			"configured_provider", w.providerName,
 		)
 	}
 	return processed
@@ -243,7 +260,7 @@ func (w *Worker) processBatch(ctx context.Context) int {
 func (w *Worker) processOne(ctx context.Context, jobID string) error {
 	job, err := w.store.GetJob(ctx, jobID)
 	if err != nil {
-		return w.failMatch(ctx, jobID, fmt.Sprintf("Loading job failed: %v", err))
+		return w.failMatch(ctx, jobID, "", fmt.Sprintf("Loading job failed: %v", err))
 	}
 	if job == nil {
 		// Job was removed after queueing; ignore if match row was cascaded away.
@@ -253,9 +270,12 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 		return nil
 	}
 
-	provider, ok := w.providers.Get(w.providerName)
-	if !ok {
-		return w.failMatch(ctx, jobID, fmt.Sprintf("Provider %q is not registered.", w.providerName))
+	providerName, provider, err := w.providerResolver(ctx)
+	if err != nil {
+		return w.failMatch(ctx, jobID, providerName, fmt.Sprintf("Provider resolution failed: %v", err))
+	}
+	if provider == nil {
+		return w.failMatch(ctx, jobID, providerName, "Provider resolution returned no provider.")
 	}
 
 	query := w.queryForJob(ctx, job)
@@ -271,12 +291,10 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 		MaxDescriptionRunes: w.descriptionRunes,
 	})
 	if err != nil {
-		return w.failMatch(ctx, jobID, fmt.Sprintf("Provider scoring failed: %v", err))
+		return w.failMatch(ctx, jobID, providerName, fmt.Sprintf("Provider scoring failed: %v", err))
 	}
 
-	if strings.TrimSpace(result.Summary) == "" {
-		result.Summary = "Match computed."
-	}
+	result.Summary = attachProviderSummary(providerName, result.Summary)
 	score := result.Score
 	if score < 0 {
 		score = 0
@@ -293,7 +311,7 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 	}
 	w.log().Info("match calculation completed",
 		"job_id", jobID,
-		"provider", w.providerName,
+		"provider", providerName,
 		"score", score,
 		"estimated_prompt_tokens", result.EstimatedPromptTokens,
 	)
@@ -316,8 +334,8 @@ func (w *Worker) queryForJob(ctx context.Context, job *db.Job) string {
 	return strings.TrimSpace(job.Title + " " + job.Location)
 }
 
-func (w *Worker) failMatch(ctx context.Context, jobID string, reason string) error {
-	if err := w.store.MarkJobMatchFailed(ctx, jobID, reason); err != nil {
+func (w *Worker) failMatch(ctx context.Context, jobID, providerName, reason string) error {
+	if err := w.store.MarkJobMatchFailed(ctx, jobID, attachProviderSummary(providerName, reason)); err != nil {
 		if errors.Is(err, db.ErrJobMatchNotFound) {
 			return nil
 		}
@@ -325,11 +343,24 @@ func (w *Worker) failMatch(ctx context.Context, jobID string, reason string) err
 	}
 	w.log().Warn("match calculation failed",
 		"job_id", jobID,
-		"provider", w.providerName,
+		"provider", providerName,
 		"reason", reason,
 	)
 	w.emitStatusChanged(jobID, db.JobMatchStatusFailed)
 	return nil
+}
+
+func attachProviderSummary(providerName, summary string) string {
+	trimmedSummary := strings.TrimSpace(summary)
+	if trimmedSummary == "" {
+		trimmedSummary = "Match computed."
+	}
+
+	trimmedProvider := strings.TrimSpace(providerName)
+	if trimmedProvider == "" {
+		return trimmedSummary
+	}
+	return fmt.Sprintf("Provider: %s\n%s", trimmedProvider, trimmedSummary)
 }
 
 func (w *Worker) emitStatusChanged(jobID, status string) {

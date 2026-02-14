@@ -27,7 +27,7 @@ Frontend coverage uses a local custom Vitest provider:
 ## CI-Ready Coverage Gates
 
 ```bash
-# Defaults: backend >= 75, frontend lines >= 70
+# Defaults: backend >= 80, frontend lines >= 70
 ./scripts/check-coverage.sh
 
 # Override thresholds
@@ -49,6 +49,6 @@ BACKEND_COVERAGE_THRESHOLD=80 FRONTEND_COVERAGE_THRESHOLD=75 ./scripts/check-cov
 
 ## Coverage Policy
 
-- Hard gate minimums: backend 75%, frontend lines 70%.
-- Preferred working target: backend 80%+ on touched modules.
+- Hard gate minimums: backend 80%, frontend lines 70%.
+- Preferred working target: backend 80%+ overall and on touched modules.
 - Critical logic should approach full branch/path coverage where practical.

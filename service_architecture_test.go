@@ -522,6 +522,22 @@ func TestBindingContractsMatchGoMethods(t *testing.T) {
 	}
 }
 
+func TestSettingsBindingUsesIDCalls(t *testing.T) {
+	path := filepath.Join("frontend", "bindings", "hamster-wheel", "settingsservice.js")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading settings binding file: %v", err)
+	}
+
+	content := string(raw)
+	if strings.Contains(content, "$Call.ByName(") {
+		t.Fatalf("settings binding contains $Call.ByName calls: regenerate bindings to use stable IDs")
+	}
+	if !strings.Contains(content, "$Call.ByID(") {
+		t.Fatalf("settings binding does not contain any $Call.ByID calls")
+	}
+}
+
 // extractExportedFunctions reads a JS file and returns the names of exported functions.
 func extractExportedFunctions(path string, re *regexp.Regexp) ([]string, error) {
 	f, err := os.Open(path)

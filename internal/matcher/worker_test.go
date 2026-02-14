@@ -2,13 +2,20 @@ package matcher
 
 import (
 	"context"
+	"errors"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/llm"
 	"hamster-wheel/internal/llm/heuristic"
+	"hamster-wheel/internal/llm/openai"
 )
 
 func testDB(t *testing.T) *db.DB {
@@ -134,4 +141,280 @@ func TestRunOnceMarksMissingProviderAsFailed(t *testing.T) {
 	if match.Status != db.JobMatchStatusFailed {
 		t.Fatalf("expected failed status, got %q", match.Status)
 	}
+}
+
+func TestRunOnceProcessesPendingRowsWithOpenAIProvider(t *testing.T) {
+	database := testDB(t)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Fatalf("expected chat completions path, got %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{
+			"choices": [
+				{
+					"message": {
+						"content": "{\"score\":0.76,\"summary\":\"Strong alignment with Go backend responsibilities.\"}"
+					}
+				}
+			],
+			"usage": {"prompt_tokens": 81}
+		}`))
+	}))
+	defer server.Close()
+
+	registry := llm.NewRegistry()
+	if err := registry.Register(openai.New(openai.Config{
+		APIKey:     "test-key",
+		Model:      "gpt-4o-mini",
+		BaseURL:    server.URL,
+		HTTPClient: server.Client(),
+	})); err != nil {
+		t.Fatalf("registering openai provider: %v", err)
+	}
+
+	worker := New(database, registry, WorkerConfig{
+		ProviderName: openai.ProviderName,
+		PollInterval: 100 * time.Millisecond,
+		BatchSize:    2,
+		StaleAfter:   10 * time.Second,
+	})
+
+	filterID, err := database.CreateFilter(context.Background(), "Backend", "go backend api", "Remote", "reed_uk")
+	if err != nil {
+		t.Fatalf("creating filter: %v", err)
+	}
+	jobID, err := database.InsertJob(context.Background(), &db.Job{
+		Source:      "reed_uk",
+		SourceID:    "matcher-pending-openai-1",
+		Title:       "Go Backend Engineer",
+		Company:     "Acme",
+		Location:    "Remote",
+		Description: "Build Go APIs and backend services.",
+		URL:         "https://example.com/jobs/openai",
+		FilterID:    &filterID,
+	})
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending row: %v", err)
+	}
+
+	processed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("running matcher once: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected 1 processed row, got %d", processed)
+	}
+
+	match, err := database.GetJobMatchByJobID(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("getting match row: %v", err)
+	}
+	if match == nil {
+		t.Fatal("expected match row")
+	}
+	if match.Status != db.JobMatchStatusMatched {
+		t.Fatalf("expected matched status, got %q", match.Status)
+	}
+	if match.MatchScore <= 0 {
+		t.Fatalf("expected positive match score, got %.2f", match.MatchScore)
+	}
+	if !strings.HasPrefix(match.MatchSummary, "Provider: openai\n") {
+		t.Fatalf("expected openai provider prefix in summary, got %q", match.MatchSummary)
+	}
+}
+
+func TestRunOnceUsesProviderResolver(t *testing.T) {
+	database := testDB(t)
+	registry := llm.NewRegistry()
+	if err := registry.Register(heuristic.New()); err != nil {
+		t.Fatalf("registering heuristic provider: %v", err)
+	}
+
+	worker := New(database, registry, WorkerConfig{
+		ProviderName: heuristic.ProviderName,
+		ProviderResolver: func(context.Context) (string, llm.Provider, error) {
+			return openai.ProviderName, &stubProvider{
+				name: openai.ProviderName,
+				result: llm.MatchResult{
+					Score:   0.61,
+					Summary: "Resolver selected provider result.",
+				},
+			}, nil
+		},
+		PollInterval: 100 * time.Millisecond,
+		BatchSize:    1,
+	})
+
+	jobID, err := database.InsertJob(context.Background(), &db.Job{
+		Source:      "reed_uk",
+		SourceID:    "matcher-provider-resolver-1",
+		Title:       "Go Backend Engineer",
+		Description: "Build APIs.",
+		URL:         "https://example.com/jobs/3",
+	})
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending row: %v", err)
+	}
+
+	processed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("running matcher once: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected processed row count 1, got %d", processed)
+	}
+
+	match, err := database.GetJobMatchByJobID(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("getting match row: %v", err)
+	}
+	if match == nil {
+		t.Fatal("expected match row")
+	}
+	if !strings.HasPrefix(match.MatchSummary, "Provider: openai\n") {
+		t.Fatalf("expected provider resolver output in summary, got %q", match.MatchSummary)
+	}
+}
+
+func TestWorkerStartStopIdempotent(t *testing.T) {
+	database := testDB(t)
+	worker := testWorker(t, database)
+
+	worker.Start()
+	worker.Start() // no-op when already running
+	time.Sleep(50 * time.Millisecond)
+	worker.Stop()
+	worker.Stop() // safe when already stopped
+}
+
+func TestWorkerSetLoggerAndStatusHook(t *testing.T) {
+	database := testDB(t)
+	worker := testWorker(t, database)
+
+	worker.SetLogger(nil) // no-op path
+	customLogger := slog.Default().With("test", "matcher-worker")
+	worker.SetLogger(customLogger)
+	if worker.log() == nil {
+		t.Fatal("expected worker logger to be set")
+	}
+
+	var (
+		mu       sync.Mutex
+		statuses []string
+	)
+	worker.SetStatusChangedHook(func(_ string, status string) {
+		mu.Lock()
+		defer mu.Unlock()
+		statuses = append(statuses, status)
+	})
+
+	filterID, err := database.CreateFilter(context.Background(), "Backend", "go backend api", "Remote", "reed_uk")
+	if err != nil {
+		t.Fatalf("creating filter: %v", err)
+	}
+	jobID, err := database.InsertJob(context.Background(), &db.Job{
+		Source:      "reed_uk",
+		SourceID:    "matcher-status-hook-1",
+		Title:       "Go Backend Engineer",
+		Company:     "Acme",
+		Location:    "Remote",
+		Description: "Build Go APIs.",
+		URL:         "https://example.com/jobs/hook",
+		FilterID:    &filterID,
+	})
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending row: %v", err)
+	}
+
+	processed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("running matcher once: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected 1 processed row, got %d", processed)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(statuses) < 2 {
+		t.Fatalf("expected at least processing+matched status updates, got %v", statuses)
+	}
+}
+
+func TestRunOnceRequeueError(t *testing.T) {
+	requeueErr := errors.New("requeue failed")
+	worker := New(requeueErrStore{err: requeueErr}, llm.NewRegistry(), WorkerConfig{
+		ProviderName: heuristic.ProviderName,
+	})
+
+	_, err := worker.RunOnce(context.Background())
+	if err == nil {
+		t.Fatal("expected requeue error from RunOnce")
+	}
+	if !errors.Is(err, requeueErr) {
+		t.Fatalf("expected wrapped requeue error, got %v", err)
+	}
+}
+
+type requeueErrStore struct {
+	err error
+}
+
+func (s requeueErrStore) ClaimNextPendingJobMatch(context.Context) (*db.JobMatch, error) {
+	return nil, nil
+}
+
+func (s requeueErrStore) MarkJobMatchMatched(context.Context, string, float64, string) error {
+	return nil
+}
+
+func (s requeueErrStore) MarkJobMatchFailed(context.Context, string, string) error {
+	return nil
+}
+
+func (s requeueErrStore) RequeueStaleProcessingJobMatches(context.Context, time.Time) (int, error) {
+	return 0, s.err
+}
+
+func (s requeueErrStore) GetJob(context.Context, string) (*db.Job, error) {
+	return nil, nil
+}
+
+func (s requeueErrStore) GetFilter(context.Context, string) (*db.SearchFilter, error) {
+	return nil, nil
+}
+
+type stubProvider struct {
+	name   string
+	result llm.MatchResult
+	err    error
+}
+
+func (p *stubProvider) Name() string {
+	return p.name
+}
+
+func (p *stubProvider) DisplayName() string {
+	return p.name
+}
+
+func (p *stubProvider) Validate(context.Context) error {
+	return nil
+}
+
+func (p *stubProvider) Match(context.Context, llm.MatchRequest) (llm.MatchResult, error) {
+	if p.err != nil {
+		return llm.MatchResult{}, p.err
+	}
+	return p.result, nil
 }

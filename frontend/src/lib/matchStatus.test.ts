@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildMatchStatusMeta,
+  readMatchProvider,
   readMatchScore,
   readMatchStatus,
   readMatchSummary,
@@ -28,5 +29,18 @@ describe("matchStatus", () => {
     expect(readMatchSummary({ MatchSummary: "  useful summary  " })).toBe(
       "useful summary"
     );
+  });
+
+  it("extracts provider metadata from summary payload", () => {
+    expect(
+      readMatchProvider({
+        MatchSummary: "Provider: openai\nStrong alignment with backend APIs.",
+      })
+    ).toBe("openai");
+    expect(
+      readMatchSummary({
+        MatchSummary: "Provider: openai\nStrong alignment with backend APIs.",
+      })
+    ).toBe("Strong alignment with backend APIs.");
   });
 });

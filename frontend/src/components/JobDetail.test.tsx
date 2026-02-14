@@ -246,6 +246,25 @@ describe("JobDetail", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows provider label in detail summary panel", () => {
+    render(
+      <JobDetail
+        job={fakeJob({
+          MatchStatus: "matched",
+          MatchScore: 0.65,
+          MatchSummary: "Provider: heuristic_v1\nStrong alignment with backend API keywords.",
+        })}
+        onDelete={noop}
+        onClose={() => {}}
+        onRefresh={noop}
+      />
+    );
+    expect(screen.getByText("LLM provider: Heuristic (Local)")).toBeInTheDocument();
+    expect(
+      screen.getByText("Strong alignment with backend API keywords.")
+    ).toBeInTheDocument();
+  });
+
   it("calls RecalculateMatchScore and refreshes", async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined);
     mockedRecalculate.mockResolvedValue(undefined);

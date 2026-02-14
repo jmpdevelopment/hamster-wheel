@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-THRESHOLD="${1:-75}"
+THRESHOLD="${1:-80}"
 PROFILE_FILE="${ROOT_DIR}/coverage.out"
 
 cd "${ROOT_DIR}"
@@ -20,4 +20,3 @@ BEGIN {
   }
 }
 '
-

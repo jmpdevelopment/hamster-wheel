@@ -12,6 +12,14 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
+ * ClearOpenAIAPIKey removes the stored OpenAI API key.
+ * @returns {$CancellablePromise<void>}
+ */
+export function ClearOpenAIAPIKey() {
+    return $Call.ByID(122384820);
+}
+
+/**
  * ClearReedAPIKey removes the stored Reed API key and clears the active adapter key.
  * @returns {$CancellablePromise<void>}
  */
@@ -29,11 +37,46 @@ export function GetKeyboardShortcuts() {
 }
 
 /**
+ * GetLLMBaseURL returns the configured provider base URL for OpenAI-compatible endpoints.
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetLLMBaseURL() {
+    return $Call.ByID(4001770595);
+}
+
+/**
+ * GetLLMModel returns the configured LLM model.
+ * Empty string falls back to default model.
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetLLMModel() {
+    return $Call.ByID(2255962772);
+}
+
+/**
+ * GetLLMProvider returns the stored LLM provider ("openai" or "heuristic_v1").
+ * Empty string falls back to default provider.
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetLLMProvider() {
+    return $Call.ByID(683130982);
+}
+
+/**
  * GetTheme returns the stored theme preference ("dark", "light", "system", or "" if unset).
  * @returns {$CancellablePromise<string>}
  */
 export function GetTheme() {
     return $Call.ByID(1377976733);
+}
+
+/**
+ * HasOpenAIAPIKey reports whether an OpenAI API key is currently stored.
+ * It never returns the secret to the frontend.
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function HasOpenAIAPIKey() {
+    return $Call.ByID(4242933685);
 }
 
 /**
@@ -52,6 +95,43 @@ export function HasReedAPIKey() {
  */
 export function SetKeyboardShortcuts(enabled) {
     return $Call.ByID(248813052, enabled);
+}
+
+/**
+ * SetLLMBaseURL saves the provider base URL.
+ * Empty value resets to provider default endpoint behavior.
+ * @param {string} baseURL
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetLLMBaseURL(baseURL) {
+    return $Call.ByID(3179678031, baseURL);
+}
+
+/**
+ * SetLLMModel saves the configured LLM model.
+ * @param {string} model
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetLLMModel(model) {
+    return $Call.ByID(1381253168, model);
+}
+
+/**
+ * SetLLMProvider saves the LLM provider.
+ * @param {string} provider
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetLLMProvider(provider) {
+    return $Call.ByID(4197289026, provider);
+}
+
+/**
+ * SetOpenAIAPIKey saves the OpenAI API key.
+ * @param {string} key
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetOpenAIAPIKey(key) {
+    return $Call.ByID(2467546573, key);
 }
 
 /**

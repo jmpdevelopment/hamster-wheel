@@ -7,6 +7,7 @@ import {
 import { formatDate, relativeTime } from "../lib/format";
 import {
   buildMatchStatusMeta,
+  readMatchProvider,
   readMatchScore,
   readMatchStatus,
   readMatchSummary,
@@ -34,7 +35,15 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
   const matchStatus = readMatchStatus(job);
   const matchScore = readMatchScore(job);
   const matchSummary = readMatchSummary(job);
+  const matchProvider = readMatchProvider(job);
   const matchMeta = buildMatchStatusMeta(matchStatus, matchScore);
+
+  const matchProviderLabel =
+    matchProvider === "openai"
+      ? "OpenAI"
+      : matchProvider === "heuristic_v1"
+        ? "Heuristic (Local)"
+        : matchProvider;
 
   const handleDelete = () => {
     if (confirming) {
@@ -122,6 +131,11 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
               {matchMeta.detailStatusLabel}
             </span>
           </div>
+          {matchProviderLabel && (
+            <p className="mt-1 text-xs text-hw-text-muted leading-relaxed">
+              LLM provider: {matchProviderLabel}
+            </p>
+          )}
           {matchSummary && (
             <p className="mt-1 text-xs text-hw-text-muted leading-relaxed">
               {matchSummary}
