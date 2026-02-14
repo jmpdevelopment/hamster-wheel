@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ const (
 	JobMatchStatusProcessing = "processing"
 	JobMatchStatusMatched    = "matched"
 	JobMatchStatusFailed     = "failed"
+
+	maxMatchSummaryLength = 500
 )
 
 // JobMatch stores matching metadata for one job.
@@ -79,6 +82,217 @@ func (db *DB) GetJobMatchByJobID(ctx context.Context, jobID string) (*JobMatch, 
 	return scanJobMatch(row)
 }
 
+// ClaimNextPendingJobMatch atomically moves the oldest pending row to processing
+// and returns it. Returns nil,nil when no pending rows exist.
+func (db *DB) ClaimNextPendingJobMatch(ctx context.Context) (*JobMatch, error) {
+	var claimed *JobMatch
+	var err error
+
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		tx, txErr := db.conn.BeginTx(ctx, nil)
+		if txErr != nil {
+			return fmt.Errorf("beginning claim transaction: %w", txErr)
+		}
+		defer func() {
+			_ = tx.Rollback()
+		}()
+
+		row := tx.QueryRowContext(ctx,
+			`SELECT id, job_id, match_score, match_summary, status,
+			        tailored_cv_path, tailored_cl_path, status_updated_at, created_at
+			 FROM job_matches
+			 WHERE status = ?
+			 ORDER BY created_at ASC
+			 LIMIT 1`,
+			JobMatchStatusPending,
+		)
+		match, scanErr := scanJobMatch(row)
+		if scanErr != nil {
+			return fmt.Errorf("querying pending match row: %w", scanErr)
+		}
+		if match == nil {
+			if commitErr := tx.Commit(); commitErr != nil {
+				return fmt.Errorf("committing empty claim transaction: %w", commitErr)
+			}
+			claimed = nil
+			return nil
+		}
+
+		result, updateErr := tx.ExecContext(ctx,
+			`UPDATE job_matches
+			 SET status = ?, status_updated_at = datetime('now')
+			 WHERE id = ? AND status = ?`,
+			JobMatchStatusProcessing,
+			match.ID,
+			JobMatchStatusPending,
+		)
+		if updateErr != nil {
+			return fmt.Errorf("updating claimed match status: %w", updateErr)
+		}
+		rowsAffected, rowsErr := result.RowsAffected()
+		if rowsErr != nil {
+			return fmt.Errorf("reading claim update rows affected: %w", rowsErr)
+		}
+		if rowsAffected == 0 {
+			// Another worker claimed it first. Treat as no work for this loop.
+			if commitErr := tx.Commit(); commitErr != nil {
+				return fmt.Errorf("committing raced claim transaction: %w", commitErr)
+			}
+			claimed = nil
+			return nil
+		}
+
+		match.Status = JobMatchStatusProcessing
+		match.StatusUpdatedAt = time.Now().UTC()
+
+		if commitErr := tx.Commit(); commitErr != nil {
+			return fmt.Errorf("committing claim transaction: %w", commitErr)
+		}
+
+		claimed = match
+		return nil
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
+	if err != nil {
+		return nil, fmt.Errorf("claiming next pending job match: %w", err)
+	}
+
+	return claimed, nil
+}
+
+// MarkJobMatchMatched stores a completed match score and summary.
+func (db *DB) MarkJobMatchMatched(ctx context.Context, jobID string, score float64, summary string) error {
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return fmt.Errorf("job ID is required: %w", ErrInvalidInput)
+	}
+	if math.IsNaN(score) || math.IsInf(score, 0) {
+		return fmt.Errorf("score must be finite: %w", ErrInvalidInput)
+	}
+	if score < 0 {
+		score = 0
+	}
+	if score > 1 {
+		score = 1
+	}
+	summary = normalizeMatchSummary(summary)
+
+	var (
+		result sql.Result
+		err    error
+	)
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		result, err = db.conn.ExecContext(ctx,
+			`UPDATE job_matches
+			 SET status = ?, match_score = ?, match_summary = ?, status_updated_at = datetime('now')
+			 WHERE job_id = ?`,
+			JobMatchStatusMatched,
+			score,
+			summary,
+			jobID,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
+	if err != nil {
+		return fmt.Errorf("marking matched status for job %q: %w", jobID, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking matched update rows: %w", err)
+	}
+	if rows == 0 {
+		return ErrJobMatchNotFound
+	}
+
+	return nil
+}
+
+// MarkJobMatchFailed stores a failure summary for a match attempt.
+func (db *DB) MarkJobMatchFailed(ctx context.Context, jobID string, reason string) error {
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return fmt.Errorf("job ID is required: %w", ErrInvalidInput)
+	}
+
+	reason = normalizeMatchSummary(reason)
+	if reason == "" {
+		reason = "Matching failed."
+	}
+
+	var (
+		result sql.Result
+		err    error
+	)
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		result, err = db.conn.ExecContext(ctx,
+			`UPDATE job_matches
+			 SET status = ?, match_summary = ?, status_updated_at = datetime('now')
+			 WHERE job_id = ?`,
+			JobMatchStatusFailed,
+			reason,
+			jobID,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
+	if err != nil {
+		return fmt.Errorf("marking failed status for job %q: %w", jobID, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking failed update rows: %w", err)
+	}
+	if rows == 0 {
+		return ErrJobMatchNotFound
+	}
+
+	return nil
+}
+
+// RequeueStaleProcessingJobMatches moves old processing rows back to pending
+// so they can be retried after crashes or stuck provider calls.
+func (db *DB) RequeueStaleProcessingJobMatches(ctx context.Context, staleBefore time.Time) (int, error) {
+	if staleBefore.IsZero() {
+		return 0, fmt.Errorf("staleBefore is required: %w", ErrInvalidInput)
+	}
+	staleBeforeUTC := staleBefore.UTC().Format("2006-01-02 15:04:05")
+
+	var (
+		result sql.Result
+		err    error
+	)
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		result, err = db.conn.ExecContext(ctx,
+			`UPDATE job_matches
+			 SET status = ?, status_updated_at = datetime('now')
+			 WHERE status = ? AND status_updated_at < ?`,
+			JobMatchStatusPending,
+			JobMatchStatusProcessing,
+			staleBeforeUTC,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
+	if err != nil {
+		return 0, fmt.Errorf("requeueing stale processing matches: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("reading requeue rows affected: %w", err)
+	}
+	return int(rows), nil
+}
+
 func scanJobMatch(row *sql.Row) (*JobMatch, error) {
 	var jm JobMatch
 	var tailoredCVPath sql.NullString
@@ -134,4 +348,16 @@ func scanJobMatch(row *sql.Row) (*JobMatch, error) {
 	}
 
 	return &jm, nil
+}
+
+func normalizeMatchSummary(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= maxMatchSummaryLength {
+		return value
+	}
+	return string(runes[:maxMatchSummaryLength])
 }

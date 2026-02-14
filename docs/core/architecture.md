@@ -19,7 +19,7 @@
 3. Jobs are deduplicated by `UNIQUE(source, source_id)`.
 4. New jobs are persisted and surfaced to UI immediately.
 5. Newly discovered jobs are queued for asynchronous matching.
-6. Match worker processes queued jobs independently of poll-cycle timing.
+6. Match worker atomically claims queued jobs (`pending` -> `processing`) and processes independently of poll-cycle timing.
 7. UI shows pending state while score is computing and updates when match completes.
 8. High-score matches can trigger native notifications.
 

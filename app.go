@@ -7,6 +7,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"hamster-wheel/internal/db"
+	"hamster-wheel/internal/matcher"
 	"hamster-wheel/internal/scheduler"
 )
 
@@ -18,13 +19,15 @@ import (
 type AppService struct {
 	db        *db.DB
 	scheduler *scheduler.Scheduler
+	matcher   *matcher.Worker
 }
 
 // NewAppService creates a new AppService. Dependencies are injected by main().
-func NewAppService(database *db.DB, sched *scheduler.Scheduler) *AppService {
+func NewAppService(database *db.DB, sched *scheduler.Scheduler, matchWorker *matcher.Worker) *AppService {
 	return &AppService{
 		db:        database,
 		scheduler: sched,
+		matcher:   matchWorker,
 	}
 }
 
@@ -32,6 +35,9 @@ func NewAppService(database *db.DB, sched *scheduler.Scheduler) *AppService {
 // It starts the background polling scheduler.
 func (a *AppService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	a.scheduler.Start()
+	if a.matcher != nil {
+		a.matcher.Start()
+	}
 	slog.Info("app service started")
 	return nil
 }
@@ -39,6 +45,9 @@ func (a *AppService) ServiceStartup(ctx context.Context, options application.Ser
 // ServiceShutdown is called by Wails v3 when the application is shutting down.
 // It stops the scheduler and closes the database.
 func (a *AppService) ServiceShutdown() error {
+	if a.matcher != nil {
+		a.matcher.Stop()
+	}
 	a.scheduler.Stop()
 	if err := a.db.Close(); err != nil {
 		slog.Error("failed to close database during shutdown", "error", err)

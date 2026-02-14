@@ -20,6 +20,11 @@ Last updated: 2026-02-14
   - Polling now enqueues new jobs into `job_matches` with `pending` status.
   - Job queries expose match status/score/summary in the existing job payload.
   - Job list UI now shows a compact horizontal match-status badge in the title row (top-right) to preserve fixed card height and prevent row overflow.
+- Phase 2 async matcher worker orchestration is implemented:
+  - Matcher runs independently from polling and processes `pending` matches in background batches.
+  - Claiming is atomic (`pending` -> `processing`) and stale `processing` rows are requeued on timeout windows.
+  - Match updates emit `matching:status-changed` events and frontend coalesces refreshes for responsive UI updates.
+  - Current default scorer is local heuristic (`heuristic_v1`) to keep latency low and token usage at zero while external providers are integrated.
 - Reliability hardening pass is complete and regression-covered.
 
 ## Key Reliability Outcomes
@@ -47,9 +52,9 @@ Last updated: 2026-02-14
 
 ## Next Work Queue
 
-1. Phase 2: implement provider interface + registry.
-2. Phase 2: implement OpenAI provider.
-3. Phase 2: implement OpenAI-compatible provider path for self-hosted/local models.
+1. Phase 2: implement OpenAI provider.
+2. Phase 2: implement OpenAI-compatible provider path for self-hosted/local models.
+3. Phase 2: wire provider selection + key/model/base-URL settings into matcher runtime.
 4. Phase 2: implement CV parser path for matching inputs.
-5. Phase 2: implement async matcher worker orchestration (`pending` -> `processing` -> `matched`/`failed`).
-6. Phase 2: wire completed match results, threshold controls, and notifications in UI.
+5. Phase 2: tune token-efficiency controls (compact prompt shaping, prefilter thresholds, and bounded context windows).
+6. Phase 2: wire completed match thresholds and notifications in UI.

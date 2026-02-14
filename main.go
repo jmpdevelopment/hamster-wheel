@@ -18,6 +18,9 @@ import (
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/diagnostics"
 	"hamster-wheel/internal/keychain"
+	"hamster-wheel/internal/llm"
+	"hamster-wheel/internal/llm/heuristic"
+	"hamster-wheel/internal/matcher"
 	"hamster-wheel/internal/scheduler"
 )
 
@@ -60,6 +63,15 @@ func main() {
 	// It starts polling when the app service receives ServiceStartup.
 	pollInterval := 30 * time.Minute
 	sched := scheduler.New(database, adapters, pollInterval)
+	providers := llm.NewRegistry()
+	if err := providers.Register(heuristic.New()); err != nil {
+		log.Fatalf("failed to register heuristic match provider: %v", err)
+	}
+	matchWorker := matcher.New(database, providers, matcher.WorkerConfig{
+		ProviderName: heuristic.ProviderName,
+		PollInterval: 3 * time.Second,
+		BatchSize:    3,
+	})
 	diagStore := diagnostics.NewStore(
 		filepath.Join(os.TempDir(), "hamster-wheel", "poll-diagnostics"),
 		50,
@@ -67,7 +79,7 @@ func main() {
 	)
 
 	// Create all services with their dependencies injected.
-	appService := NewAppService(database, sched)
+	appService := NewAppService(database, sched, matchWorker)
 	jobService := NewJobService(database, adapters)
 	filterService := NewFilterService(database)
 	pollingService := NewPollingService(sched, diagStore)
@@ -114,6 +126,12 @@ func main() {
 			payload["lastRun"] = pollRunFromSchedulerSummary(summary)
 		}
 		app.Event.Emit("polling:status-changed", payload)
+	})
+	matchWorker.SetStatusChangedHook(func(jobID, status string) {
+		app.Event.Emit("matching:status-changed", map[string]any{
+			"jobID":  jobID,
+			"status": status,
+		})
 	})
 
 	// Create the main application window.

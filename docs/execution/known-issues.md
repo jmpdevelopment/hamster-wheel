@@ -8,6 +8,10 @@ Last reviewed: 2026-02-14
 
 ## Recently Resolved
 
+- 2026-02-14: matching was previously enqueue-only and could remain indefinitely
+  pending; fixed by adding an async matcher worker with atomic claim transition
+  (`pending` -> `processing`), stale-processing requeue, and explicit matched/
+  failed terminal status updates.
 - 2026-02-14: pending match UI text was rendered as an extra vertical line in
   job cards, which could compress/overflow dense card rows; fixed by replacing
   it with a compact horizontal right-side status badge that uses explicit text
@@ -49,7 +53,7 @@ When a bug is found, record:
 
 - Distribution signing/notarization is deferred; users may see trust warnings on unsigned builds.
 - LLM matching and tailoring phases are not fully implemented yet; quality depends on upcoming Phase 2-3 completion.
-- Match status enqueue + pending-state UI is implemented, but async worker execution (`pending` -> `matched`/`failed`) is still in progress.
+- External provider integration is not complete yet; current default matcher is local heuristic scoring until OpenAI provider rollout.
 - PDF parsing/generation quality may vary by document structure and will need targeted validation.
 - Job retention is currently indefinite; data hygiene controls (retention policy, archival/cleanup UX, and safe defaults) are deferred to end-phase hardening.
 

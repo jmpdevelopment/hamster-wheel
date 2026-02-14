@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { GetKeyboardShortcuts } from "../bindings/hamster-wheel/settingsservice";
+import { Events } from "@wailsio/runtime";
 import { useJobs } from "./hooks/useJobs";
 import { useFilters } from "./hooks/useFilters";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -59,6 +60,28 @@ function App() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let refreshTimer: number | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer !== null) {
+        return;
+      }
+      // Coalesce rapid status updates from matcher batches.
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void jobs.refresh();
+      }, 150);
+    };
+
+    const unsubscribe = Events.On("matching:status-changed", scheduleRefresh);
+    return () => {
+      if (refreshTimer !== null) {
+        clearTimeout(refreshTimer);
+      }
+      unsubscribe();
+    };
+  }, [jobs.refresh]);
 
   // Combine errors from hooks and app-level errors.
   const error = appError || jobs.error || filters.error;

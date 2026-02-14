@@ -17,6 +17,9 @@ import (
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/diagnostics"
 	"hamster-wheel/internal/keychain"
+	"hamster-wheel/internal/llm"
+	"hamster-wheel/internal/llm/heuristic"
+	"hamster-wheel/internal/matcher"
 	"hamster-wheel/internal/scheduler"
 )
 
@@ -49,10 +52,19 @@ func testServices(t *testing.T) (
 	}
 
 	sched := scheduler.New(database, adapters, 1*time.Hour)
+	providers := llm.NewRegistry()
+	if err := providers.Register(heuristic.New()); err != nil {
+		t.Fatalf("registering heuristic provider: %v", err)
+	}
+	matchWorker := matcher.New(database, providers, matcher.WorkerConfig{
+		ProviderName: heuristic.ProviderName,
+		PollInterval: time.Second,
+		BatchSize:    2,
+	})
 	diagStore := diagnostics.NewStore(t.TempDir(), 50, 24*time.Hour)
 	kc := keychain.NewMemoryStore()
 
-	appSvc := NewAppService(database, sched)
+	appSvc := NewAppService(database, sched, matchWorker)
 	jobSvc := NewJobService(database, adapters)
 	filterSvc := NewFilterService(database)
 	pollSvc := NewPollingService(sched, diagStore)
@@ -349,6 +361,7 @@ func TestServiceDependencies(t *testing.T) {
 			expectedFields: map[string]string{
 				"db":        "*db.DB",
 				"scheduler": "*scheduler.Scheduler",
+				"matcher":   "*matcher.Worker",
 			},
 		},
 	}

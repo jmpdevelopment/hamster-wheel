@@ -64,3 +64,9 @@ Status legend:
 - Status: Accepted
 - Decision: Polling only ingests and persists jobs. Matching runs asynchronously after ingestion via a separate background worker, and UI surfaces pending match state until scoring completes.
 - Rationale: Reduces poll-cycle latency, keeps scheduler behavior deterministic, enables incremental scaling of match throughput, and isolates matching/provider failures from job discovery.
+
+## D-011: Use atomic queue-claim semantics for match processing
+
+- Status: Accepted
+- Decision: Match worker claims pending rows with an atomic status transition (`pending` -> `processing`) and periodically requeues stale `processing` rows.
+- Rationale: Prevents duplicate processing when workers overlap, tolerates crash/restart scenarios, and keeps queue progression deterministic under concurrent polling + matching writes.
