@@ -24,8 +24,7 @@ export const JobCard = memo(function JobCard({
   style,
 }: JobCardProps) {
   const matchStatus = readMatchStatus(job);
-  const showPendingMatchLabel =
-    matchStatus === "pending" || matchStatus === "processing";
+  const matchStatusBadge = getMatchStatusBadge(matchStatus);
 
   return (
     <div
@@ -74,17 +73,23 @@ export const JobCard = memo(function JobCard({
             )}
           </div>
           <div className="flex items-center justify-between mt-1">
-            <div className="flex flex-col min-w-0">
-              {showPendingMatchLabel && (
-                <span className="text-[11px] text-hw-text-muted">
-                  Calculating match score
+            <span className="text-xs text-hw-text-muted shrink-0">
+              {relativeTime(job.DiscoveredAt)}
+            </span>
+            <div className="flex items-center gap-2 min-w-0">
+              {matchStatusBadge && (
+                <span
+                  aria-label={matchStatusBadge.ariaLabel}
+                  className={`inline-flex max-w-[140px] items-center truncate rounded-md border px-2 py-0.5 text-[11px] font-semibold leading-4 whitespace-nowrap ${matchStatusBadge.className}`}
+                  title={matchStatusBadge.label}
+                >
+                  {matchStatusBadge.label}
                 </span>
               )}
-              <span className="text-xs text-hw-text-muted">
-                {relativeTime(job.DiscoveredAt)}
+              <span className="text-xs text-hw-text-muted/60 truncate max-w-[96px]">
+                {job.Source}
               </span>
             </div>
-            <span className="text-xs text-hw-text-muted/60">{job.Source}</span>
           </div>
         </button>
 
@@ -114,4 +119,41 @@ function readMatchStatus(job: Job): string {
     return "";
   }
   return candidate.trim().toLowerCase();
+}
+
+type MatchStatusBadge = {
+  ariaLabel: string;
+  className: string;
+  label: string;
+};
+
+function getMatchStatusBadge(status: string): MatchStatusBadge | null {
+  switch (status) {
+    case "pending":
+      return {
+        ariaLabel: "Match status: pending",
+        className: "border-hw-accent/45 bg-hw-accent/10 text-hw-accent border-dashed",
+        label: "Match pending",
+      };
+    case "processing":
+      return {
+        ariaLabel: "Match status: processing",
+        className: "border-hw-accent/60 bg-hw-accent/15 text-hw-accent",
+        label: "Matching",
+      };
+    case "matched":
+      return {
+        ariaLabel: "Match status: matched",
+        className: "border-hw-success/45 bg-hw-success/10 text-hw-success",
+        label: "Match ready",
+      };
+    case "failed":
+      return {
+        ariaLabel: "Match status: failed",
+        className: "border-hw-danger/45 bg-hw-danger/10 text-hw-danger",
+        label: "Match failed",
+      };
+    default:
+      return null;
+  }
 }

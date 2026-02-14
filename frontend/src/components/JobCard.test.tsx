@@ -132,25 +132,43 @@ describe("JobCard", () => {
     expect(wrapper.style.height).toBe("74px");
   });
 
-  it("shows calculating label while match status is pending", () => {
+  it("shows pending match badge with accessible label", () => {
     render(
       <JobCard
         {...defaultProps}
         job={fakeJob({ MatchStatus: "pending" })}
       />
     );
-    expect(screen.getByText("Calculating match score")).toBeInTheDocument();
+    expect(screen.getByText("Match pending")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Match status: pending")
+    ).toBeInTheDocument();
   });
 
-  it("does not show calculating label for matched status", () => {
+  it("shows matched badge when status is matched", () => {
     render(
       <JobCard
         {...defaultProps}
         job={fakeJob({ MatchStatus: "matched" })}
       />
     );
+    expect(screen.getByText("Match ready")).toBeInTheDocument();
+  });
+
+  it("shows failed badge when status is failed", () => {
+    render(
+      <JobCard
+        {...defaultProps}
+        job={fakeJob({ MatchStatus: "failed" })}
+      />
+    );
+    expect(screen.getByText("Match failed")).toBeInTheDocument();
+  });
+
+  it("hides match badge when status is empty", () => {
+    render(<JobCard {...defaultProps} />);
     expect(
-      screen.queryByText("Calculating match score")
+      screen.queryByLabelText(/match status:/i)
     ).not.toBeInTheDocument();
   });
 });

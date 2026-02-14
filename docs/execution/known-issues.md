@@ -8,6 +8,10 @@ Last reviewed: 2026-02-14
 
 ## Recently Resolved
 
+- 2026-02-14: pending match UI text was rendered as an extra vertical line in
+  job cards, which could compress/overflow dense card rows; fixed by replacing
+  it with a compact horizontal right-side status badge that uses explicit text
+  labels plus color-coded styling for accessibility.
 - 2026-02-14: SQLite foreign-key actions (`ON DELETE SET NULL` / `CASCADE`)
   could be inconsistently enforced across pooled DB connections; fixed by
   pinning the app DB to a single shared SQLite connection and preserving
