@@ -9,7 +9,7 @@ import { IconButton } from "./IconButton";
 
 interface JobDetailProps {
   job: Job;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
   onClose: () => void;
   onRefresh: () => Promise<void>;
 }
@@ -21,7 +21,9 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
 
   const handleDelete = () => {
     if (confirming) {
-      onDelete(job.ID);
+      void onDelete(job.ID).catch(() => {
+        // Parent tracks mutation errors for display.
+      });
       setConfirming(false);
     } else {
       setConfirming(true);

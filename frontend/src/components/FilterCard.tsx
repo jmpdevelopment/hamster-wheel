@@ -5,8 +5,8 @@ import { IconButton } from "./IconButton";
 
 interface FilterCardProps {
   filter: SearchFilter;
-  onToggle: (enabled: boolean) => void;
-  onDelete: () => void;
+  onToggle: (enabled: boolean) => Promise<void>;
+  onDelete: () => Promise<void>;
 }
 
 export function FilterCard({ filter, onToggle, onDelete }: FilterCardProps) {
@@ -14,7 +14,9 @@ export function FilterCard({ filter, onToggle, onDelete }: FilterCardProps) {
 
   const handleDelete = () => {
     if (confirming) {
-      onDelete();
+      void onDelete().catch(() => {
+        // Parent tracks mutation errors for display.
+      });
       setConfirming(false);
     } else {
       setConfirming(true);
@@ -74,7 +76,11 @@ export function FilterCard({ filter, onToggle, onDelete }: FilterCardProps) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => onToggle(!filter.Enabled)}
+          onClick={() => {
+            void onToggle(!filter.Enabled).catch(() => {
+              // Parent tracks mutation errors for display.
+            });
+          }}
           className={`font-medium ${
             filter.Enabled
               ? "bg-hw-success/20 text-hw-success hover:bg-hw-success/30"

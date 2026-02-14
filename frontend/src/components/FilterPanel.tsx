@@ -13,8 +13,8 @@ interface FilterPanelProps {
     location: string,
     source: string
   ) => Promise<void>;
-  onToggleFilter: (filter: SearchFilter, enabled: boolean) => void;
-  onDeleteFilter: (id: string) => void;
+  onToggleFilter: (filter: SearchFilter, enabled: boolean) => Promise<void>;
+  onDeleteFilter: (id: string) => Promise<void>;
 }
 
 export function FilterPanel({

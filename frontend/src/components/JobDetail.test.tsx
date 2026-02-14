@@ -42,7 +42,7 @@ beforeEach(() => {
 
 describe("JobDetail", () => {
   it("renders job title and details", () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
+    render(<JobDetail job={fakeJob()} onDelete={noop} onClose={() => {}} onRefresh={noop} />);
 
     expect(screen.getByText("Senior Go Developer")).toBeInTheDocument();
     expect(screen.getByText(/Acme Corp/)).toBeInTheDocument();
@@ -50,7 +50,7 @@ describe("JobDetail", () => {
   });
 
   it("renders plain text description", () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
+    render(<JobDetail job={fakeJob()} onDelete={noop} onClose={() => {}} onRefresh={noop} />);
     expect(screen.getByText(/Build backend services in Go/)).toBeInTheDocument();
   });
 
@@ -60,7 +60,7 @@ describe("JobDetail", () => {
         job={fakeJob({
           Description: "<p>Looking for a <strong>Go Developer</strong></p>",
         })}
-        onDelete={() => {}}
+        onDelete={noop}
         onClose={() => {}}
         onRefresh={noop}
       />
@@ -73,7 +73,7 @@ describe("JobDetail", () => {
     render(
       <JobDetail
         job={fakeJob({ Description: "" })}
-        onDelete={() => {}}
+        onDelete={noop}
         onClose={() => {}}
         onRefresh={noop}
       />
@@ -83,7 +83,7 @@ describe("JobDetail", () => {
   });
 
   it("does not show retry button when description is present", () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
+    render(<JobDetail job={fakeJob()} onDelete={noop} onClose={() => {}} onRefresh={noop} />);
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
   });
 
@@ -94,7 +94,7 @@ describe("JobDetail", () => {
     render(
       <JobDetail
         job={fakeJob({ Description: "" })}
-        onDelete={() => {}}
+        onDelete={noop}
         onClose={() => {}}
         onRefresh={onRefresh}
       />
@@ -114,7 +114,7 @@ describe("JobDetail", () => {
     render(
       <JobDetail
         job={fakeJob({ Description: "" })}
-        onDelete={() => {}}
+        onDelete={noop}
         onClose={() => {}}
         onRefresh={noop}
       />
@@ -128,7 +128,7 @@ describe("JobDetail", () => {
   });
 
   it("calls BrowserOpenURL when Open in Browser is clicked", async () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
+    render(<JobDetail job={fakeJob()} onDelete={noop} onClose={() => {}} onRefresh={noop} />);
 
     await userEvent.click(
       screen.getByRole("button", { name: /open in browser/i })
@@ -140,7 +140,7 @@ describe("JobDetail", () => {
     render(
       <JobDetail
         job={fakeJob({ URL: "" })}
-        onDelete={() => {}}
+        onDelete={noop}
         onClose={() => {}}
         onRefresh={noop}
       />
@@ -151,7 +151,7 @@ describe("JobDetail", () => {
   });
 
   it("shows confirm buttons when delete is clicked", async () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
+    render(<JobDetail job={fakeJob()} onDelete={noop} onClose={() => {}} onRefresh={noop} />);
 
     await userEvent.click(screen.getByRole("button", { name: /delete/i }));
 
@@ -164,7 +164,7 @@ describe("JobDetail", () => {
   });
 
   it("calls onDelete when delete is confirmed", async () => {
-    const onDelete = vi.fn();
+    const onDelete = vi.fn().mockResolvedValue(undefined);
 
     render(<JobDetail job={fakeJob()} onDelete={onDelete} onClose={() => {}} onRefresh={noop} />);
 
@@ -176,7 +176,7 @@ describe("JobDetail", () => {
   });
 
   it("does not call onDelete when delete is cancelled", async () => {
-    const onDelete = vi.fn();
+    const onDelete = vi.fn().mockResolvedValue(undefined);
 
     render(<JobDetail job={fakeJob()} onDelete={onDelete} onClose={() => {}} onRefresh={noop} />);
 
@@ -193,14 +193,14 @@ describe("JobDetail", () => {
 
   it("calls onClose when close button is clicked", async () => {
     const onClose = vi.fn();
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={onClose} onRefresh={noop} />);
+    render(<JobDetail job={fakeJob()} onDelete={noop} onClose={onClose} onRefresh={noop} />);
 
     await userEvent.click(screen.getByRole("button", { name: /close/i }));
     expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("shows source and dates", () => {
-    render(<JobDetail job={fakeJob()} onDelete={() => {}} onClose={() => {}} onRefresh={noop} />);
+    render(<JobDetail job={fakeJob()} onDelete={noop} onClose={() => {}} onRefresh={noop} />);
     expect(screen.getByText(/reed_uk/)).toBeInTheDocument();
     expect(screen.getByText(/Posted:/)).toBeInTheDocument();
     expect(screen.getByText(/Found:/)).toBeInTheDocument();

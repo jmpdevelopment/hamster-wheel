@@ -19,6 +19,7 @@ const fakeJob = (id = "j1", title = "Go Developer") => ({
 
 const mockGetJobs = vi.fn();
 const mockGetJobCount = vi.fn();
+const mockDeleteJob = vi.fn();
 const mockGetFilters = vi.fn();
 const mockCreateFilter = vi.fn();
 const mockUpdateFilter = vi.fn();
@@ -45,7 +46,7 @@ const noOpRun = {
 vi.mock("../bindings/hamster-wheel/jobservice", () => ({
   GetJobs: (...args: unknown[]) => mockGetJobs(...args),
   GetJobCount: (...args: unknown[]) => mockGetJobCount(...args),
-  DeleteJob: vi.fn().mockResolvedValue(undefined),
+  DeleteJob: (...args: unknown[]) => mockDeleteJob(...args),
 }));
 
 vi.mock("../bindings/hamster-wheel/filterservice", () => ({
@@ -88,6 +89,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetJobs.mockResolvedValue([]);
   mockGetJobCount.mockResolvedValue(0);
+  mockDeleteJob.mockResolvedValue(undefined);
   mockGetFilters.mockResolvedValue([]);
   mockCreateFilter.mockResolvedValue("f1");
   mockUpdateFilter.mockResolvedValue(undefined);
@@ -117,6 +119,47 @@ describe("App", () => {
       expect(screen.getByText("No filters")).toBeInTheDocument();
       expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
+  });
+
+  it("dismisses hook errors from the banner", async () => {
+    mockGetJobs.mockRejectedValue(new Error("network down"));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("network down")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("network down")).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps job detail open when delete fails", async () => {
+    mockGetJobs.mockResolvedValue([fakeJob()]);
+    mockGetJobCount.mockResolvedValue(1);
+    mockDeleteJob.mockRejectedValue(new Error("cannot delete"));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Go Developer")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("Go Developer"));
+    await userEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /confirm delete/i })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("cannot delete")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: /close detail/i })
+    ).toBeInTheDocument();
   });
 
   it("shows complete poll failure in toast with report action", async () => {

@@ -18,7 +18,11 @@ const fakeFilter = (overrides = {}) => ({
 describe("FilterCard", () => {
   it("renders filter name and details", () => {
     render(
-      <FilterCard filter={fakeFilter()} onToggle={() => {}} onDelete={() => {}} />
+      <FilterCard
+        filter={fakeFilter()}
+        onToggle={async () => {}}
+        onDelete={async () => {}}
+      />
     );
 
     expect(screen.getByText("Backend London")).toBeInTheDocument();
@@ -28,7 +32,11 @@ describe("FilterCard", () => {
 
   it("shows location with separator", () => {
     render(
-      <FilterCard filter={fakeFilter()} onToggle={() => {}} onDelete={() => {}} />
+      <FilterCard
+        filter={fakeFilter()}
+        onToggle={async () => {}}
+        onDelete={async () => {}}
+      />
     );
 
     // Location appears as "· London" in the details line.
@@ -39,8 +47,8 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter({ Enabled: true })}
-        onToggle={() => {}}
-        onDelete={() => {}}
+        onToggle={async () => {}}
+        onDelete={async () => {}}
       />
     );
 
@@ -51,8 +59,8 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter({ Enabled: false })}
-        onToggle={() => {}}
-        onDelete={() => {}}
+        onToggle={async () => {}}
+        onDelete={async () => {}}
       />
     );
 
@@ -60,12 +68,12 @@ describe("FilterCard", () => {
   });
 
   it("calls onToggle with opposite value when toggle is clicked", async () => {
-    const onToggle = vi.fn();
+    const onToggle = vi.fn().mockResolvedValue(undefined);
     render(
       <FilterCard
         filter={fakeFilter({ Enabled: true })}
         onToggle={onToggle}
-        onDelete={() => {}}
+        onDelete={async () => {}}
       />
     );
 
@@ -75,7 +83,11 @@ describe("FilterCard", () => {
 
   it("shows confirm buttons when delete is clicked", async () => {
     render(
-      <FilterCard filter={fakeFilter()} onToggle={() => {}} onDelete={() => {}} />
+      <FilterCard
+        filter={fakeFilter()}
+        onToggle={async () => {}}
+        onDelete={async () => {}}
+      />
     );
 
     await userEvent.click(
@@ -91,10 +103,14 @@ describe("FilterCard", () => {
   });
 
   it("calls onDelete when delete is confirmed", async () => {
-    const onDelete = vi.fn();
+    const onDelete = vi.fn().mockResolvedValue(undefined);
 
     render(
-      <FilterCard filter={fakeFilter()} onToggle={() => {}} onDelete={onDelete} />
+      <FilterCard
+        filter={fakeFilter()}
+        onToggle={async () => {}}
+        onDelete={onDelete}
+      />
     );
 
     await userEvent.click(
@@ -107,10 +123,14 @@ describe("FilterCard", () => {
   });
 
   it("does not call onDelete when delete is cancelled", async () => {
-    const onDelete = vi.fn();
+    const onDelete = vi.fn().mockResolvedValue(undefined);
 
     render(
-      <FilterCard filter={fakeFilter()} onToggle={() => {}} onDelete={onDelete} />
+      <FilterCard
+        filter={fakeFilter()}
+        onToggle={async () => {}}
+        onDelete={onDelete}
+      />
     );
 
     await userEvent.click(

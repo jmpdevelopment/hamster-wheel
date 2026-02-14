@@ -11,6 +11,7 @@ export interface UseJobsReturn {
   jobCount: number;
   loading: boolean;
   error: string | null;
+  clearError: () => void;
   refresh: () => Promise<void>;
   deleteJob: (id: string) => Promise<void>;
 }
@@ -20,6 +21,9 @@ export function useJobs(limit: number = 0): UseJobsReturn {
   const [jobCount, setJobCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -54,6 +58,7 @@ export function useJobs(limit: number = 0): UseJobsReturn {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Failed to delete job:", message);
         setError(message);
+        throw err;
       }
     },
     [refresh]
@@ -64,6 +69,7 @@ export function useJobs(limit: number = 0): UseJobsReturn {
     jobCount,
     loading,
     error,
+    clearError,
     refresh,
     deleteJob: handleDeleteJob,
   };

@@ -110,7 +110,9 @@ describe("useJobs", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
-      await result.current.deleteJob("999");
+      await expect(result.current.deleteJob("999")).rejects.toThrow(
+        "not found"
+      );
     });
 
     expect(result.current.error).toBe("not found");
@@ -127,6 +129,21 @@ describe("useJobs", () => {
 
     await act(async () => {
       await result.current.refresh();
+    });
+
+    expect(result.current.error).toBeNull();
+  });
+
+  it("clearError clears the current error", async () => {
+    mockGetJobs.mockRejectedValue(new Error("network error"));
+
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("network error");
+
+    act(() => {
+      result.current.clearError();
     });
 
     expect(result.current.error).toBeNull();

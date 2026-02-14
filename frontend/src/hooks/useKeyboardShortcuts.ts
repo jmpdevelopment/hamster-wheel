@@ -197,7 +197,9 @@ export function useKeyboardShortcuts(
 
       if (pendingDeleteRef.current === c.selectedJobId) {
         // Second press — execute.
-        c.onDeleteJob(c.selectedJobId);
+        void c.onDeleteJob(c.selectedJobId).catch(() => {
+          // Parent tracks mutation errors for display.
+        });
         setPendingDeleteId(null);
         if (deleteTimerRef.current !== null) {
           clearTimeout(deleteTimerRef.current);

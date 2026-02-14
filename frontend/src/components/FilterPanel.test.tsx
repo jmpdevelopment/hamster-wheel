@@ -18,8 +18,8 @@ const defaultProps = {
   filters: [fakeFilter("f1", "Backend"), fakeFilter("f2", "Frontend", false)],
   loading: false,
   onCreateFilter: vi.fn().mockResolvedValue(undefined),
-  onToggleFilter: vi.fn(),
-  onDeleteFilter: vi.fn(),
+  onToggleFilter: vi.fn().mockResolvedValue(undefined),
+  onDeleteFilter: vi.fn().mockResolvedValue(undefined),
 };
 
 describe("FilterPanel", () => {

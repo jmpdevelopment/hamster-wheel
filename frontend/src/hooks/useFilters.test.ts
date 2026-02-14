@@ -148,14 +148,16 @@ describe("useFilters", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
-      await result.current.updateFilter(
-        "f999",
-        "n",
-        "k",
-        "l",
-        "s",
-        true
-      );
+      await expect(
+        result.current.updateFilter(
+          "f999",
+          "n",
+          "k",
+          "l",
+          "s",
+          true
+        )
+      ).rejects.toThrow("not found");
     });
 
     expect(result.current.error).toBe("not found");
@@ -182,7 +184,9 @@ describe("useFilters", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
-      await result.current.deleteFilter("f999");
+      await expect(result.current.deleteFilter("f999")).rejects.toThrow(
+        "not found"
+      );
     });
 
     expect(result.current.error).toBe("not found");
@@ -199,6 +203,21 @@ describe("useFilters", () => {
 
     await act(async () => {
       await result.current.refresh();
+    });
+
+    expect(result.current.error).toBeNull();
+  });
+
+  it("clearError clears the current error", async () => {
+    mockGetFilters.mockRejectedValue(new Error("db closed"));
+
+    const { result } = renderHook(() => useFilters());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("db closed");
+
+    act(() => {
+      result.current.clearError();
     });
 
     expect(result.current.error).toBeNull();

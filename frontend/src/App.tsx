@@ -57,6 +57,8 @@ function App() {
 
   const handleDismissError = () => {
     setAppError(null);
+    jobs.clearError();
+    filters.clearError();
   };
 
   const handlePollNow = useCallback(async () => {
@@ -99,8 +101,17 @@ function App() {
   }, [pollingPaused]);
 
   const handleToggleFilter = useCallback(
-    (filter: { ID: string; Name: string; Keywords: string; Location: string; Source: string }, enabled: boolean) => {
-      filters.updateFilter(
+    async (
+      filter: {
+        ID: string;
+        Name: string;
+        Keywords: string;
+        Location: string;
+        Source: string;
+      },
+      enabled: boolean
+    ) => {
+      await filters.updateFilter(
         filter.ID,
         filter.Name,
         filter.Keywords,
@@ -178,7 +189,9 @@ function App() {
             await filters.createFilter(name, keywords, location, source);
           }}
           onToggleFilter={handleToggleFilter}
-          onDeleteFilter={filters.deleteFilter}
+          onDeleteFilter={async (id) => {
+            await filters.deleteFilter(id);
+          }}
         />
 
         {/* Center: Job List */}

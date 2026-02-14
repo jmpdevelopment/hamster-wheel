@@ -11,6 +11,7 @@ export interface UseFiltersReturn {
   filters: SearchFilter[];
   loading: boolean;
   error: string | null;
+  clearError: () => void;
   refresh: () => Promise<void>;
   createFilter: (
     name: string,
@@ -33,6 +34,9 @@ export function useFilters(): UseFiltersReturn {
   const [filters, setFilters] = useState<SearchFilter[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -92,6 +96,7 @@ export function useFilters(): UseFiltersReturn {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Failed to update filter:", message);
         setError(message);
+        throw err;
       }
     },
     [refresh]
@@ -107,6 +112,7 @@ export function useFilters(): UseFiltersReturn {
         const message = err instanceof Error ? err.message : String(err);
         console.error("Failed to delete filter:", message);
         setError(message);
+        throw err;
       }
     },
     [refresh]
@@ -116,6 +122,7 @@ export function useFilters(): UseFiltersReturn {
     filters,
     loading,
     error,
+    clearError,
     refresh,
     createFilter: handleCreateFilter,
     updateFilter: handleUpdateFilter,
