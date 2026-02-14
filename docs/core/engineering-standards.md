@@ -67,7 +67,7 @@ For each completed step provide:
 ## Documentation Update Rules
 
 - `docs/execution/status.md`: update after every completed step.
-- `docs/execution/known-issues.md`: update when bugs are introduced/fixed/discovered.
+- `docs/execution/known-issues.md`: update when active bugs/risks change (keep resolved items out of this file).
 - `docs/execution/roadmap.md`: update when priority or sequencing changes.
 - `docs/core/*`: update only for durable product/architecture/process changes.
 

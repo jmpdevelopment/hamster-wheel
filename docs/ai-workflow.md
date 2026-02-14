@@ -8,6 +8,7 @@ This workflow is model-agnostic. Use it when opening a new AI session.
 
 - `docs/README.md`
 - `docs/core/product.md`
+- `docs/core/decisions.md`
 - `docs/core/architecture.md`
 - `docs/core/engineering-standards.md`
 - `docs/core/testing-standards.md`
@@ -17,6 +18,7 @@ This workflow is model-agnostic. Use it when opening a new AI session.
 ### Bug fix
 
 - `docs/README.md`
+- `docs/core/decisions.md`
 - `docs/core/architecture.md`
 - `docs/core/engineering-standards.md`
 - `docs/core/testing-standards.md`
@@ -34,7 +36,8 @@ Constraints:
 - Follow docs/core/testing-standards.md
 - Keep change scoped to this objective only
 - Add or update tests
-- Update docs/execution/status.md and docs/execution/known-issues.md if relevant
+- Update docs/execution/status.md and docs/execution/roadmap.md if implementation state/order changed
+- Update docs/execution/known-issues.md only when active bugs/risks changed
 Deliverables:
 - Code changes
 - Tests

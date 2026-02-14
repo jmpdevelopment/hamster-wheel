@@ -34,10 +34,10 @@ Frontend coverage uses a local custom Vitest provider:
 BACKEND_COVERAGE_THRESHOLD=80 FRONTEND_COVERAGE_THRESHOLD=75 ./scripts/check-coverage.sh
 ```
 
-## Baseline (2026-02-14)
+## Baseline Reporting
 
-- Backend total statement coverage: 83.6%
-- Frontend line coverage: 99.5%
+- Keep latest project coverage snapshot in `docs/execution/status.md`.
+- Do not treat one historical baseline number in this file as a hard target.
 
 ## Quality Expectations for New Tests
 

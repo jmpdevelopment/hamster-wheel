@@ -2,68 +2,35 @@
 
 Last updated: 2026-02-14
 
-## Current State
+## Delivered Baseline
 
 - Phase 1 foundation is complete.
-- Architecture refactor is complete.
 - Phase 1.5 UX standards are complete.
-- Pre-LLM job management UX enhancements are complete:
-  - Filter delete now supports optional deletion of associated jobs.
-  - Job board supports multi-select (including shift-range) + select-all bulk delete.
-  - Job board supports bulk favorite/unfavorite and favorites-only view.
-  - Favorites are persisted in SQLite and survive app restart.
-  - `Poll Now` is available when filters are enabled and blocked only during active poll cycles (spinner/status shown).
-- Phase 2 has started with keychain manager completed.
-- Phase 2 LLM sequencing is now OpenAI-first; Claude is deferred behind provider registry completion.
-- Phase 2 matching architecture is async and decoupled from polling; UI should show pending match state while scores compute.
-- Phase 2 async matching groundwork is implemented:
-  - Polling now enqueues new jobs into `job_matches` with `pending` status.
-  - Job queries expose match status/score/summary in the existing job payload.
-  - Job list UI now shows a compact horizontal match-status badge in the title row (top-right) to preserve fixed card height and prevent row overflow.
-- Phase 2 async matcher worker orchestration is implemented:
-  - Matcher runs independently from polling and processes `pending` matches in background batches.
-  - Claiming is atomic (`pending` -> `processing`) and stale `processing` rows are requeued on timeout windows.
-  - Match updates emit `matching:status-changed` events and frontend coalesces refreshes for responsive UI updates.
-  - Current default scorer is local heuristic (`heuristic_v1`) to keep latency low and token usage at zero while external providers are integrated.
-- Match visibility and recalc UX is improved:
-  - Matched badge now shows explicit score (`Match Score: X%`) instead of generic ready state.
-  - Job detail panel surfaces score, status, and summary.
-  - Job detail includes `Recalculate score` action that requeues the selected job to `pending`.
-- Match observability and status-style consistency are improved:
-  - Matcher worker now emits structured lifecycle and per-job calculation logs and supports shared logger injection from app bootstrap.
-  - Match status parsing/meta labels are centralized in a shared frontend helper and consumed by both list and detail views.
-  - Reusable `hw-match-badge` variants now provide consistent status color/text treatment across light and dark themes.
-- Reliability hardening pass is complete and regression-covered.
+- Polling reliability hardening is complete (single-flight execution, deterministic next poll scheduling, bounded retries, diagnostics export).
+- Phase 2 async matching foundation is complete:
+  - Polling is ingestion-only.
+  - Matching runs asynchronously in a separate worker.
+  - Queue processing uses atomic claim (`pending` -> `processing`) with stale-processing requeue.
+- Match status UX is implemented in list and detail views, including `Match Score: X%` and per-job `Recalculate score`.
+- Matcher observability and UI consistency improvements are complete (structured logs + reusable status badge system).
 
-## Key Reliability Outcomes
+## Current Runtime Posture (Preserve)
 
-- Scheduler polls are timeout-bounded and panic-safe.
-- Poll execution is single-flight: overlapping manual/scheduled cycles are blocked.
-- Poll status is event-driven (`polling:status-changed`) with focus/visibility fallback sync.
-- SQLite runtime reliability is hardened:
-  - DB runs with a single shared SQLite connection so FK actions remain deterministic.
-  - SQLite startup applies `busy_timeout`; all DB writes use bounded context-aware busy retry.
-- Polling schedule is deterministic:
-  - `nextPollAt` is published before cycle work.
-  - resume and manual `PollNow` both reschedule auto-poll to `now + interval`.
-- Startup/scheduled poll completion summaries are surfaced to UI state so users
-  receive poll-result toasts even when no manual `PollNow` action occurred.
-- Frontend polling orchestration is isolated in `usePollingController`.
-- Poll diagnostics and export paths are available for failure triage.
+- Keep polling and matching decoupled.
+- Keep provider integration behind `internal/llm.Provider` and `internal/llm.Registry`.
+- Keep the default scorer local (`heuristic_v1`) until external providers are fully configured.
+- Keep event-driven updates (`polling:status-changed`, `matching:status-changed`) with bounded/coalesced UI refresh.
+- Keep SQLite runtime safeguards (single shared connection + busy retry on writes).
 
-## Verification Baseline from Latest Status Pass
+## Verification Baseline (Latest Pass: 2026-02-14)
 
-- Backend tests: passing.
-- Frontend tests: passing.
-- `go vet ./...`: passing.
-- Coverage gates: passing.
+- `go test ./...`: passing
+- `go vet ./...`: passing
+- `./scripts/check-coverage.sh`: passing
+- Backend total coverage: 78.3%
+- Frontend line coverage: 99.6%
 
-## Next Work Queue
+## Next Work
 
-1. Phase 2: implement OpenAI provider.
-2. Phase 2: implement OpenAI-compatible provider path for self-hosted/local models.
-3. Phase 2: wire provider selection + key/model/base-URL settings into matcher runtime.
-4. Phase 2: implement CV parser path for matching inputs.
-5. Phase 2: tune token-efficiency controls (compact prompt shaping, prefilter thresholds, and bounded context windows).
-6. Phase 2: wire completed match thresholds and notifications in UI.
-7. Later UI step: add job-list sorting controls for posted date and match score.
+Execution-ready backlog is in `docs/execution/roadmap.md` under
+`Phase 2 Immediate Implementation Queue`.

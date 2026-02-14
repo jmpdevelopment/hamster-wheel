@@ -70,3 +70,9 @@ Status legend:
 - Status: Accepted
 - Decision: Match worker claims pending rows with an atomic status transition (`pending` -> `processing`) and periodically requeues stale `processing` rows.
 - Rationale: Prevents duplicate processing when workers overlap, tolerates crash/restart scenarios, and keeps queue progression deterministic under concurrent polling + matching writes.
+
+## D-012: OpenAI-first rollout with OpenAI-compatible expansion
+
+- Status: Accepted
+- Decision: Integrate OpenAI first for external LLM scoring, while keeping runtime/model/base-URL configuration compatible with OpenAI-style APIs so local/self-hosted providers can be plugged in without matcher rewrites.
+- Rationale: Delivers fastest path to robust production scoring and preserves long-term provider portability (including OSS model endpoints).

@@ -2,77 +2,36 @@
 
 Last reviewed: 2026-02-14
 
+## Purpose
+
+Track active defects and active delivery risks only.
+
+- Keep this file short and current.
+- Do not maintain a resolved-issues changelog here; rely on git history and
+  commit/PR notes for closure history.
+
 ## Open Bugs
 
-- No confirmed open functional defects are currently tracked in this file.
+- No confirmed open functional defects are currently tracked.
 
-## Recently Resolved
-
-- 2026-02-14: matched jobs were shown with generic `Match ready` state and no
-  detail-view recalc control; fixed by showing `Match Score: X%` in list/detail
-  UI and adding a per-job `Recalculate score` action that requeues matching.
-- 2026-02-14: matching was previously enqueue-only and could remain indefinitely
-  pending; fixed by adding an async matcher worker with atomic claim transition
-  (`pending` -> `processing`), stale-processing requeue, and explicit matched/
-  failed terminal status updates.
-- 2026-02-14: pending match UI text was rendered as an extra vertical line in
-  job cards, which could compress/overflow dense card rows; fixed by replacing
-  it with a compact horizontal right-side status badge that uses explicit text
-  labels plus color-coded styling for accessibility.
-- 2026-02-14: initial badge placement in the bottom row could still overflow
-  fixed-height virtualized job cards; fixed by moving the status badge to the
-  top-right title row and tightening vertical spacing to stay within row bounds.
-- 2026-02-14: match-status labels/styles were duplicated across job list/detail
-  components, causing drift risk and inconsistent theme behavior; fixed by
-  centralizing status metadata and introducing reusable `hw-match-badge`
-  variant classes consumed by both views.
-- 2026-02-14: matcher logging was sparse/inconsistent and harder to correlate;
-  fixed by adding structured worker lifecycle and per-job logs with shared
-  logger injection from app startup.
-- 2026-02-14: SQLite foreign-key actions (`ON DELETE SET NULL` / `CASCADE`)
-  could be inconsistently enforced across pooled DB connections; fixed by
-  pinning the app DB to a single shared SQLite connection and preserving
-  explicit FK pragma initialization on startup.
-- 2026-02-14: SQLite busy-retry behavior was inconsistent across DB write paths;
-  fixed by applying context-aware bounded busy retry uniformly to filter/job/
-  settings writes and configuring SQLite `busy_timeout` during DB startup.
-- 2026-02-14: shift-range selection on job checkboxes was inconsistent after
-  list refreshes and could only work once; fixed by stabilizing the
-  selection-anchor state used by checkbox and card interactions.
-- 2026-02-14: bulk-delete operations could fail with `SQLITE_BUSY` under heavy
-  concurrent delete requests from UI; fixed by serializing delete calls and
-  adding bounded retry for transient SQLite lock contention.
-- 2026-02-14: favorites were stored only in frontend state and were lost on app
-  restart; fixed by persisting favorite state in the `jobs` table.
-- 2026-02-14: settings/favorite writes could intermittently fail with
-  `SQLITE_BUSY` while poll writes were active; fixed by adding bounded SQLite
-  busy-retry handling on DB write paths.
-- 2026-02-14: first app-start poll completion did not show toast feedback;
-  fixed by exposing latest scheduler run in polling status/event payloads and
-  consuming it in frontend poll state.
-
-When a bug is found, record:
+When a bug is added, include:
 
 - Severity (`critical`, `high`, `medium`, `low`)
 - Impacted area
 - Reproduction notes
 - Planned fix step
-- Regression test reference after fix
+- Regression test reference
 
-## Active Watchlist
+When a bug is fixed, remove it from this file in the same change that adds the
+regression test.
 
-- Distribution signing/notarization is deferred; users may see trust warnings on unsigned builds.
-- LLM matching and tailoring phases are not fully implemented yet; quality depends on upcoming Phase 2-3 completion.
-- External provider integration is not complete yet; current default matcher is local heuristic scoring until OpenAI provider rollout.
-- PDF parsing/generation quality may vary by document structure and will need targeted validation.
-- Job retention is currently indefinite; data hygiene controls (retention policy, archival/cleanup UX, and safe defaults) are deferred to end-phase hardening.
+## Active Risks
 
-## Risk Register
-
-| Risk | Current Mitigation |
-| --- | --- |
-| Job source API changes or deprecation | Adapter pattern allows source replacement with minimal impact. |
-| LLM API cost growth | Keep matching targeted and thresholds configurable; default model choice is cost-aware. |
-| Unsigned desktop package warnings | Document user workarounds now; revisit code-signing in distribution phase. |
-| PDF parse inaccuracies | Add preview/review steps and fallback text workflows before final tailoring. |
-| Unbounded local data growth from indefinite retention | Track planned data hygiene phase for retention/cleanup controls before distribution hardening completes. |
+| Risk | Why it Matters | Current Mitigation | Planned Reduction |
+| --- | --- | --- | --- |
+| Job source API changes or deprecation | Could break polling and discovery quality. | Adapter pattern keeps source integration isolated. | Add adapter contract tests and source health checks as new sources are added. |
+| LLM API cost growth | Could increase per-match spend and slow adoption. | Matching is asynchronous; default scorer is local heuristic; threshold is configurable. | Complete token-efficiency controls and OpenAI-compatible local endpoint path in Phase 2. |
+| External provider integration not complete | Match quality is currently capped by heuristic scoring in production default path. | OpenAI-first sequencing is locked and provider interface/registry exists. | Deliver OpenAI provider + runtime provider selection settings. |
+| PDF parse/tailoring accuracy variance | Could reduce output trust in Phase 3 tailoring workflows. | Tailoring phase is gated behind current matching completion. | Add parse quality checks and deterministic preview loops in Phase 3. |
+| Unsigned desktop package warnings | Can reduce user trust during distribution testing. | Document current unsigned-build behavior. | Add signing/notarization tasks in Phase 5 distribution hardening. |
+| Unbounded local data growth | Long-running installs may accumulate too much local data. | Data hygiene step is planned in distribution phase. | Implement retention/cleanup controls and safe defaults before release hardening exit. |

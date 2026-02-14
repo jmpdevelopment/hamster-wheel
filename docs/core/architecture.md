@@ -23,6 +23,14 @@
 7. UI shows pending state while score is computing and updates when match completes.
 8. High-score matches can trigger native notifications.
 
+## System Principles
+
+- Architecture: keep polling and matching decoupled so ingestion remains fast and deterministic.
+- Testability: define narrow consumer-side interfaces and keep service/package boundaries explicit.
+- Resilience: use bounded contexts/timeouts, atomic queue transitions, and retry-safe DB write paths.
+- Evolvability: add providers/adapters without changing core scheduler or matcher orchestration contracts.
+- Maintainability: centralize shared UI status semantics and structured logging to reduce drift.
+
 ## Service Boundaries
 
 Wails-exposed services in root package:
@@ -67,10 +75,11 @@ Representative keys:
 - `poll_interval_minutes` (default 30)
 - `match_threshold` (default 0.7)
 - `llm_provider` (default `openai`)
+- `llm_model`, `llm_base_url` (Phase 2 provider runtime settings)
 - `cv_path`, `cover_letter_draft`, `custom_instructions`
 - `first_run_complete`
 
-### `job_matches` (Phase 2 planned)
+### `job_matches` (Phase 2 in progress; active queue + scoring state)
 
 - `id`, `job_id`
 - `match_score` (0.0-1.0)
@@ -97,12 +106,20 @@ Provider logic is isolated behind an interface so matching/tailoring flows stay 
 Initial production provider is OpenAI. Registry design should allow additional providers, including OpenAI-compatible local/self-hosted endpoints used by OSS models.
 
 ```go
-type LLMProvider interface {
-    Name() string
-    DisplayName() string
-    APIKeyURL() string
-    SendMessage(ctx context.Context, systemPrompt, userPrompt string, maxTokens int) (string, error)
-    Validate(ctx context.Context) error
+type Provider interface {
+	Name() string
+	DisplayName() string
+	Match(ctx context.Context, req MatchRequest) (MatchResult, error)
+	Validate(ctx context.Context) error
+}
+
+type MatchRequest struct {
+	Query               string
+	JobTitle            string
+	JobCompany          string
+	JobLocation         string
+	JobDescription      string
+	MaxDescriptionRunes int
 }
 ```
 
