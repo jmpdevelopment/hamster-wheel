@@ -11,6 +11,9 @@ frontend/dist/
 *.dll
 *.so
 *.dylib
+coverage.out
+coverage/
+frontend/coverage/
 
 # IDE
 .idea/

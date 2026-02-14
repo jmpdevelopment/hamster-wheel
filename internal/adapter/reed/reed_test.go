@@ -108,6 +108,23 @@ func TestName(t *testing.T) {
 	}
 }
 
+func TestSetAPIKeyAndHasAPIKey(t *testing.T) {
+	a := New("initial")
+	if !a.HasAPIKey() {
+		t.Fatal("expected initial key to be present")
+	}
+
+	a.SetAPIKey("  next-key  ")
+	if !a.HasAPIKey() {
+		t.Fatal("expected non-empty key to be present")
+	}
+
+	a.SetAPIKey("   ")
+	if a.HasAPIKey() {
+		t.Fatal("expected blank key to be treated as missing")
+	}
+}
+
 func TestFetchNewJobs(t *testing.T) {
 	_, a := setupMockServer(t)
 	ctx := context.Background()

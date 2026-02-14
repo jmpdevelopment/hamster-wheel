@@ -132,3 +132,21 @@ func TestCleanupMissingDirNoError(t *testing.T) {
 		t.Fatalf("expected no error cleaning missing dir, got %v", err)
 	}
 }
+
+func TestNewStoreAppliesDefaultRetentionValues(t *testing.T) {
+	store := NewStore(t.TempDir(), 0, 0)
+	if store.maxFiles != 50 {
+		t.Fatalf("expected default maxFiles=50, got %d", store.maxFiles)
+	}
+	if store.maxAge != 24*time.Hour {
+		t.Fatalf("expected default maxAge=24h, got %s", store.maxAge)
+	}
+}
+
+func TestDirReturnsConfiguredDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "diagnostics")
+	store := NewStore(dir, 5, time.Hour)
+	if got := store.Dir(); got != dir {
+		t.Fatalf("expected dir %q, got %q", dir, got)
+	}
+}
