@@ -42,14 +42,42 @@ function App() {
 
   // Fetch polling status and keyboard shortcuts setting on mount.
   useEffect(() => {
-    GetPollingStatus().then((status) => {
-      setPollingPaused(status.paused);
-      setNextPollAt(status.nextPollAt);
-    });
-    GetKeyboardShortcuts().then((val) => {
-      // Empty string means default (enabled).
-      if (val === "false") setKeyboardShortcutsEnabled(false);
-    });
+    let cancelled = false;
+
+    const loadStartupState = async () => {
+      try {
+        const status = await GetPollingStatus();
+        if (!cancelled) {
+          setPollingPaused(status.paused);
+          setNextPollAt(status.nextPollAt);
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to load polling status:", message);
+        if (!cancelled) {
+          setAppError((prev) => prev ?? message);
+        }
+      }
+
+      try {
+        const val = await GetKeyboardShortcuts();
+        // Empty string means default (enabled).
+        if (!cancelled && val === "false") {
+          setKeyboardShortcutsEnabled(false);
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to load keyboard shortcuts setting:", message);
+        if (!cancelled) {
+          setAppError((prev) => prev ?? message);
+        }
+      }
+    };
+
+    void loadStartupState();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Combine errors from hooks and app-level errors.
@@ -92,11 +120,17 @@ function App() {
 
   const handleTogglePolling = useCallback(async () => {
     const newPaused = !pollingPaused;
-    await SetPollingPaused(newPaused);
-    setPollingPaused(newPaused);
-    if (!newPaused) {
-      const status = await GetPollingStatus();
-      setNextPollAt(status.nextPollAt);
+    try {
+      await SetPollingPaused(newPaused);
+      setPollingPaused(newPaused);
+      if (!newPaused) {
+        const status = await GetPollingStatus();
+        setNextPollAt(status.nextPollAt);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to toggle polling:", message);
+      setAppError(message);
     }
   }, [pollingPaused]);
 

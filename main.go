@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -43,10 +44,7 @@ func main() {
 	keychainStore := keychain.NewOSStore()
 
 	// Load Reed API key: keychain first, then env var fallback.
-	reedAPIKey, _ := keychainStore.Get("reed_api_key")
-	if reedAPIKey == "" {
-		reedAPIKey = os.Getenv("REED_API_KEY")
-	}
+	reedAPIKey := loadReedAPIKey(keychainStore, os.Getenv)
 	if reedAPIKey == "" {
 		slog.Warn("Reed API key not set — configure it in the app or set REED_API_KEY")
 	}
@@ -122,6 +120,19 @@ func main() {
 	if err := app.Run(); err != nil {
 		log.Fatalf("wails error: %v", err)
 	}
+}
+
+func loadReedAPIKey(store keychain.Store, getenv func(string) string) string {
+	reedAPIKey, err := store.Get(settingReedAPIKey)
+	if err != nil {
+		slog.Error("failed to load Reed API key from keychain", "error", err)
+	}
+
+	reedAPIKey = strings.TrimSpace(reedAPIKey)
+	if reedAPIKey == "" {
+		reedAPIKey = strings.TrimSpace(getenv("REED_API_KEY"))
+	}
+	return reedAPIKey
 }
 
 // setupSystemTray creates the system tray icon with menu for background operation.

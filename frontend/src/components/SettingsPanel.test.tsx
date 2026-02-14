@@ -105,6 +105,15 @@ describe("SettingsPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("calls onError when loading key presence fails", async () => {
+    mockHasReedAPIKey.mockRejectedValue(new Error("load key failed"));
+    render(<SettingsPanel {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(defaultProps.onError).toHaveBeenCalledWith("load key failed");
+    });
+  });
+
   it("opens Reed developer page when Obtain a Key is clicked", async () => {
     render(<SettingsPanel {...defaultProps} />);
     await waitFor(() => {
@@ -220,6 +229,17 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel {...defaultProps} />);
     await userEvent.click(screen.getByRole("button", { name: "Light" }));
     expect(defaultProps.onSetTheme).toHaveBeenCalledWith("light");
+  });
+
+  it("calls onError when theme save fails", async () => {
+    defaultProps.onSetTheme = vi.fn().mockRejectedValue(new Error("theme failed"));
+    render(<SettingsPanel {...defaultProps} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Light" }));
+
+    await waitFor(() => {
+      expect(defaultProps.onError).toHaveBeenCalledWith("theme failed");
+    });
   });
 
   it("highlights system button when theme is system", () => {

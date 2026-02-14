@@ -27,6 +27,7 @@ const mockDeleteFilter = vi.fn();
 const mockPollNow = vi.fn();
 const mockGetPollingStatus = vi.fn();
 const mockSetPollingPaused = vi.fn();
+const mockGetKeyboardShortcuts = vi.fn();
 const noOpRun = {
   runID: "",
   startedAt: "",
@@ -68,7 +69,8 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
   ClearReedAPIKey: vi.fn().mockResolvedValue(undefined),
   GetTheme: vi.fn().mockResolvedValue(""),
   SetTheme: vi.fn().mockResolvedValue(undefined),
-  GetKeyboardShortcuts: vi.fn().mockResolvedValue(""),
+  GetKeyboardShortcuts: (...args: unknown[]) =>
+    mockGetKeyboardShortcuts(...args),
   SetKeyboardShortcuts: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -97,6 +99,7 @@ beforeEach(() => {
   mockPollNow.mockResolvedValue(noOpRun);
   mockGetPollingStatus.mockResolvedValue({ paused: false, nextPollAt: "" });
   mockSetPollingPaused.mockResolvedValue(undefined);
+  mockGetKeyboardShortcuts.mockResolvedValue("");
 });
 
 describe("App", () => {
@@ -118,6 +121,60 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("No filters")).toBeInTheDocument();
       expect(screen.getByText("No jobs yet")).toBeInTheDocument();
+    });
+  });
+
+  it("shows startup error when loading polling status fails", async () => {
+    mockGetPollingStatus.mockRejectedValue(new Error("status load failed"));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("status load failed")).toBeInTheDocument();
+    });
+  });
+
+  it("shows startup error when loading keyboard shortcuts fails", async () => {
+    mockGetKeyboardShortcuts.mockRejectedValue(
+      new Error("shortcuts load failed")
+    );
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("shortcuts load failed")).toBeInTheDocument();
+    });
+  });
+
+  it("shows error when pause/resume toggle fails", async () => {
+    mockGetFilters.mockResolvedValue([
+      {
+        ID: "f1",
+        Name: "Backend",
+        Keywords: "go",
+        Location: "London",
+        Source: "reed_uk",
+        Enabled: true,
+        CreatedAt: "2026-02-08T10:00:00Z",
+        UpdatedAt: "2026-02-08T10:00:00Z",
+      },
+    ]);
+    mockSetPollingPaused.mockRejectedValue(new Error("toggle failed"));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /pause auto-polling/i })
+      ).toBeEnabled();
+    });
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /pause auto-polling/i })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("toggle failed")).toBeInTheDocument();
     });
   });
 

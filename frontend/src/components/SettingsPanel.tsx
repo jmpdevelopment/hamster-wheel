@@ -45,14 +45,28 @@ export function SettingsPanel({
   const savedTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
-    HasReedAPIKey()
-      .then((present) => {
-        setHasKey(Boolean(present));
-      })
-      .catch((err: unknown) => {
-        console.error("Failed to load API key:", err);
-      });
-  }, []);
+    let cancelled = false;
+
+    const loadHasKey = async () => {
+      try {
+        const present = await HasReedAPIKey();
+        if (!cancelled) {
+          setHasKey(Boolean(present));
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to load API key:", message);
+        if (!cancelled) {
+          onError(message);
+        }
+      }
+    };
+
+    void loadHasKey();
+    return () => {
+      cancelled = true;
+    };
+  }, [onError]);
 
   useEffect(() => {
     return () => {
@@ -69,6 +83,16 @@ export function SettingsPanel({
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Failed to save keyboard shortcuts setting:", message);
+      onError(message);
+    }
+  };
+
+  const handleSetTheme = async (newTheme: ThemePreference) => {
+    try {
+      await onSetTheme(newTheme);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save theme preference:", message);
       onError(message);
     }
   };
@@ -207,7 +231,9 @@ export function SettingsPanel({
                 key={opt.value}
                 variant={theme === opt.value ? "primary" : "secondary"}
                 size="sm"
-                onClick={() => onSetTheme(opt.value)}
+                onClick={() => {
+                  void handleSetTheme(opt.value);
+                }}
                 aria-pressed={theme === opt.value}
               >
                 {opt.label}
