@@ -4,6 +4,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -24,6 +25,7 @@ type DB struct {
 const (
 	sqliteBusyMaxAttempts = 6
 	sqliteBusyBaseDelay   = 50 * time.Millisecond
+	sqliteBusyTimeoutMs   = 5000
 )
 
 // dataDir returns the OS-appropriate directory for storing application data.
@@ -80,6 +82,18 @@ func OpenAt(path string) (*DB, error) {
 		return nil, fmt.Errorf("opening database: %w", err)
 	}
 
+	// Use a single shared sqlite connection so per-connection PRAGMAs (notably
+	// foreign_keys) are applied consistently for every statement.
+	conn.SetMaxOpenConns(1)
+	conn.SetMaxIdleConns(1)
+
+	// Give SQLite time to wait on transient writer locks before surfacing
+	// SQLITE_BUSY to callers.
+	if _, err := conn.Exec(fmt.Sprintf("PRAGMA busy_timeout=%d", sqliteBusyTimeoutMs)); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("setting busy timeout: %w", err)
+	}
+
 	// Enable WAL mode for better concurrent read performance.
 	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {
 		conn.Close()
@@ -119,8 +133,16 @@ func (db *DB) Conn() *sql.DB {
 }
 
 func withSQLiteBusyRetry(operation func() error) error {
+	return withSQLiteBusyRetryCtx(context.Background(), operation)
+}
+
+func withSQLiteBusyRetryCtx(ctx context.Context, operation func() error) error {
 	var err error
 	for attempt := 1; attempt <= sqliteBusyMaxAttempts; attempt++ {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+
 		err = operation()
 		if err == nil {
 			return nil
@@ -128,7 +150,20 @@ func withSQLiteBusyRetry(operation func() error) error {
 		if !isSQLiteBusyError(err) || attempt == sqliteBusyMaxAttempts {
 			return err
 		}
-		time.Sleep(sqliteBusyBaseDelay * time.Duration(attempt))
+
+		delay := sqliteBusyBaseDelay * time.Duration(attempt)
+		timer := time.NewTimer(delay)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return ctx.Err()
+		}
 	}
 	return err
 }

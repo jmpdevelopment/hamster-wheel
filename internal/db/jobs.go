@@ -42,12 +42,19 @@ func (db *DB) InsertJob(ctx context.Context, job *Job) (string, error) {
 		postedAt = &s
 	}
 
-	_, err := db.conn.ExecContext(ctx,
-		`INSERT INTO jobs (id, source, source_id, title, company, location, description, url, posted_at, filter_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		job.ID, job.Source, job.SourceID, job.Title, job.Company,
-		job.Location, job.Description, job.URL, postedAt, job.FilterID,
-	)
+	var err error
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		_, err = db.conn.ExecContext(ctx,
+			`INSERT INTO jobs (id, source, source_id, title, company, location, description, url, posted_at, filter_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			job.ID, job.Source, job.SourceID, job.Title, job.Company,
+			job.Location, job.Description, job.URL, postedAt, job.FilterID,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
 	if err != nil {
 		// SQLite returns "UNIQUE constraint failed" for duplicate (source, source_id).
 		if isUniqueViolation(err) {
@@ -136,7 +143,17 @@ func (db *DB) ListJobsByFilter(ctx context.Context, filterID string) ([]Job, err
 // removes any associated job_matches rows.
 // Returns ErrJobNotFound if the job doesn't exist.
 func (db *DB) DeleteJob(ctx context.Context, id string) error {
-	result, err := db.conn.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
+	var (
+		result sql.Result
+		err    error
+	)
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		result, err = db.conn.ExecContext(ctx, "DELETE FROM jobs WHERE id = ?", id)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
 	if err != nil {
 		return fmt.Errorf("deleting job %q: %w", id, err)
 	}
@@ -157,7 +174,7 @@ func (db *DB) DeleteJob(ctx context.Context, id string) error {
 func (db *DB) SetJobFavorite(ctx context.Context, id string, favorite bool) error {
 	var result sql.Result
 	var err error
-	retryErr := withSQLiteBusyRetry(func() error {
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
 		result, err = db.conn.ExecContext(ctx,
 			"UPDATE jobs SET is_favorite = ? WHERE id = ?",
 			boolToSQLiteInt(favorite), id,
@@ -185,7 +202,7 @@ func (db *DB) SetJobFavorite(ctx context.Context, id string, favorite bool) erro
 // SetJobsFavorite updates favorite status for multiple jobs in one transaction.
 // Missing IDs are ignored so stale UI selections do not fail the entire action.
 func (db *DB) SetJobsFavorite(ctx context.Context, ids []string, favorite bool) error {
-	retryErr := withSQLiteBusyRetry(func() error {
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
 		tx, err := db.conn.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("beginning favorites update transaction: %w", err)
@@ -224,10 +241,20 @@ func (db *DB) SetJobsFavorite(ctx context.Context, ids []string, favorite bool) 
 // UpdateJobDescription updates the description of a job by ID.
 // Returns ErrJobNotFound if the job doesn't exist.
 func (db *DB) UpdateJobDescription(ctx context.Context, id, description string) error {
-	result, err := db.conn.ExecContext(ctx,
-		"UPDATE jobs SET description = ? WHERE id = ?",
-		description, id,
+	var (
+		result sql.Result
+		err    error
 	)
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		result, err = db.conn.ExecContext(ctx,
+			"UPDATE jobs SET description = ? WHERE id = ?",
+			description, id,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
 	if err != nil {
 		return fmt.Errorf("updating job description %q: %w", id, err)
 	}

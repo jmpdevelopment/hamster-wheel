@@ -21,6 +21,9 @@ Last updated: 2026-02-14
 - Scheduler polls are timeout-bounded and panic-safe.
 - Poll execution is single-flight: overlapping manual/scheduled cycles are blocked.
 - Poll status is event-driven (`polling:status-changed`) with focus/visibility fallback sync.
+- SQLite runtime reliability is hardened:
+  - DB runs with a single shared SQLite connection so FK actions remain deterministic.
+  - SQLite startup applies `busy_timeout`; all DB writes use bounded context-aware busy retry.
 - Polling schedule is deterministic:
   - `nextPollAt` is published before cycle work.
   - resume and manual `PollNow` both reschedule auto-poll to `now + interval`.

@@ -50,3 +50,4 @@ Build sequence remains:
 1. macOS `.dmg` and Windows `.msi` pipelines.
 2. GitHub Actions CI.
 3. End-user documentation packaging.
+4. Data hygiene pass (retention/archival controls, cleanup tooling, and safety defaults for long-running local datasets).

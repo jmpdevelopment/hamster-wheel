@@ -1,11 +1,14 @@
 package db
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // testDB is a helper that creates a temporary database for testing.
@@ -118,6 +121,56 @@ func TestForeignKeysEnabled(t *testing.T) {
 
 	if fk != 1 {
 		t.Error("foreign keys are not enabled")
+	}
+}
+
+func TestOpenAtUsesSingleConnectionPool(t *testing.T) {
+	db := testDB(t)
+
+	stats := db.Conn().Stats()
+	if stats.MaxOpenConnections != 1 {
+		t.Fatalf("expected MaxOpenConnections=1, got %d", stats.MaxOpenConnections)
+	}
+}
+
+func TestSQLiteBusyTimeoutConfigured(t *testing.T) {
+	db := testDB(t)
+
+	var timeoutMs int
+	err := db.Conn().QueryRow("PRAGMA busy_timeout").Scan(&timeoutMs)
+	if err != nil {
+		t.Fatalf("reading busy_timeout pragma: %v", err)
+	}
+	if timeoutMs != sqliteBusyTimeoutMs {
+		t.Fatalf("expected busy_timeout=%dms, got %dms", sqliteBusyTimeoutMs, timeoutMs)
+	}
+}
+
+func TestWithSQLiteBusyRetryCtxReturnsContextError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := withSQLiteBusyRetryCtx(ctx, func() error {
+		return errors.New("SQLITE_BUSY: database is locked")
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context canceled, got %v", err)
+	}
+}
+
+func TestWithSQLiteBusyRetryCtxStopsWaitingAfterDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	started := time.Now()
+	err := withSQLiteBusyRetryCtx(ctx, func() error {
+		return errors.New("SQLITE_BUSY: database is locked")
+	})
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected context deadline exceeded, got %v", err)
+	}
+	if time.Since(started) > 300*time.Millisecond {
+		t.Fatalf("expected retry loop to stop promptly after context deadline")
 	}
 }
 

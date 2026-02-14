@@ -42,11 +42,18 @@ func (db *DB) CreateFilter(ctx context.Context, name, keywords, location, source
 
 	id := uuid.New().String()
 
-	_, err := db.conn.ExecContext(ctx,
-		`INSERT INTO search_filters (id, name, keywords, location, source)
-		 VALUES (?, ?, ?, ?, ?)`,
-		id, name, keywords, location, source,
-	)
+	var err error
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		_, err = db.conn.ExecContext(ctx,
+			`INSERT INTO search_filters (id, name, keywords, location, source)
+			 VALUES (?, ?, ?, ?, ?)`,
+			id, name, keywords, location, source,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
 	if err != nil {
 		slog.Error("failed to create search filter", "filter_id", id, "name", name, "source", source, "error", err)
 		return "", fmt.Errorf("creating filter %q: %w", name, err)
@@ -120,13 +127,23 @@ func (db *DB) UpdateFilter(ctx context.Context, id, name, keywords, location, so
 		enabledInt = 1
 	}
 
-	result, err := db.conn.ExecContext(ctx,
-		`UPDATE search_filters
-		 SET name = ?, keywords = ?, location = ?, source = ?, enabled = ?,
-		     updated_at = datetime('now')
-		 WHERE id = ?`,
-		name, keywords, location, source, enabledInt, id,
+	var (
+		result sql.Result
+		err    error
 	)
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		result, err = db.conn.ExecContext(ctx,
+			`UPDATE search_filters
+			 SET name = ?, keywords = ?, location = ?, source = ?, enabled = ?,
+			     updated_at = datetime('now')
+			 WHERE id = ?`,
+			name, keywords, location, source, enabledInt, id,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
 	if err != nil {
 		return fmt.Errorf("updating filter %q: %w", id, err)
 	}
@@ -145,7 +162,17 @@ func (db *DB) UpdateFilter(ctx context.Context, id, name, keywords, location, so
 // DeleteFilter removes a search filter by ID.
 // Returns ErrFilterNotFound if the filter doesn't exist.
 func (db *DB) DeleteFilter(ctx context.Context, id string) error {
-	result, err := db.conn.ExecContext(ctx, "DELETE FROM search_filters WHERE id = ?", id)
+	var (
+		result sql.Result
+		err    error
+	)
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		result, err = db.conn.ExecContext(ctx, "DELETE FROM search_filters WHERE id = ?", id)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
 	if err != nil {
 		slog.Error("failed to delete search filter", "filter_id", id, "error", err)
 		return fmt.Errorf("deleting filter %q: %w", id, err)

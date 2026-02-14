@@ -23,7 +23,7 @@ func (db *DB) GetSetting(ctx context.Context, key string) (string, error) {
 // SetSetting creates or updates a setting.
 func (db *DB) SetSetting(ctx context.Context, key, value string) error {
 	var err error
-	retryErr := withSQLiteBusyRetry(func() error {
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
 		_, err = db.conn.ExecContext(ctx,
 			"INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
 			key, value, value,
@@ -42,7 +42,7 @@ func (db *DB) SetSetting(ctx context.Context, key, value string) error {
 // DeleteSetting removes a setting by key.
 func (db *DB) DeleteSetting(ctx context.Context, key string) error {
 	var err error
-	retryErr := withSQLiteBusyRetry(func() error {
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
 		_, err = db.conn.ExecContext(ctx, "DELETE FROM settings WHERE key = ?", key)
 		return err
 	})
