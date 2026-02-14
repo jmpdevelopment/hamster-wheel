@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"hamster-wheel/internal/adapter"
 )
@@ -89,8 +92,8 @@ func setupMockServer(t *testing.T) (*httptest.Server, *Adapter) {
 	t.Cleanup(server.Close)
 
 	a := newWithOptions(testAPIKey, server.URL, server.Client())
-	// Disable rate limiting for tests.
-	a.lastReq = a.lastReq.Add(-minRequestGap)
+	// Disable rate limiting for regular tests.
+	a.requestGap = 0
 
 	return server, a
 }
@@ -438,5 +441,88 @@ func TestFormatNumber(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("formatNumber(%v) = %q, want %q", tt.input, got, tt.want)
 		}
+	}
+}
+
+func TestDoGetEnforcesRequestGapAcrossConcurrentCalls(t *testing.T) {
+	const callCount = 4
+	const gap = 40 * time.Millisecond
+	const tolerance = 8 * time.Millisecond
+
+	var (
+		mu       sync.Mutex
+		arrivals []time.Time
+	)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		arrivals = append(arrivals, time.Now())
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(searchResponse{Results: []searchResult{}})
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	a := newWithOptions(testAPIKey, server.URL, server.Client())
+	a.requestGap = gap
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(callCount)
+	for i := 0; i < callCount; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+			body, err := a.doGet(context.Background(), server.URL+"/search")
+			if err != nil {
+				t.Errorf("doGet failed: %v", err)
+				return
+			}
+			body.Close()
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if len(arrivals) != callCount {
+		t.Fatalf("expected %d requests, got %d", callCount, len(arrivals))
+	}
+
+	sort.Slice(arrivals, func(i, j int) bool {
+		return arrivals[i].Before(arrivals[j])
+	})
+
+	for i := 1; i < len(arrivals); i++ {
+		delta := arrivals[i].Sub(arrivals[i-1])
+		if delta+tolerance < gap {
+			t.Fatalf("request gap too small: got %v, want at least %v", delta, gap)
+		}
+	}
+}
+
+func TestDoGetRespectsContextWhileWaitingForRateLimit(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/search", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(searchResponse{Results: []searchResult{}})
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	a := newWithOptions(testAPIKey, server.URL, server.Client())
+	a.requestGap = 250 * time.Millisecond
+	a.lastReq = time.Now()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+
+	_, err := a.doGet(ctx, server.URL+"/search")
+	if err == nil {
+		t.Fatal("expected context deadline error while waiting for rate limit")
+	}
+	if !strings.Contains(err.Error(), context.DeadlineExceeded.Error()) {
+		t.Fatalf("expected context deadline exceeded error, got %v", err)
 	}
 }

@@ -30,13 +30,15 @@ type Adapter struct {
 	baseURL    string       // Base URL (overridable for testing)
 	httpClient *http.Client // HTTP client (overridable for testing)
 	lastReq    time.Time    // Timestamp of last HTTP request (for rate limiting)
+	requestGap time.Duration
 }
 
 // New creates a Reed UK adapter with the given API key.
 func New(apiKey string) *Adapter {
 	return &Adapter{
-		apiKey:  apiKey,
-		baseURL: defaultBaseURL,
+		apiKey:     apiKey,
+		baseURL:    defaultBaseURL,
+		requestGap: minRequestGap,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -50,6 +52,7 @@ func newWithOptions(apiKey, baseURL string, client *http.Client) *Adapter {
 		apiKey:     apiKey,
 		baseURL:    baseURL,
 		httpClient: client,
+		requestGap: minRequestGap,
 	}
 }
 
@@ -162,22 +165,10 @@ func (a *Adapter) Validate(ctx context.Context) error {
 // Returns the response body — the caller is responsible for closing it.
 // Thread-safe: can be called concurrently from multiple goroutines.
 func (a *Adapter) doGet(ctx context.Context, targetURL string) (io.ReadCloser, error) {
-	// Rate limiting: wait if we made a request too recently.
-	a.mu.Lock()
-	since := time.Since(a.lastReq)
-	if since < minRequestGap {
-		a.mu.Unlock() // Unlock during wait to avoid blocking other callers
-		wait := minRequestGap - since
-		select {
-		case <-time.After(wait):
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-		a.mu.Lock() // Re-lock to update lastReq
+	apiKey, err := a.acquireRequestSlot(ctx)
+	if err != nil {
+		return nil, err
 	}
-	a.lastReq = time.Now()
-	apiKey := a.apiKey // Read apiKey under lock
-	a.mu.Unlock()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
@@ -202,6 +193,37 @@ func (a *Adapter) doGet(ctx context.Context, targetURL string) (io.ReadCloser, e
 	}
 
 	return resp.Body, nil
+}
+
+// acquireRequestSlot blocks until the caller can issue a request while preserving
+// minimum spacing even when many goroutines call doGet concurrently.
+func (a *Adapter) acquireRequestSlot(ctx context.Context) (string, error) {
+	for {
+		a.mu.Lock()
+		since := time.Since(a.lastReq)
+		if since >= a.requestGap {
+			a.lastReq = time.Now()
+			apiKey := a.apiKey
+			a.mu.Unlock()
+			return apiKey, nil
+		}
+
+		wait := a.requestGap - since
+		a.mu.Unlock()
+
+		timer := time.NewTimer(wait)
+		select {
+		case <-timer.C:
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return "", ctx.Err()
+		}
+	}
 }
 
 // formatSalary builds a human-readable salary string.
