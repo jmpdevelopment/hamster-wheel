@@ -19,6 +19,13 @@ const fakeJob = (id = "j1", title = "Go Developer") => ({
 
 const mockGetJobs = vi.fn();
 const mockGetJobCount = vi.fn();
+const mockGetFilters = vi.fn();
+const mockCreateFilter = vi.fn();
+const mockUpdateFilter = vi.fn();
+const mockDeleteFilter = vi.fn();
+const mockPollNow = vi.fn();
+const mockGetPollingStatus = vi.fn();
+const mockSetPollingPaused = vi.fn();
 
 // Mock all Wails bindings.
 vi.mock("../bindings/hamster-wheel/jobservice", () => ({
@@ -28,18 +35,16 @@ vi.mock("../bindings/hamster-wheel/jobservice", () => ({
 }));
 
 vi.mock("../bindings/hamster-wheel/filterservice", () => ({
-  GetFilters: vi.fn().mockResolvedValue([]),
-  CreateFilter: vi.fn().mockResolvedValue("f1"),
-  UpdateFilter: vi.fn().mockResolvedValue(undefined),
-  DeleteFilter: vi.fn().mockResolvedValue(undefined),
+  GetFilters: (...args: unknown[]) => mockGetFilters(...args),
+  CreateFilter: (...args: unknown[]) => mockCreateFilter(...args),
+  UpdateFilter: (...args: unknown[]) => mockUpdateFilter(...args),
+  DeleteFilter: (...args: unknown[]) => mockDeleteFilter(...args),
 }));
 
 vi.mock("../bindings/hamster-wheel/pollingservice", () => ({
-  PollNow: vi.fn().mockResolvedValue([]),
-  GetPollingStatus: vi
-    .fn()
-    .mockResolvedValue({ paused: false, nextPollAt: "" }),
-  SetPollingPaused: vi.fn().mockResolvedValue(undefined),
+  PollNow: (...args: unknown[]) => mockPollNow(...args),
+  GetPollingStatus: (...args: unknown[]) => mockGetPollingStatus(...args),
+  SetPollingPaused: (...args: unknown[]) => mockSetPollingPaused(...args),
 }));
 
 vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
@@ -64,8 +69,16 @@ vi.mock("react-virtualized-auto-sizer", () => ({
 }));
 
 beforeEach(() => {
+  vi.clearAllMocks();
   mockGetJobs.mockResolvedValue([]);
   mockGetJobCount.mockResolvedValue(0);
+  mockGetFilters.mockResolvedValue([]);
+  mockCreateFilter.mockResolvedValue("f1");
+  mockUpdateFilter.mockResolvedValue(undefined);
+  mockDeleteFilter.mockResolvedValue(undefined);
+  mockPollNow.mockResolvedValue([]);
+  mockGetPollingStatus.mockResolvedValue({ paused: false, nextPollAt: "" });
+  mockSetPollingPaused.mockResolvedValue(undefined);
 });
 
 describe("App", () => {
@@ -88,6 +101,64 @@ describe("App", () => {
       expect(screen.getByText("No filters")).toBeInTheDocument();
       expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
+  });
+
+  it("shows poll failure in error banner and no poll-complete toast", async () => {
+    mockGetFilters.mockResolvedValue([
+      {
+        ID: "f1",
+        Name: "Backend",
+        Keywords: "go",
+        Location: "London",
+        Source: "reed_uk",
+        Enabled: true,
+        CreatedAt: "2026-02-08T10:00:00Z",
+        UpdatedAt: "2026-02-08T10:00:00Z",
+      },
+    ]);
+    mockPollNow.mockRejectedValue(new Error("database unavailable"));
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Poll Now" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("database unavailable");
+    });
+    expect(screen.queryByText(/Poll complete:/)).not.toBeInTheDocument();
+  });
+
+  it("does not show poll-complete toast when poll returns empty results", async () => {
+    mockGetFilters.mockResolvedValue([
+      {
+        ID: "f1",
+        Name: "Backend",
+        Keywords: "go",
+        Location: "London",
+        Source: "reed_uk",
+        Enabled: true,
+        CreatedAt: "2026-02-08T10:00:00Z",
+        UpdatedAt: "2026-02-08T10:00:00Z",
+      },
+    ]);
+    mockPollNow.mockResolvedValue([]);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Poll Now" }));
+
+    await waitFor(() => {
+      expect(mockPollNow).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText(/Poll complete:/)).not.toBeInTheDocument();
   });
 
   it("opens settings panel when gear icon is clicked", async () => {

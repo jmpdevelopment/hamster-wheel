@@ -24,13 +24,13 @@ type mockAdapter struct {
 	fetchErr    error                          // if set, FetchNewJobs returns this
 	detailErr   error                          // if set, FetchJobDetails returns this
 
-	mu           sync.Mutex
-	fetchCalls   int // how many times FetchNewJobs was called
-	detailCalls  int // how many times FetchJobDetails was called
+	mu          sync.Mutex
+	fetchCalls  int // how many times FetchNewJobs was called
+	detailCalls int // how many times FetchJobDetails was called
 }
 
-func (m *mockAdapter) Name() string        { return m.name }
-func (m *mockAdapter) DisplayName() string { return m.displayName }
+func (m *mockAdapter) Name() string                     { return m.name }
+func (m *mockAdapter) DisplayName() string              { return m.displayName }
 func (m *mockAdapter) Validate(_ context.Context) error { return nil }
 
 func (m *mockAdapter) FetchNewJobs(_ context.Context, _ adapter.SearchParams) ([]adapter.JobSummary, error) {
@@ -84,7 +84,10 @@ func TestPollOnceWithNoEnabledFilters(t *testing.T) {
 	database, registry := testSetup(t)
 	s := New(database, registry, time.Minute)
 
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if results != nil {
 		t.Errorf("expected nil results for no filters, got %d", len(results))
 	}
@@ -105,14 +108,17 @@ func TestPollOnceDiscoversNewJobs(t *testing.T) {
 	registry.Register(mock)
 
 	// Create an enabled filter using this source.
-	filterID, err := database.CreateFilter(context.Background(),"Test Filter", "golang", "London", "test_source")
+	filterID, err := database.CreateFilter(context.Background(), "Test Filter", "golang", "London", "test_source")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
 	_ = filterID
 
 	s := New(database, registry, time.Minute)
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -148,10 +154,10 @@ func TestPollOnceDeduplicatesExistingJobs(t *testing.T) {
 	}
 	registry.Register(mock)
 
-	database.CreateFilter(context.Background(),"Test", "go", "London", "test_source")
+	database.CreateFilter(context.Background(), "Test", "go", "London", "test_source")
 
 	// Pre-insert the job so it already exists.
-	database.InsertJob(context.Background(),&db.Job{
+	database.InsertJob(context.Background(), &db.Job{
 		Source:   "test_source",
 		SourceID: "existing-job",
 		Title:    "Go Dev",
@@ -159,7 +165,10 @@ func TestPollOnceDeduplicatesExistingJobs(t *testing.T) {
 	})
 
 	s := New(database, registry, time.Minute)
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
 
 	r := results[0]
 	if r.NewJobs != 0 {
@@ -179,10 +188,13 @@ func TestPollOnceSkipsUnknownAdapter(t *testing.T) {
 	database, registry := testSetup(t)
 
 	// Create a filter referencing an adapter that doesn't exist.
-	database.CreateFilter(context.Background(),"Ghost Filter", "python", "Remote", "nonexistent_source")
+	database.CreateFilter(context.Background(), "Ghost Filter", "python", "Remote", "nonexistent_source")
 
 	s := New(database, registry, time.Minute)
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -208,10 +220,13 @@ func TestPollOnceHandlesFetchError(t *testing.T) {
 	}
 	registry.Register(mock)
 
-	database.CreateFilter(context.Background(),"Failing", "go", "London", "failing_source")
+	database.CreateFilter(context.Background(), "Failing", "go", "London", "failing_source")
 
 	s := New(database, registry, time.Minute)
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
 
 	r := results[0]
 	if r.Err == nil {
@@ -234,10 +249,13 @@ func TestPollOnceStoresSummaryWhenDetailsFail(t *testing.T) {
 	}
 	registry.Register(mock)
 
-	database.CreateFilter(context.Background(),"Detail Fail", "go", "London", "detail_fail_source")
+	database.CreateFilter(context.Background(), "Detail Fail", "go", "London", "detail_fail_source")
 
 	s := New(database, registry, time.Minute)
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
 
 	r := results[0]
 	if r.Err != nil {
@@ -249,7 +267,7 @@ func TestPollOnceStoresSummaryWhenDetailsFail(t *testing.T) {
 	}
 
 	// Verify the job is in the DB with empty description.
-	jobs, _ := database.ListJobs(context.Background(),0)
+	jobs, _ := database.ListJobs(context.Background(), 0)
 	if len(jobs) != 1 {
 		t.Fatalf("expected 1 job in DB, got %d", len(jobs))
 	}
@@ -278,11 +296,14 @@ func TestPollOnceMultipleFiltersConcurrently(t *testing.T) {
 	registry.Register(mock1)
 	registry.Register(mock2)
 
-	database.CreateFilter(context.Background(),"Filter A", "go", "London", "source_a")
-	database.CreateFilter(context.Background(),"Filter B", "react", "Remote", "source_b")
+	database.CreateFilter(context.Background(), "Filter A", "go", "London", "source_a")
+	database.CreateFilter(context.Background(), "Filter B", "react", "Remote", "source_b")
 
 	s := New(database, registry, time.Minute)
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
 
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d", len(results))
@@ -320,30 +341,19 @@ func TestPollOnceRespectsContextCancellation(t *testing.T) {
 	}
 	registry.Register(mock)
 
-	database.CreateFilter(context.Background(),"Cancel Test", "go", "London", "cancel_source")
+	database.CreateFilter(context.Background(), "Cancel Test", "go", "London", "cancel_source")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // Cancel immediately.
 
 	s := New(database, registry, time.Minute)
-	results := s.PollOnce(ctx)
-
-	// With an already-cancelled context, ListEnabledFilters now receives the
-	// cancelled ctx and fails immediately, so PollOnce returns nil. This is
-	// correct — context cancellation is now propagated to the DB layer.
-	// If results are returned (unlikely race), verify not all jobs processed.
-	if results == nil {
-		return // DB call failed due to cancelled context — expected.
+	results, err := s.PollOnce(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context cancellation error, got: %v", err)
 	}
 
-	if len(results) != 1 {
-		t.Fatalf("expected 0 or 1 results, got %d", len(results))
-	}
-
-	r := results[0]
-	// Either the fetch itself failed or processing stopped early.
-	if r.NewJobs == 3 {
-		t.Error("expected cancellation to prevent processing all jobs")
+	if results != nil {
+		t.Errorf("expected nil results on cancelled context, got %d", len(results))
 	}
 }
 
@@ -358,12 +368,14 @@ func TestPollOnceLinksJobsToFilter(t *testing.T) {
 	}
 	registry.Register(mock)
 
-	filterID, _ := database.CreateFilter(context.Background(),"Link Test", "go", "London", "linked_source")
+	filterID, _ := database.CreateFilter(context.Background(), "Link Test", "go", "London", "linked_source")
 
 	s := New(database, registry, time.Minute)
-	s.PollOnce(context.Background())
+	if _, err := s.PollOnce(context.Background()); err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
 
-	jobs, _ := database.ListJobsByFilter(context.Background(),filterID)
+	jobs, _ := database.ListJobsByFilter(context.Background(), filterID)
 	if len(jobs) != 1 {
 		t.Fatalf("expected 1 job linked to filter, got %d", len(jobs))
 	}
@@ -383,18 +395,24 @@ func TestPollOnceSecondPollSkipsDuplicates(t *testing.T) {
 	}
 	registry.Register(mock)
 
-	database.CreateFilter(context.Background(),"Repeat", "go", "London", "repeat_source")
+	database.CreateFilter(context.Background(), "Repeat", "go", "London", "repeat_source")
 
 	s := New(database, registry, time.Minute)
 
 	// First poll: discovers the job.
-	results1 := s.PollOnce(context.Background())
+	results1, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("first poll failed: %v", err)
+	}
 	if results1[0].NewJobs != 1 {
 		t.Fatalf("first poll: expected 1 new, got %d", results1[0].NewJobs)
 	}
 
 	// Second poll: same job from adapter, should be skipped.
-	results2 := s.PollOnce(context.Background())
+	results2, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("second poll failed: %v", err)
+	}
 	if results2[0].NewJobs != 0 {
 		t.Errorf("second poll: expected 0 new, got %d", results2[0].NewJobs)
 	}
@@ -419,7 +437,7 @@ func TestStartAndStop(t *testing.T) {
 	}
 	registry.Register(mock)
 
-	database.CreateFilter(context.Background(),"SS", "go", "London", "start_stop_source")
+	database.CreateFilter(context.Background(), "SS", "go", "London", "start_stop_source")
 
 	// Use a very short interval so we can verify it polls at least once.
 	s := New(database, registry, 50*time.Millisecond)
@@ -458,8 +476,8 @@ type panicAdapter struct {
 	name string
 }
 
-func (p *panicAdapter) Name() string        { return p.name }
-func (p *panicAdapter) DisplayName() string { return p.name }
+func (p *panicAdapter) Name() string                     { return p.name }
+func (p *panicAdapter) DisplayName() string              { return p.name }
 func (p *panicAdapter) Validate(_ context.Context) error { return nil }
 
 func (p *panicAdapter) FetchNewJobs(_ context.Context, _ adapter.SearchParams) ([]adapter.JobSummary, error) {
@@ -474,7 +492,7 @@ func TestSafePollRecoversFromPanic(t *testing.T) {
 	database, registry := testSetup(t)
 
 	registry.Register(&panicAdapter{name: "panic_source"})
-	database.CreateFilter(context.Background(),"Panic Filter", "go", "London", "panic_source")
+	database.CreateFilter(context.Background(), "Panic Filter", "go", "London", "panic_source")
 
 	s := New(database, registry, time.Minute)
 
@@ -489,9 +507,12 @@ func TestSafePollRecoversFromPanic(t *testing.T) {
 			{SourceID: "post-panic", Title: "Post Panic Job", URL: "https://example.com/pp"},
 		},
 	})
-	database.CreateFilter(context.Background(),"Recovery", "go", "London", "recovery_source")
+	database.CreateFilter(context.Background(), "Recovery", "go", "London", "recovery_source")
 
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
 
 	// Should have 2 results: one error (panic_source) and one success (recovery_source).
 	if len(results) != 2 {
@@ -513,7 +534,7 @@ func TestSchedulerSurvivesPanicAndKeepsRunning(t *testing.T) {
 	database, registry := testSetup(t)
 
 	registry.Register(&panicAdapter{name: "panic_source"})
-	database.CreateFilter(context.Background(),"Panic", "go", "London", "panic_source")
+	database.CreateFilter(context.Background(), "Panic", "go", "London", "panic_source")
 
 	// Start scheduler with short interval — the panic adapter will panic
 	// every tick, but safePoll should recover each time.
@@ -537,22 +558,19 @@ func TestPollOnceWithClosedDB(t *testing.T) {
 		},
 	})
 
-	database.CreateFilter(context.Background(),"Closed DB", "go", "London", "closed_db_source")
+	database.CreateFilter(context.Background(), "Closed DB", "go", "London", "closed_db_source")
 
 	s := New(database, registry, time.Minute)
 
 	// Close the DB before polling — simulates unexpected resource loss.
 	database.Close()
 
-	// PollOnce should return nil (ListEnabledFilters fails) — not panic.
-	results := s.PollOnce(context.Background())
+	results, err := s.PollOnce(context.Background())
+	if err == nil {
+		t.Fatal("expected poll once to fail with closed DB")
+	}
 	if results != nil {
-		// If it didn't return nil, check that errors are reported, not crashes.
-		for _, r := range results {
-			if r.Err == nil && r.NewJobs > 0 {
-				t.Error("expected error or no new jobs with closed DB")
-			}
-		}
+		t.Errorf("expected nil results with closed DB, got %d", len(results))
 	}
 }
 
@@ -567,7 +585,7 @@ func TestStartStopStartAgain(t *testing.T) {
 	}
 	registry.Register(mock)
 
-	database.CreateFilter(context.Background(),"Restart", "go", "London", "restart_source")
+	database.CreateFilter(context.Background(), "Restart", "go", "London", "restart_source")
 
 	s := New(database, registry, 50*time.Millisecond)
 
@@ -598,7 +616,7 @@ func TestSetPausedSkipsPoll(t *testing.T) {
 		},
 	}
 	registry.Register(mock)
-	database.CreateFilter(context.Background(),"Pause Test", "go", "London", "pause_source")
+	database.CreateFilter(context.Background(), "Pause Test", "go", "London", "pause_source")
 
 	s := New(database, registry, time.Minute)
 
@@ -646,7 +664,7 @@ func TestNextPollAtTracked(t *testing.T) {
 		jobs: []adapter.JobSummary{},
 	}
 	registry.Register(mock)
-	database.CreateFilter(context.Background(),"Next", "go", "London", "next_source")
+	database.CreateFilter(context.Background(), "Next", "go", "London", "next_source")
 
 	s := New(database, registry, 50*time.Millisecond)
 
@@ -680,7 +698,7 @@ func TestPollOnceWritePhaseContextCancellation(t *testing.T) {
 	}
 
 	registry.Register(&mockAdapter{name: "many_source", jobs: jobs})
-	database.CreateFilter(context.Background(),"Many", "go", "London", "many_source")
+	database.CreateFilter(context.Background(), "Many", "go", "London", "many_source")
 
 	// Use a context that we cancel after a very short delay.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -694,7 +712,13 @@ func TestPollOnceWritePhaseContextCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	results := s.PollOnce(ctx)
+	results, err := s.PollOnce(ctx)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context cancellation or nil error, got: %v", err)
+		}
+		return
+	}
 
 	if len(results) == 0 {
 		return // Context cancelled before anything happened — that's fine.

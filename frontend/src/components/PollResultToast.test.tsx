@@ -20,6 +20,13 @@ describe("PollResultToast", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("renders nothing when results is empty", () => {
+    const { container } = render(
+      <PollResultToast results={[]} onDismiss={() => {}} />
+    );
+    expect(container.firstChild).toBeNull();
+  });
+
   it("shows total new and skipped", () => {
     render(<PollResultToast results={fakeResults} onDismiss={() => {}} />);
     expect(screen.getByText("Poll complete: 4 new, 2 skipped")).toBeInTheDocument();
@@ -36,7 +43,11 @@ describe("PollResultToast", () => {
       { FilterID: "f1", FilterName: "Broken", Source: "reed_uk", NewJobs: 0, Skipped: 0, Err: "timeout" },
     ];
     render(<PollResultToast results={withError} onDismiss={() => {}} />);
-    expect(screen.getByText("error")).toBeInTheDocument();
+    expect(
+      screen.getByText("Poll complete: 0 new, 0 skipped, 1 failed")
+    ).toBeInTheDocument();
+    expect(screen.getByText("error: timeout")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
   it("calls onDismiss when dismiss button is clicked", async () => {

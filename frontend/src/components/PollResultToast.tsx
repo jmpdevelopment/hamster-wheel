@@ -7,15 +7,20 @@ interface PollResultToastProps {
 }
 
 export function PollResultToast({ results, onDismiss }: PollResultToastProps) {
-  if (!results) return null;
+  if (!results || results.length === 0) return null;
 
   const totalNew = results.reduce((sum, r) => sum + (r.NewJobs ?? 0), 0);
   const totalSkipped = results.reduce((sum, r) => sum + (r.Skipped ?? 0), 0);
+  const totalFailed = results.reduce((sum, r) => sum + (r.Err ? 1 : 0), 0);
+  const hasFailures = totalFailed > 0;
+  const summaryTitle = hasFailures
+    ? `Poll complete: ${totalNew} new, ${totalSkipped} skipped, ${totalFailed} failed`
+    : `Poll complete: ${totalNew} new, ${totalSkipped} skipped`;
 
   return (
     <Toast
-      variant={totalNew > 0 ? "success" : "info"}
-      title={`Poll complete: ${totalNew} new, ${totalSkipped} skipped`}
+      variant={hasFailures ? "error" : totalNew > 0 ? "success" : "info"}
+      title={summaryTitle}
       duration={5000}
       onDismiss={onDismiss}
     >
@@ -24,7 +29,7 @@ export function PollResultToast({ results, onDismiss }: PollResultToastProps) {
           <li key={r.FilterID}>
             {r.FilterName}:{" "}
             {r.Err ? (
-              <span className="text-hw-danger">error</span>
+              <span className="text-hw-danger">error: {String(r.Err)}</span>
             ) : (
               <span>
                 {r.NewJobs ?? 0} new, {r.Skipped ?? 0} skipped

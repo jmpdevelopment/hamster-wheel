@@ -38,7 +38,7 @@ type Scheduler struct {
 	interval time.Duration
 
 	cancel context.CancelFunc // cancels the background goroutine
-	done   chan struct{}       // closed when the background goroutine exits
+	done   chan struct{}      // closed when the background goroutine exits
 
 	// stateMu protects running, paused, nextPollAt, cancel, and done
 	stateMu    sync.RWMutex
@@ -119,7 +119,9 @@ func (s *Scheduler) safePoll(ctx context.Context) {
 			slog.Error("panic in poll cycle (recovered)", "panic", r)
 		}
 	}()
-	s.PollOnce(ctx)
+	if _, err := s.PollOnce(ctx); err != nil {
+		slog.Error("poll cycle failed", "error", err)
+	}
 }
 
 // setNextPollAt updates the next poll timestamp and logs it.
@@ -212,16 +214,19 @@ type filterFetchResult struct {
 // jobs to the database sequentially (single writer — no SQLite contention).
 //
 // This is the core logic, separated from the ticker so it's directly testable.
-func (s *Scheduler) PollOnce(ctx context.Context) []PollResult {
+//
+// Returns:
+//   - results + nil error for successful poll cycles (even if some filters failed)
+//   - nil + error only when the entire cycle couldn't run (e.g. DB unavailable)
+func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 	filters, err := s.store.ListEnabledFilters(ctx)
 	if err != nil {
-		slog.Error("failed to list enabled filters", "error", err)
-		return nil
+		return nil, fmt.Errorf("listing enabled filters: %w", err)
 	}
 
 	if len(filters) == 0 {
 		slog.Debug("no enabled filters, skipping poll")
-		return nil
+		return nil, nil
 	}
 
 	slog.Info("poll cycle starting", "filters", len(filters))
@@ -338,7 +343,7 @@ func (s *Scheduler) PollOnce(ctx context.Context) []PollResult {
 		"new_jobs", totalNew,
 		"skipped", totalSkipped)
 
-	return results
+	return results, nil
 }
 
 // fetchFilter does the I/O-heavy work for a single filter: looks up the

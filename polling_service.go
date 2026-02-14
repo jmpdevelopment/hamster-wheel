@@ -25,7 +25,7 @@ func NewPollingService(sched *scheduler.Scheduler) *PollingService {
 const pollNowTimeout = 5 * time.Minute
 
 // PollNow triggers an immediate poll cycle and returns the results.
-func (s *PollingService) PollNow() []scheduler.PollResult {
+func (s *PollingService) PollNow() ([]scheduler.PollResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), pollNowTimeout)
 	defer cancel()
 	return s.scheduler.PollOnce(ctx)

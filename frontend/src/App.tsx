@@ -62,9 +62,12 @@ function App() {
   const handlePollNow = useCallback(async () => {
     setIsPolling(true);
     setAppError(null);
+    setPollResults(null);
     try {
       const results = await PollNow();
-      setPollResults(results ?? []);
+      if (results && results.length > 0) {
+        setPollResults(results);
+      }
       // Refresh data and polling status after polling.
       const [, , status] = await Promise.all([
         jobs.refresh(),
