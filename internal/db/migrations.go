@@ -12,7 +12,7 @@ var migrations = []string{
 		name       TEXT NOT NULL,
 		keywords   TEXT NOT NULL,
 		location   TEXT NOT NULL DEFAULT '',
-		source     TEXT NOT NULL DEFAULT 'indeed_uk',
+		source     TEXT NOT NULL DEFAULT 'reed_uk',
 		enabled    INTEGER NOT NULL DEFAULT 1,
 		created_at TEXT NOT NULL DEFAULT (datetime('now')),
 		updated_at TEXT NOT NULL DEFAULT (datetime('now'))

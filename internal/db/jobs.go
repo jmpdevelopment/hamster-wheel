@@ -16,7 +16,7 @@ import (
 // UNIQUE(source, source_id) constraint.
 type Job struct {
 	ID           string     // UUID primary key
-	Source       string     // Which adapter found this, e.g. "indeed_uk"
+	Source       string     // Which adapter found this, e.g. "reed_uk"
 	SourceID     string     // External ID / URL hash for deduplication
 	Title        string     // Job title
 	Company      string     // Company name

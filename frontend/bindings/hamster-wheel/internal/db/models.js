@@ -31,7 +31,7 @@ export class Job {
         }
         if (!("Source" in $$source)) {
             /**
-             * Which adapter found this, e.g. "indeed_uk"
+             * Which adapter found this, e.g. "reed_uk"
              * @member
              * @type {string}
              */
@@ -126,7 +126,7 @@ export class Job {
 
 /**
  * SearchFilter represents a saved search configuration that the scheduler
- * uses to poll a job source. Each filter maps to one adapter (e.g., "indeed_uk")
+ * uses to poll a job source. Each filter maps to one adapter (e.g., "reed_uk")
  * and contains the keywords + location the user wants to monitor.
  */
 export class SearchFilter {
@@ -169,7 +169,7 @@ export class SearchFilter {
         }
         if (!("Source" in $$source)) {
             /**
-             * Adapter identifier, e.g. "indeed_uk"
+             * Adapter identifier, e.g. "reed_uk"
              * @member
              * @type {string}
              */

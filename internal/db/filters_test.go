@@ -9,7 +9,7 @@ import (
 func TestCreateFilterReturnsID(t *testing.T) {
 	db := testDB(t)
 
-	id, err := db.CreateFilter(context.Background(),"Backend London", "golang backend", "London", "indeed_uk")
+	id, err := db.CreateFilter(context.Background(),"Backend London", "golang backend", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -21,12 +21,12 @@ func TestCreateFilterReturnsID(t *testing.T) {
 func TestCreateFilterGeneratesUniqueIDs(t *testing.T) {
 	db := testDB(t)
 
-	id1, err := db.CreateFilter(context.Background(),"Filter 1", "react", "London", "indeed_uk")
+	id1, err := db.CreateFilter(context.Background(),"Filter 1", "react", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter 1: %v", err)
 	}
 
-	id2, err := db.CreateFilter(context.Background(),"Filter 2", "golang", "Manchester", "indeed_uk")
+	id2, err := db.CreateFilter(context.Background(),"Filter 2", "golang", "Manchester", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter 2: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestCreateFilterGeneratesUniqueIDs(t *testing.T) {
 func TestGetFilterReturnsCreatedFilter(t *testing.T) {
 	db := testDB(t)
 
-	id, err := db.CreateFilter(context.Background(),"Remote React", "react typescript", "Remote", "indeed_uk")
+	id, err := db.CreateFilter(context.Background(),"Remote React", "react typescript", "Remote", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
@@ -64,8 +64,8 @@ func TestGetFilterReturnsCreatedFilter(t *testing.T) {
 	if f.Location != "Remote" {
 		t.Errorf("Location: got %q, want %q", f.Location, "Remote")
 	}
-	if f.Source != "indeed_uk" {
-		t.Errorf("Source: got %q, want %q", f.Source, "indeed_uk")
+	if f.Source != "reed_uk" {
+		t.Errorf("Source: got %q, want %q", f.Source, "reed_uk")
 	}
 	if !f.Enabled {
 		t.Error("expected filter to be enabled by default")
@@ -93,11 +93,11 @@ func TestGetFilterReturnsNilForMissing(t *testing.T) {
 func TestListFiltersReturnsAll(t *testing.T) {
 	db := testDB(t)
 
-	_, err := db.CreateFilter(context.Background(),"Filter A", "python", "London", "indeed_uk")
+	_, err := db.CreateFilter(context.Background(),"Filter A", "python", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter A: %v", err)
 	}
-	_, err = db.CreateFilter(context.Background(),"Filter B", "golang", "Manchester", "indeed_uk")
+	_, err = db.CreateFilter(context.Background(),"Filter B", "golang", "Manchester", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter B: %v", err)
 	}
@@ -131,18 +131,18 @@ func TestListFiltersReturnsEmptySlice(t *testing.T) {
 func TestListEnabledFiltersExcludesDisabled(t *testing.T) {
 	db := testDB(t)
 
-	id1, err := db.CreateFilter(context.Background(),"Enabled", "react", "London", "indeed_uk")
+	id1, err := db.CreateFilter(context.Background(),"Enabled", "react", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter 1: %v", err)
 	}
 
-	id2, err := db.CreateFilter(context.Background(),"Disabled", "python", "Remote", "indeed_uk")
+	id2, err := db.CreateFilter(context.Background(),"Disabled", "python", "Remote", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter 2: %v", err)
 	}
 
 	// Disable the second filter.
-	err = db.UpdateFilter(context.Background(),id2, "Disabled", "python", "Remote", "indeed_uk", false)
+	err = db.UpdateFilter(context.Background(),id2, "Disabled", "python", "Remote", "reed_uk", false)
 	if err != nil {
 		t.Fatalf("disabling filter: %v", err)
 	}
@@ -163,12 +163,12 @@ func TestListEnabledFiltersExcludesDisabled(t *testing.T) {
 func TestUpdateFilterChangesFields(t *testing.T) {
 	db := testDB(t)
 
-	id, err := db.CreateFilter(context.Background(),"Old Name", "old keywords", "Old City", "indeed_uk")
+	id, err := db.CreateFilter(context.Background(),"Old Name", "old keywords", "Old City", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
 
-	err = db.UpdateFilter(context.Background(),id, "New Name", "new keywords", "New City", "indeed_uk", false)
+	err = db.UpdateFilter(context.Background(),id, "New Name", "new keywords", "New City", "reed_uk", false)
 	if err != nil {
 		t.Fatalf("updating filter: %v", err)
 	}
@@ -195,14 +195,14 @@ func TestUpdateFilterChangesFields(t *testing.T) {
 func TestUpdateFilterBumpsUpdatedAt(t *testing.T) {
 	db := testDB(t)
 
-	id, err := db.CreateFilter(context.Background(),"Test", "test", "London", "indeed_uk")
+	id, err := db.CreateFilter(context.Background(),"Test", "test", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
 
 	before, _ := db.GetFilter(context.Background(),id)
 
-	err = db.UpdateFilter(context.Background(),id, "Test Updated", "test", "London", "indeed_uk", true)
+	err = db.UpdateFilter(context.Background(),id, "Test Updated", "test", "London", "reed_uk", true)
 	if err != nil {
 		t.Fatalf("updating filter: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestUpdateFilterBumpsUpdatedAt(t *testing.T) {
 func TestUpdateFilterNotFoundReturnsError(t *testing.T) {
 	db := testDB(t)
 
-	err := db.UpdateFilter(context.Background(),"nonexistent-id", "Name", "kw", "loc", "indeed_uk", true)
+	err := db.UpdateFilter(context.Background(),"nonexistent-id", "Name", "kw", "loc", "reed_uk", true)
 	if !errors.Is(err, ErrFilterNotFound) {
 		t.Errorf("expected ErrFilterNotFound, got: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestUpdateFilterRejectsWhitespaceOnlyFields(t *testing.T) {
 func TestDeleteFilterRemovesIt(t *testing.T) {
 	db := testDB(t)
 
-	id, err := db.CreateFilter(context.Background(),"To Delete", "delete me", "London", "indeed_uk")
+	id, err := db.CreateFilter(context.Background(),"To Delete", "delete me", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestDeleteFilterSetsJobFilterIDToNull(t *testing.T) {
 	db := testDB(t)
 
 	// Create a filter, then manually insert a job referencing it.
-	filterID, err := db.CreateFilter(context.Background(),"Test Filter", "golang", "London", "indeed_uk")
+	filterID, err := db.CreateFilter(context.Background(),"Test Filter", "golang", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestDeleteFilterSetsJobFilterIDToNull(t *testing.T) {
 	// Insert a job that references this filter (using raw SQL since jobs CRUD isn't built yet).
 	_, err = db.conn.Exec(
 		`INSERT INTO jobs (id, source, source_id, title, url, filter_id)
-		 VALUES ('job-1', 'indeed_uk', 'src-1', 'Go Developer', 'https://example.com/job', ?)`,
+		 VALUES ('job-1', 'reed_uk', 'src-1', 'Go Developer', 'https://example.com/job', ?)`,
 		filterID,
 	)
 	if err != nil {
@@ -378,12 +378,12 @@ func TestDeleteFilterSetsJobFilterIDToNull(t *testing.T) {
 func TestCreateFilterAllowsDuplicateNames(t *testing.T) {
 	db := testDB(t)
 
-	_, err := db.CreateFilter(context.Background(),"Same Name", "react", "London", "indeed_uk")
+	_, err := db.CreateFilter(context.Background(),"Same Name", "react", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating first filter: %v", err)
 	}
 
-	_, err = db.CreateFilter(context.Background(),"Same Name", "golang", "Manchester", "indeed_uk")
+	_, err = db.CreateFilter(context.Background(),"Same Name", "golang", "Manchester", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating second filter with same name: %v", err)
 	}
@@ -400,7 +400,7 @@ func TestCreateFilterAllowsDuplicateNames(t *testing.T) {
 func TestCreateFilterWithEmptyLocation(t *testing.T) {
 	db := testDB(t)
 
-	id, err := db.CreateFilter(context.Background(),"Remote Only", "python", "", "indeed_uk")
+	id, err := db.CreateFilter(context.Background(),"Remote Only", "python", "", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
@@ -417,7 +417,7 @@ func TestCreateFilterWithEmptyLocation(t *testing.T) {
 func TestCreateFilterRejectsEmptyName(t *testing.T) {
 	db := testDB(t)
 
-	_, err := db.CreateFilter(context.Background(),"", "golang", "London", "indeed_uk")
+	_, err := db.CreateFilter(context.Background(),"", "golang", "London", "reed_uk")
 	if err == nil {
 		t.Fatal("expected error for empty name, got nil")
 	}
@@ -429,7 +429,7 @@ func TestCreateFilterRejectsEmptyName(t *testing.T) {
 func TestCreateFilterRejectsEmptyKeywords(t *testing.T) {
 	db := testDB(t)
 
-	_, err := db.CreateFilter(context.Background(),"My Filter", "", "London", "indeed_uk")
+	_, err := db.CreateFilter(context.Background(),"My Filter", "", "London", "reed_uk")
 	if err == nil {
 		t.Fatal("expected error for empty keywords, got nil")
 	}
@@ -460,8 +460,8 @@ func TestCreateFilterRejectsWhitespaceOnlyFields(t *testing.T) {
 		location string
 		source   string
 	}{
-		{"whitespace name", "   ", "golang", "London", "indeed_uk"},
-		{"whitespace keywords", "My Filter", "   ", "London", "indeed_uk"},
+		{"whitespace name", "   ", "golang", "London", "reed_uk"},
+		{"whitespace keywords", "My Filter", "   ", "London", "reed_uk"},
 		{"whitespace source", "My Filter", "golang", "London", "   "},
 	}
 

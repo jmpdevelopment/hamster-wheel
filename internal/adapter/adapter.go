@@ -41,11 +41,11 @@ type SearchParams struct {
 //  2. Implement this interface
 //  3. Register it with the Registry at app startup
 type Adapter interface {
-	// Name returns the unique identifier for this adapter (e.g., "indeed_uk").
+	// Name returns the unique identifier for this adapter (e.g., "reed_uk").
 	// Used as the key in the registry and stored in the database.
 	Name() string
 
-	// DisplayName returns the human-readable name (e.g., "Indeed UK").
+	// DisplayName returns the human-readable name (e.g., "Reed UK").
 	// Shown in the UI for users to select a job source.
 	DisplayName() string
 

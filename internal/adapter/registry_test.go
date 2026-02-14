@@ -26,21 +26,21 @@ func (m *mockAdapter) Validate(_ context.Context) error { return nil }
 
 func TestRegisterAndGet(t *testing.T) {
 	reg := NewRegistry()
-	mock := &mockAdapter{name: "indeed_uk", displayName: "Indeed UK"}
+	mock := &mockAdapter{name: "reed_uk", displayName: "Reed UK"}
 
 	if err := reg.Register(mock); err != nil {
 		t.Fatalf("registering adapter: %v", err)
 	}
 
-	got, ok := reg.Get("indeed_uk")
+	got, ok := reg.Get("reed_uk")
 	if !ok {
 		t.Fatal("expected to find adapter, got not found")
 	}
-	if got.Name() != "indeed_uk" {
-		t.Errorf("expected name %q, got %q", "indeed_uk", got.Name())
+	if got.Name() != "reed_uk" {
+		t.Errorf("expected name %q, got %q", "reed_uk", got.Name())
 	}
-	if got.DisplayName() != "Indeed UK" {
-		t.Errorf("expected display name %q, got %q", "Indeed UK", got.DisplayName())
+	if got.DisplayName() != "Reed UK" {
+		t.Errorf("expected display name %q, got %q", "Reed UK", got.DisplayName())
 	}
 }
 
@@ -55,7 +55,7 @@ func TestGetReturnsNotFound(t *testing.T) {
 
 func TestRegisterDuplicateReturnsError(t *testing.T) {
 	reg := NewRegistry()
-	mock := &mockAdapter{name: "indeed_uk", displayName: "Indeed UK"}
+	mock := &mockAdapter{name: "reed_uk", displayName: "Reed UK"}
 
 	reg.Register(mock)
 
@@ -67,7 +67,7 @@ func TestRegisterDuplicateReturnsError(t *testing.T) {
 
 func TestList(t *testing.T) {
 	reg := NewRegistry()
-	reg.Register(&mockAdapter{name: "indeed_uk", displayName: "Indeed UK"})
+	reg.Register(&mockAdapter{name: "reed_uk", displayName: "Reed UK"})
 	reg.Register(&mockAdapter{name: "glassdoor", displayName: "Glassdoor"})
 
 	adapters := reg.List()
@@ -87,7 +87,7 @@ func TestListEmpty(t *testing.T) {
 
 func TestNames(t *testing.T) {
 	reg := NewRegistry()
-	reg.Register(&mockAdapter{name: "indeed_uk", displayName: "Indeed UK"})
+	reg.Register(&mockAdapter{name: "reed_uk", displayName: "Reed UK"})
 	reg.Register(&mockAdapter{name: "reed", displayName: "Reed"})
 
 	names := reg.Names()
@@ -100,7 +100,7 @@ func TestNames(t *testing.T) {
 	for _, n := range names {
 		nameSet[n] = true
 	}
-	if !nameSet["indeed_uk"] || !nameSet["reed"] {
-		t.Errorf("expected names to contain indeed_uk and reed, got %v", names)
+	if !nameSet["reed_uk"] || !nameSet["reed"] {
+		t.Errorf("expected names to contain reed_uk and reed, got %v", names)
 	}
 }

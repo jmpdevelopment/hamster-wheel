@@ -13,14 +13,14 @@ import (
 )
 
 // SearchFilter represents a saved search configuration that the scheduler
-// uses to poll a job source. Each filter maps to one adapter (e.g., "indeed_uk")
+// uses to poll a job source. Each filter maps to one adapter (e.g., "reed_uk")
 // and contains the keywords + location the user wants to monitor.
 type SearchFilter struct {
 	ID        string    // UUID primary key
 	Name      string    // User-given name, e.g. "Backend London"
 	Keywords  string    // Search keywords
 	Location  string    // Location string
-	Source    string    // Adapter identifier, e.g. "indeed_uk"
+	Source    string    // Adapter identifier, e.g. "reed_uk"
 	Enabled   bool      // Whether the scheduler should poll this filter
 	CreatedAt time.Time // When the filter was created
 	UpdatedAt time.Time // When the filter was last modified

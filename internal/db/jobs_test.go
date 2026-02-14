@@ -13,7 +13,7 @@ import (
 func makeTestJob(sourceID string) *Job {
 	posted := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
 	return &Job{
-		Source:      "indeed_uk",
+		Source:      "reed_uk",
 		SourceID:    sourceID,
 		Title:       "Go Developer",
 		Company:     "Acme Corp",
@@ -93,7 +93,7 @@ func TestInsertJobSameSourceIDDifferentSourceAllowed(t *testing.T) {
 	db := testDB(t)
 
 	job1 := makeTestJob("shared-id")
-	job1.Source = "indeed_uk"
+	job1.Source = "reed_uk"
 	_, err := db.InsertJob(context.Background(), job1)
 	if err != nil {
 		t.Fatalf("inserting indeed job: %v", err)
@@ -131,8 +131,8 @@ func TestGetJobReturnsInsertedJob(t *testing.T) {
 	if got.ID != id {
 		t.Errorf("ID: got %q, want %q", got.ID, id)
 	}
-	if got.Source != "indeed_uk" {
-		t.Errorf("Source: got %q, want %q", got.Source, "indeed_uk")
+	if got.Source != "reed_uk" {
+		t.Errorf("Source: got %q, want %q", got.Source, "reed_uk")
 	}
 	if got.SourceID != "get-test" {
 		t.Errorf("SourceID: got %q, want %q", got.SourceID, "get-test")
@@ -193,7 +193,7 @@ func TestInsertJobWithFilterID(t *testing.T) {
 	db := testDB(t)
 
 	// Create a filter first.
-	filterID, err := db.CreateFilter(context.Background(),"Test", "golang", "London", "indeed_uk")
+	filterID, err := db.CreateFilter(context.Background(),"Test", "golang", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestJobExistsBySourceIDReturnsTrueForExisting(t *testing.T) {
 		t.Fatalf("inserting job: %v", err)
 	}
 
-	exists, err := db.JobExistsBySourceID(context.Background(),"indeed_uk", "exists-check")
+	exists, err := db.JobExistsBySourceID(context.Background(),"reed_uk", "exists-check")
 	if err != nil {
 		t.Fatalf("checking existence: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestJobExistsBySourceIDReturnsTrueForExisting(t *testing.T) {
 func TestJobExistsBySourceIDReturnsFalseForMissing(t *testing.T) {
 	db := testDB(t)
 
-	exists, err := db.JobExistsBySourceID(context.Background(),"indeed_uk", "does-not-exist")
+	exists, err := db.JobExistsBySourceID(context.Background(),"reed_uk", "does-not-exist")
 	if err != nil {
 		t.Fatalf("checking existence: %v", err)
 	}
@@ -252,7 +252,7 @@ func TestJobExistsBySourceIDDistinguishesSources(t *testing.T) {
 	db := testDB(t)
 
 	job := makeTestJob("source-specific")
-	job.Source = "indeed_uk"
+	job.Source = "reed_uk"
 	_, err := db.InsertJob(context.Background(), job)
 	if err != nil {
 		t.Fatalf("inserting job: %v", err)
@@ -356,8 +356,8 @@ func TestListJobsRejectsExcessiveLimit(t *testing.T) {
 func TestListJobsByFilterReturnsMatchingJobs(t *testing.T) {
 	db := testDB(t)
 
-	filterA, _ := db.CreateFilter(context.Background(),"Filter A", "go", "London", "indeed_uk")
-	filterB, _ := db.CreateFilter(context.Background(),"Filter B", "python", "Remote", "indeed_uk")
+	filterA, _ := db.CreateFilter(context.Background(),"Filter A", "go", "London", "reed_uk")
+	filterB, _ := db.CreateFilter(context.Background(),"Filter B", "python", "Remote", "reed_uk")
 
 	jobA := makeTestJob("filter-a-job")
 	jobA.FilterID = &filterA
@@ -482,7 +482,7 @@ func TestInsertJobWithEmptyOptionalFields(t *testing.T) {
 	db := testDB(t)
 
 	job := &Job{
-		Source:   "indeed_uk",
+		Source:   "reed_uk",
 		SourceID: "minimal-job",
 		Title:    "Minimal Job",
 		URL:      "https://example.com/job",
