@@ -60,7 +60,3 @@ Update rules:
 - Update `docs/execution/known-issues.md` when a bug is found/resolved.
 - Update `docs/execution/roadmap.md` when sequencing changes.
 - Update `docs/core/*` only when product direction, architecture, or standards change.
-
-## Legacy Files
-
-- Legacy working docs in `.claude/` are superseded by this `docs/` tree.
