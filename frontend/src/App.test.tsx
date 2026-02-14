@@ -72,6 +72,7 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
 
 vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: vi.fn() },
+  Dialogs: { SaveFile: vi.fn().mockResolvedValue("") },
 }));
 
 vi.mock("react-virtualized-auto-sizer", () => ({

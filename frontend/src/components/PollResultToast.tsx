@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PollRunResult } from "../../bindings/hamster-wheel/models";
 import { downloadPollReport } from "../lib/pollReport";
 import { Button } from "./Button";
@@ -9,6 +10,9 @@ interface PollResultToastProps {
 }
 
 export function PollResultToast({ run, onDismiss }: PollResultToastProps) {
+  const [savingReport, setSavingReport] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   if (!run) return null;
   if ((run.totalFilters ?? 0) === 0 && !run.cycleError) return null;
 
@@ -60,10 +64,27 @@ export function PollResultToast({ run, onDismiss }: PollResultToastProps) {
             type="button"
             size="sm"
             variant="secondary"
-            onClick={() => downloadPollReport(run)}
+            loading={savingReport}
+            onClick={async () => {
+              setSaveError(null);
+              setSavingReport(true);
+              try {
+                await downloadPollReport(run);
+              } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                setSaveError(message);
+              } finally {
+                setSavingReport(false);
+              }
+            }}
           >
             Save report
           </Button>
+          {saveError && (
+            <p className="mt-1 text-hw-danger">
+              report save failed: {saveError}
+            </p>
+          )}
         </div>
       )}
     </Toast>

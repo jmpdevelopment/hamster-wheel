@@ -6,6 +6,7 @@ import { JobDetail } from "./JobDetail";
 // Mock Wails runtime.
 vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: vi.fn() },
+  Dialogs: { SaveFile: vi.fn().mockResolvedValue("") },
 }));
 
 // Mock jobservice bindings.

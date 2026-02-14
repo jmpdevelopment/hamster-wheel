@@ -36,6 +36,16 @@ export function PollNow() {
 }
 
 /**
+ * SavePollReport writes a user-exported poll report to the selected file path.
+ * @param {string} path
+ * @param {string} content
+ * @returns {$CancellablePromise<void>}
+ */
+export function SavePollReport(path, content) {
+    return $Call.ByID(2725635384, path, content);
+}
+
+/**
  * SetPollingPaused pauses or resumes auto-polling. Manual PollNow still works.
  * @param {boolean} paused
  * @returns {$CancellablePromise<void>}

@@ -117,6 +117,21 @@ describe("PollResultToast", () => {
     expect(mockDownloadPollReport).toHaveBeenCalledOnce();
   });
 
+  it("shows save error when export fails", async () => {
+    mockDownloadPollReport.mockRejectedValueOnce(new Error("permission denied"));
+    const withError = {
+      ...fakeRun,
+      failedFilters: 1,
+      filters: [
+        { filterID: "f1", filterName: "Broken", source: "reed_uk", newJobs: 0, skipped: 0, error: "timeout" },
+      ],
+    };
+    render(<PollResultToast run={withError} onDismiss={() => {}} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /save report/i }));
+    expect(screen.getByText(/report save failed:/i)).toBeInTheDocument();
+  });
+
   it("calls onDismiss when dismiss button is clicked", async () => {
     const onDismiss = vi.fn();
     render(<PollResultToast run={fakeRun} onDismiss={onDismiss} />);

@@ -189,3 +189,46 @@ func TestPollNowNoEnabledFiltersSkipsDiagnosticsPersistence(t *testing.T) {
 		t.Fatalf("expected no diagnostics path for no-op poll, got %q", result.DiagnosticsPath)
 	}
 }
+
+func TestSavePollReportWritesFile(t *testing.T) {
+	database := testPollingServiceDB(t)
+	registry := adapter.NewRegistry()
+	sched := scheduler.New(database, registry, time.Hour)
+	store := diagnostics.NewStore(t.TempDir(), 20, 24*time.Hour)
+	service := NewPollingService(sched, store)
+
+	path := filepath.Join(t.TempDir(), "reports", "poll-report.txt")
+	content := "Hamster Wheel Poll Report\nRun ID: run-1\n"
+
+	if err := service.SavePollReport(path, content); err != nil {
+		t.Fatalf("saving poll report: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading saved report: %v", err)
+	}
+	if string(data) != content {
+		t.Fatalf("expected report content %q, got %q", content, string(data))
+	}
+}
+
+func TestSavePollReportValidatesInputs(t *testing.T) {
+	database := testPollingServiceDB(t)
+	registry := adapter.NewRegistry()
+	sched := scheduler.New(database, registry, time.Hour)
+	store := diagnostics.NewStore(t.TempDir(), 20, 24*time.Hour)
+	service := NewPollingService(sched, store)
+
+	if err := service.SavePollReport("   ", "ok"); err == nil {
+		t.Fatal("expected error for empty save path")
+	}
+	if err := service.SavePollReport(filepath.Join(t.TempDir(), "report.txt"), "   "); err == nil {
+		t.Fatal("expected error for empty report content")
+	}
+
+	oversized := strings.Repeat("x", maxPollReportBytes+1)
+	if err := service.SavePollReport(filepath.Join(t.TempDir(), "report.txt"), oversized); err == nil {
+		t.Fatal("expected error for oversized report")
+	}
+}

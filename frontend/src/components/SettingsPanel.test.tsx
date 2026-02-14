@@ -18,6 +18,7 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
 
 vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: (...args: unknown[]) => mockOpenURL(...args) },
+  Dialogs: { SaveFile: vi.fn().mockResolvedValue("") },
 }));
 
 const defaultProps = {

@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"hamster-wheel/internal/diagnostics"
@@ -55,6 +60,7 @@ func NewPollingService(sched *scheduler.Scheduler, store *diagnostics.Store) *Po
 // This prevents the Wails binding from blocking the UI indefinitely if the
 // Reed API is slow or unresponsive.
 const pollNowTimeout = 5 * time.Minute
+const maxPollReportBytes = 512 * 1024 // Keep report exports bounded to avoid accidental large writes.
 
 // PollNow triggers an immediate poll cycle and returns structured run metadata.
 //
@@ -152,6 +158,29 @@ func (s *PollingService) PollNow() PollRunResult {
 	}
 
 	return result
+}
+
+// SavePollReport writes a user-exported poll report to the selected file path.
+func (s *PollingService) SavePollReport(path, content string) error {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return errors.New("save path is required")
+	}
+	if strings.TrimSpace(content) == "" {
+		return errors.New("report content is empty")
+	}
+	if len(content) > maxPollReportBytes {
+		return fmt.Errorf("report too large (%d bytes): max %d bytes", len(content), maxPollReportBytes)
+	}
+
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("creating report directory: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("writing poll report: %w", err)
+	}
+	return nil
 }
 
 // PollingStatus represents the current state of auto-polling.

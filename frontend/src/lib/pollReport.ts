@@ -1,4 +1,6 @@
 import { PollRunResult } from "../../bindings/hamster-wheel/models";
+import { SavePollReport } from "../../bindings/hamster-wheel/pollingservice";
+import { Dialogs } from "@wailsio/runtime";
 
 function pluralize(value: number, singular: string, plural: string): string {
   return value === 1 ? singular : plural;
@@ -52,19 +54,24 @@ export function buildPollReport(run: PollRunResult): string {
   return `${lines.join("\n")}\n`;
 }
 
-export function downloadPollReport(run: PollRunResult): void {
+export async function downloadPollReport(run: PollRunResult): Promise<boolean> {
   const report = buildPollReport(run);
-  const blob = new Blob([report], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
   const filename = `hamster-wheel-poll-report-${run.runID || "unknown"}.txt`;
 
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = "noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  URL.revokeObjectURL(url);
-}
+  const path = await Dialogs.SaveFile({
+    Title: "Save Poll Report",
+    Filename: filename,
+    Filters: [
+      {
+        DisplayName: "Text files",
+        Pattern: "*.txt",
+      },
+    ],
+  });
+  if (!path) {
+    return false;
+  }
 
+  await SavePollReport(path, report);
+  return true;
+}
