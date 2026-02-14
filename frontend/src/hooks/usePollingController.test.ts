@@ -30,6 +30,12 @@ vi.mock("../../bindings/hamster-wheel/pollingservice", () => ({
 }));
 
 vi.mock("@wailsio/runtime", () => ({
+  Create: {
+    Array:
+      (factory: (value: unknown) => unknown) =>
+      (values: unknown) =>
+        Array.isArray(values) ? values.map((value) => factory(value)) : [],
+  },
   Events: {
     On: (...args: unknown[]) => mockEventsOn(...args),
   },
@@ -61,9 +67,64 @@ beforeEach(() => {
 });
 
 describe("usePollingController", () => {
+  it("surfaces scheduler startup poll run from status snapshot", async () => {
+    mockGetPollingStatus.mockResolvedValue({
+      paused: false,
+      isPolling: false,
+      nextPollAt: "2026-02-14T15:00:00Z",
+      lastRun: {
+        runID: "auto-123",
+        startedAt: "2026-02-14T14:30:00Z",
+        completedAt: "2026-02-14T14:30:10Z",
+        durationMs: 0,
+        totalFilters: 1,
+        failedFilters: 0,
+        newJobs: 3,
+        skipped: 97,
+        filters: [
+          {
+            filterID: "f1",
+            filterName: "React developer",
+            source: "reed_uk",
+            newJobs: 3,
+            skipped: 97,
+          },
+        ],
+      },
+    });
+
+    const { result } = renderPollingController();
+
+    await waitFor(() => {
+      expect(result.current.polling.pollRun?.runID).toBe("auto-123");
+      expect(result.current.polling.pollRun?.newJobs).toBe(3);
+    });
+  });
+
+  it("blocks manual PollNow while scheduler polling is active", async () => {
+    mockGetPollingStatus.mockResolvedValue({
+      paused: false,
+      isPolling: true,
+      nextPollAt: "2026-02-14T15:00:00Z",
+    });
+
+    const { result } = renderPollingController();
+
+    await waitFor(() => {
+      expect(result.current.polling.isPolling).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.polling.pollNow();
+    });
+
+    expect(mockPollNow).not.toHaveBeenCalled();
+  });
+
   it("loads startup status and accepts PascalCase payloads", async () => {
     mockGetPollingStatus.mockResolvedValue({
       Paused: false,
+      IsPolling: false,
       NextPollAt: "2026-02-14T14:30:00Z",
     });
 

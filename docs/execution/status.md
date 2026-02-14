@@ -7,16 +7,25 @@ Last updated: 2026-02-14
 - Phase 1 foundation is complete.
 - Architecture refactor is complete.
 - Phase 1.5 UX standards are complete.
+- Pre-LLM job management UX enhancements are complete:
+  - Filter delete now supports optional deletion of associated jobs.
+  - Job board supports multi-select (including shift-range) + select-all bulk delete.
+  - Job board supports bulk favorite/unfavorite and favorites-only view.
+  - Favorites are persisted in SQLite and survive app restart.
+  - `Poll Now` is available when filters are enabled and blocked only during active poll cycles (spinner/status shown).
 - Phase 2 has started with keychain manager completed.
 - Reliability hardening pass is complete and regression-covered.
 
 ## Key Reliability Outcomes
 
 - Scheduler polls are timeout-bounded and panic-safe.
+- Poll execution is single-flight: overlapping manual/scheduled cycles are blocked.
 - Poll status is event-driven (`polling:status-changed`) with focus/visibility fallback sync.
 - Polling schedule is deterministic:
   - `nextPollAt` is published before cycle work.
   - resume and manual `PollNow` both reschedule auto-poll to `now + interval`.
+- Startup/scheduled poll completion summaries are surfaced to UI state so users
+  receive poll-result toasts even when no manual `PollNow` action occurred.
 - Frontend polling orchestration is isolated in `usePollingController`.
 - Poll diagnostics and export paths are available for failure triage.
 

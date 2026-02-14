@@ -999,3 +999,17 @@ func TestPollOnceWritePhaseContextCancellation(t *testing.T) {
 		t.Error("Skipped should not be negative")
 	}
 }
+
+func TestPollOnceReturnsErrWhenAlreadyPolling(t *testing.T) {
+	database, registry := testSetup(t)
+	s := New(database, registry, time.Minute)
+
+	s.stateMu.Lock()
+	s.polling = true
+	s.stateMu.Unlock()
+
+	_, err := s.PollOnce(context.Background())
+	if !errors.Is(err, ErrPollInProgress) {
+		t.Fatalf("expected ErrPollInProgress, got %v", err)
+	}
+}

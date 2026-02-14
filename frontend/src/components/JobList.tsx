@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 import { AutoSizer } from "react-virtualized-auto-sizer";
 import {
@@ -9,6 +9,8 @@ import { JobCard } from "./JobCard";
 import { SearchInput } from "./SearchInput";
 import { EmptyState } from "./EmptyState";
 import { useJobSearch } from "../hooks/useJobSearch";
+import { Button } from "./Button";
+import { ConfirmAction } from "./ConfirmAction";
 
 const ITEM_HEIGHT = 74;
 
@@ -22,6 +24,9 @@ interface JobListProps {
   onFilterChange: (filterId: string | null) => void;
   onFilteredJobsChange?: (jobIds: string[]) => void;
   searchInputRef?: React.Ref<HTMLInputElement>;
+  onSetFavoriteJobs: (jobIds: string[], favorite: boolean) => Promise<void>;
+  onToggleFavoriteJob: (jobId: string) => Promise<void>;
+  onDeleteJobs: (jobIds: string[]) => Promise<void>;
 }
 
 export function JobList({
@@ -34,49 +39,268 @@ export function JobList({
   onFilterChange,
   onFilteredJobsChange,
   searchInputRef,
+  onSetFavoriteJobs,
+  onToggleFavoriteJob,
+  onDeleteJobs,
 }: JobListProps) {
   const { searchTerm, setSearchTerm, filteredJobs } = useJobSearch(
     jobs,
     filterByFilterId
   );
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(
+    () => new Set()
+  );
   const listRef = useRef<FixedSizeList>(null);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const lastToggledJobIDRef = useRef<string | null>(null);
+  const shiftPressedRef = useRef(false);
+
+  const visibleJobs = useMemo(
+    () =>
+      showFavoritesOnly
+        ? filteredJobs.filter((job) => job.IsFavorite)
+        : filteredJobs,
+    [filteredJobs, showFavoritesOnly]
+  );
 
   const hasSearch = searchTerm.trim().length > 0;
   const hasFilter = filterByFilterId !== null;
+  const visibleJobIndexByID = useMemo(() => {
+    const indexByID = new Map<string, number>();
+    visibleJobs.forEach((job, index) => {
+      indexByID.set(job.ID, index);
+    });
+    return indexByID;
+  }, [visibleJobs]);
+  const selectedIDs = useMemo(
+    () => Array.from(selectedJobIds),
+    [selectedJobIds]
+  );
+  const selectedCount = selectedIDs.length;
+  const selectedVisibleCount = useMemo(
+    () => visibleJobs.filter((job) => selectedJobIds.has(job.ID)).length,
+    [visibleJobs, selectedJobIds]
+  );
+  const allVisibleSelected =
+    visibleJobs.length > 0 && selectedVisibleCount === visibleJobs.length;
+  const hasVisibleSelection =
+    selectedVisibleCount > 0 && selectedVisibleCount < visibleJobs.length;
 
-  // Notify parent when filtered jobs change.
   useEffect(() => {
-    onFilteredJobsChange?.(filteredJobs.map((j) => j.ID));
-  }, [filteredJobs, onFilteredJobsChange]);
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = hasVisibleSelection;
+    }
+  }, [hasVisibleSelection]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key === "Shift") {
+        shiftPressedRef.current = true;
+      }
+    };
+    const handleKeyUp = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key === "Shift") {
+        shiftPressedRef.current = false;
+      }
+    };
+    const handleWindowBlur = () => {
+      shiftPressedRef.current = false;
+    };
+
+    document.addEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keyup", handleKeyUp, true);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown, true);
+      document.removeEventListener("keyup", handleKeyUp, true);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, []);
+
+  // Notify parent when visible jobs change.
+  useEffect(() => {
+    onFilteredJobsChange?.(visibleJobs.map((job) => job.ID));
+  }, [visibleJobs, onFilteredJobsChange]);
+
+  // Keep selected IDs scoped to currently visible rows.
+  useEffect(() => {
+    const visibleIDSet = new Set(visibleJobs.map((job) => job.ID));
+    setSelectedJobIds((previous) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of previous) {
+        if (visibleIDSet.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : previous;
+    });
+  }, [visibleJobs]);
 
   // Scroll to selected job when selection changes.
   useEffect(() => {
     if (!selectedJobId || !listRef.current) return;
-    const index = filteredJobs.findIndex((j) => j.ID === selectedJobId);
+    const index = visibleJobs.findIndex((j) => j.ID === selectedJobId);
     if (index >= 0) {
       listRef.current.scrollToItem(index, "smart");
     }
-  }, [selectedJobId, filteredJobs]);
+  }, [selectedJobId, visibleJobs]);
+
+  const applySelectionRange = useCallback(
+    (next: Set<string>, anchorJobID: string | null, currentIndex: number) => {
+      const anchorIndex =
+        anchorJobID === null ? undefined : visibleJobIndexByID.get(anchorJobID);
+      const canApplyRange =
+        anchorIndex !== undefined &&
+        anchorIndex >= 0 &&
+        anchorIndex < visibleJobs.length;
+
+      if (!canApplyRange) {
+        return false;
+      }
+
+      const start = Math.min(anchorIndex, currentIndex);
+      const end = Math.max(anchorIndex, currentIndex);
+      for (let index = start; index <= end; index += 1) {
+        next.add(visibleJobs[index].ID);
+      }
+      return true;
+    },
+    [visibleJobIndexByID, visibleJobs]
+  );
+
+  const handleToggleJobSelection = useCallback(
+    (jobID: string, checked: boolean, shiftKey: boolean) => {
+      const currentIndex = visibleJobIndexByID.get(jobID);
+      if (currentIndex === undefined) {
+        return;
+      }
+      const rangeRequested = shiftKey || shiftPressedRef.current;
+      const anchorJobIDAtClick = lastToggledJobIDRef.current ?? selectedJobId;
+
+      setSelectedJobIds((previous) => {
+        const next = new Set(previous);
+        if (rangeRequested && applySelectionRange(next, anchorJobIDAtClick, currentIndex)) {
+          return next;
+        }
+
+        if (checked) {
+          next.add(jobID);
+        } else {
+          next.delete(jobID);
+        }
+        return next;
+      });
+
+      lastToggledJobIDRef.current = jobID;
+    },
+    [applySelectionRange, selectedJobId, visibleJobIndexByID]
+  );
+
+  const handleRowClick = useCallback(
+    (jobID: string, shiftKey: boolean) => {
+      const currentIndex = visibleJobIndexByID.get(jobID);
+      if (currentIndex === undefined) {
+        onSelectJob(jobID);
+        return;
+      }
+      const rangeRequested = shiftKey || shiftPressedRef.current;
+      const anchorJobIDAtClick = lastToggledJobIDRef.current ?? selectedJobId;
+
+      if (rangeRequested) {
+        setSelectedJobIds((previous) => {
+          const next = new Set(previous);
+          if (!applySelectionRange(next, anchorJobIDAtClick, currentIndex)) {
+            next.add(jobID);
+          }
+
+          return next;
+        });
+      }
+
+      lastToggledJobIDRef.current = jobID;
+      onSelectJob(jobID);
+    },
+    [applySelectionRange, onSelectJob, selectedJobId, visibleJobIndexByID]
+  );
+
+  const handleSelectAllVisible = useCallback(
+    (checked: boolean) => {
+      if (!checked) {
+        setSelectedJobIds(new Set());
+        lastToggledJobIDRef.current = null;
+        return;
+      }
+      setSelectedJobIds(new Set(visibleJobs.map((job) => job.ID)));
+      lastToggledJobIDRef.current = null;
+    },
+    [visibleJobs]
+  );
+
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedIDs.length === 0) {
+      return;
+    }
+    await onDeleteJobs(selectedIDs);
+    setSelectedJobIds(new Set());
+    lastToggledJobIDRef.current = null;
+  }, [onDeleteJobs, selectedIDs]);
+
+  const handleFavoriteSelected = useCallback(
+    (favorite: boolean) => {
+      if (selectedIDs.length === 0) {
+        return;
+      }
+      void Promise.resolve(onSetFavoriteJobs(selectedIDs, favorite)).catch(() => {
+        // Parent tracks mutation errors for display.
+      });
+    },
+    [onSetFavoriteJobs, selectedIDs]
+  );
 
   const Row = useCallback(
     ({ index, style }: ListChildComponentProps) => {
-      const job = filteredJobs[index];
+      const job = visibleJobs[index];
       return (
         <JobCard
           key={job.ID}
           job={job}
           isSelected={job.ID === selectedJobId}
-          onClick={() => onSelectJob(job.ID)}
+          isChecked={selectedJobIds.has(job.ID)}
+          isFavorite={job.IsFavorite}
+          onClick={(shiftKey) => handleRowClick(job.ID, shiftKey)}
+          onToggleChecked={(checked, shiftKey) =>
+            handleToggleJobSelection(job.ID, checked, shiftKey)
+          }
+          onToggleFavorite={() => {
+            void Promise.resolve(onToggleFavoriteJob(job.ID)).catch(() => {
+              // Parent tracks mutation errors for display.
+            });
+          }}
           style={style}
         />
       );
     },
-    [filteredJobs, selectedJobId, onSelectJob]
+    [
+      visibleJobs,
+      selectedJobId,
+      selectedJobIds,
+      handleRowClick,
+      handleToggleJobSelection,
+      onToggleFavoriteJob,
+    ]
   );
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Header: Search + Filter */}
+      {/* Header: Search + Filter + Actions */}
       <div className="shrink-0 px-3 py-2 border-b border-hw-border space-y-2">
         <SearchInput
           ref={searchInputRef}
@@ -96,11 +320,72 @@ export function JobList({
             </option>
           ))}
         </select>
+
+        {!loading && jobs.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <label className="inline-flex items-center gap-2 text-xs text-hw-text-muted">
+              <input
+                ref={selectAllRef}
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={(event) => handleSelectAllVisible(event.target.checked)}
+                className="h-4 w-4 rounded border-hw-border bg-hw-bg text-hw-accent focus:ring-hw-accent"
+                aria-label="Select all visible jobs"
+              />
+              {selectedCount} selected
+            </label>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => handleFavoriteSelected(true)}
+              disabled={selectedCount === 0}
+            >
+              Favorite
+            </Button>
+
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => handleFavoriteSelected(false)}
+              disabled={selectedCount === 0}
+            >
+              Unfavorite
+            </Button>
+
+            <ConfirmAction
+              onConfirm={() => {
+                void handleDeleteSelected();
+              }}
+              confirmLabel={
+                selectedCount <= 1 ? "Delete job" : `Delete ${selectedCount} jobs`
+              }
+            >
+              <Button variant="danger" size="sm" disabled={selectedCount === 0}>
+                Delete
+              </Button>
+            </ConfirmAction>
+
+            <Button
+              variant={showFavoritesOnly ? "primary" : "ghost"}
+              size="sm"
+              onClick={() => setShowFavoritesOnly((previous) => !previous)}
+              aria-label={
+                showFavoritesOnly
+                  ? "Show all jobs"
+                  : "Show only favorite jobs"
+              }
+            >
+              {showFavoritesOnly ? "Show all" : "Favorites only"}
+            </Button>
+          </div>
+        )}
+
         {!loading && jobs.length > 0 && (
           <p className="text-xs text-hw-text-muted">
-            {filteredJobs.length === jobs.length
+            {visibleJobs.length === jobs.length && !showFavoritesOnly
               ? `${jobs.length} jobs`
-              : `${filteredJobs.length} of ${jobs.length} jobs`}
+              : `${visibleJobs.length} of ${jobs.length} jobs`}
           </p>
         )}
       </div>
@@ -111,13 +396,21 @@ export function JobList({
           <p className="text-sm text-hw-text-muted px-3 py-8 text-center">
             Loading...
           </p>
-        ) : filteredJobs.length === 0 ? (
+        ) : visibleJobs.length === 0 ? (
           <EmptyState
-            title={hasSearch || hasFilter ? "No matching jobs" : "No jobs yet"}
+            title={
+              hasSearch || hasFilter
+                ? "No matching jobs"
+                : showFavoritesOnly
+                  ? "No favorite jobs"
+                  : "No jobs yet"
+            }
             description={
               hasSearch || hasFilter
                 ? "Try adjusting your search or filter."
-                : "Make sure you have enabled filters and try polling."
+                : showFavoritesOnly
+                  ? "Mark jobs as favorites to quickly return to them."
+                  : "Make sure you have enabled filters and try polling."
             }
           />
         ) : (
@@ -128,9 +421,9 @@ export function JobList({
                   ref={listRef}
                   height={height}
                   width={width}
-                  itemCount={filteredJobs.length}
+                  itemCount={visibleJobs.length}
                   itemSize={ITEM_HEIGHT}
-                  itemKey={(index) => filteredJobs[index].ID}
+                  itemKey={(index) => visibleJobs[index].ID}
                   overscanCount={5}
                 >
                   {Row}

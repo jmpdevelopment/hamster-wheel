@@ -109,6 +109,14 @@ export class Job {
              */
             this["FilterID"] = null;
         }
+        if (!("IsFavorite" in $$source)) {
+            /**
+             * Whether user marked this job as favorite
+             * @member
+             * @type {boolean}
+             */
+            this["IsFavorite"] = false;
+        }
 
         Object.assign(this, $$source);
     }

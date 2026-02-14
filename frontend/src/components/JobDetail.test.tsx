@@ -33,6 +33,7 @@ const fakeJob = (overrides = {}) => ({
   PostedAt: "2026-02-08T10:00:00Z",
   DiscoveredAt: "2026-02-08T11:00:00Z",
   FilterID: "f1",
+  IsFavorite: false,
   ...overrides,
 });
 

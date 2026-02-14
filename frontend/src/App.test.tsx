@@ -15,11 +15,14 @@ const fakeJob = (id = "j1", title = "Go Developer") => ({
   PostedAt: "2026-02-08T10:00:00Z",
   DiscoveredAt: "2026-02-08T11:00:00Z",
   FilterID: "f1",
+  IsFavorite: false,
 });
 
 const mockGetJobs = vi.fn();
 const mockGetJobCount = vi.fn();
 const mockDeleteJob = vi.fn();
+const mockSetJobFavorite = vi.fn();
+const mockSetJobsFavorite = vi.fn();
 const mockGetFilters = vi.fn();
 const mockCreateFilter = vi.fn();
 const mockUpdateFilter = vi.fn();
@@ -49,6 +52,8 @@ vi.mock("../bindings/hamster-wheel/jobservice", () => ({
   GetJobs: (...args: unknown[]) => mockGetJobs(...args),
   GetJobCount: (...args: unknown[]) => mockGetJobCount(...args),
   DeleteJob: (...args: unknown[]) => mockDeleteJob(...args),
+  SetJobFavorite: (...args: unknown[]) => mockSetJobFavorite(...args),
+  SetJobsFavorite: (...args: unknown[]) => mockSetJobsFavorite(...args),
 }));
 
 vi.mock("../bindings/hamster-wheel/filterservice", () => ({
@@ -78,6 +83,12 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
 vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: vi.fn() },
   Dialogs: { SaveFile: vi.fn().mockResolvedValue("") },
+  Create: {
+    Array:
+      (factory: (value: unknown) => unknown) =>
+      (values: unknown) =>
+        Array.isArray(values) ? values.map((value) => factory(value)) : [],
+  },
   Events: {
     On: (...args: unknown[]) => mockEventsOn(...args),
   },
@@ -93,9 +104,12 @@ vi.mock("react-virtualized-auto-sizer", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   mockGetJobs.mockResolvedValue([]);
   mockGetJobCount.mockResolvedValue(0);
   mockDeleteJob.mockResolvedValue(undefined);
+  mockSetJobFavorite.mockResolvedValue(undefined);
+  mockSetJobsFavorite.mockResolvedValue(undefined);
   mockGetFilters.mockResolvedValue([]);
   mockCreateFilter.mockResolvedValue("f1");
   mockUpdateFilter.mockResolvedValue(undefined);
@@ -148,6 +162,53 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByText("shortcuts load failed")).toBeInTheDocument();
+    });
+  });
+
+  it("shows poll toast on startup when first scheduler poll already completed", async () => {
+    mockGetFilters.mockResolvedValue([
+      {
+        ID: "f1",
+        Name: "Backend",
+        Keywords: "go",
+        Location: "London",
+        Source: "reed_uk",
+        Enabled: true,
+        CreatedAt: "2026-02-08T10:00:00Z",
+        UpdatedAt: "2026-02-08T10:00:00Z",
+      },
+    ]);
+    mockGetPollingStatus.mockResolvedValue({
+      paused: false,
+      isPolling: false,
+      nextPollAt: "2026-02-14T16:08:40Z",
+      lastRun: {
+        runID: "auto-123",
+        startedAt: "2026-02-14T15:38:40Z",
+        completedAt: "2026-02-14T15:38:46Z",
+        durationMs: 0,
+        totalFilters: 1,
+        failedFilters: 0,
+        newJobs: 3,
+        skipped: 97,
+        filters: [
+          {
+            filterID: "f1",
+            filterName: "Backend",
+            source: "reed_uk",
+            newJobs: 3,
+            skipped: 97,
+          },
+        ],
+      },
+    });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Poll complete: 3 new, 97 skipped")
+      ).toBeInTheDocument();
     });
   });
 
@@ -251,7 +312,7 @@ describe("App", () => {
     });
 
     await userEvent.click(screen.getByText("Go Developer"));
-    await userEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /delete job/i }));
     await userEvent.click(
       screen.getByRole("button", { name: /confirm delete/i })
     );
@@ -265,6 +326,7 @@ describe("App", () => {
   });
 
   it("shows complete poll failure in toast with report action", async () => {
+    mockGetPollingStatus.mockResolvedValue({ paused: true, nextPollAt: "" });
     mockGetFilters.mockResolvedValue([
       {
         ID: "f1",
@@ -308,6 +370,7 @@ describe("App", () => {
   });
 
   it("does not show poll-complete toast when poll returns empty results", async () => {
+    mockGetPollingStatus.mockResolvedValue({ paused: true, nextPollAt: "" });
     mockGetFilters.mockResolvedValue([
       {
         ID: "f1",

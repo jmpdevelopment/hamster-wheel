@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 
 	_ "modernc.org/sqlite" // SQLite driver — registers itself with database/sql
 )
@@ -18,6 +20,11 @@ type DB struct {
 	conn *sql.DB
 	path string
 }
+
+const (
+	sqliteBusyMaxAttempts = 6
+	sqliteBusyBaseDelay   = 50 * time.Millisecond
+)
 
 // dataDir returns the OS-appropriate directory for storing application data.
 //   - macOS:   ~/Library/Application Support/HamsterWheel/
@@ -109,4 +116,28 @@ func (db *DB) Path() string {
 // Prefer using the typed methods (in jobs.go, filters.go, etc.) when available.
 func (db *DB) Conn() *sql.DB {
 	return db.conn
+}
+
+func withSQLiteBusyRetry(operation func() error) error {
+	var err error
+	for attempt := 1; attempt <= sqliteBusyMaxAttempts; attempt++ {
+		err = operation()
+		if err == nil {
+			return nil
+		}
+		if !isSQLiteBusyError(err) || attempt == sqliteBusyMaxAttempts {
+			return err
+		}
+		time.Sleep(sqliteBusyBaseDelay * time.Duration(attempt))
+	}
+	return err
+}
+
+func isSQLiteBusyError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "SQLITE_BUSY") ||
+		strings.Contains(message, "database is locked")
 }

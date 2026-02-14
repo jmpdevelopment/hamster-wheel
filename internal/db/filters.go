@@ -48,8 +48,11 @@ func (db *DB) CreateFilter(ctx context.Context, name, keywords, location, source
 		id, name, keywords, location, source,
 	)
 	if err != nil {
+		slog.Error("failed to create search filter", "filter_id", id, "name", name, "source", source, "error", err)
 		return "", fmt.Errorf("creating filter %q: %w", name, err)
 	}
+
+	slog.Info("search filter created", "filter_id", id, "name", name, "source", source)
 
 	return id, nil
 }
@@ -144,6 +147,7 @@ func (db *DB) UpdateFilter(ctx context.Context, id, name, keywords, location, so
 func (db *DB) DeleteFilter(ctx context.Context, id string) error {
 	result, err := db.conn.ExecContext(ctx, "DELETE FROM search_filters WHERE id = ?", id)
 	if err != nil {
+		slog.Error("failed to delete search filter", "filter_id", id, "error", err)
 		return fmt.Errorf("deleting filter %q: %w", id, err)
 	}
 
@@ -152,8 +156,11 @@ func (db *DB) DeleteFilter(ctx context.Context, id string) error {
 		return fmt.Errorf("checking delete result: %w", err)
 	}
 	if rows == 0 {
+		slog.Warn("search filter delete requested but filter not found", "filter_id", id)
 		return ErrFilterNotFound
 	}
+
+	slog.Info("search filter deleted", "filter_id", id)
 
 	return nil
 }

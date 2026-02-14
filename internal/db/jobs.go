@@ -26,6 +26,7 @@ type Job struct {
 	PostedAt     *time.Time // When the job was posted (from source), nullable
 	DiscoveredAt time.Time  // When Hamster Wheel found this job
 	FilterID     *string    // Which search filter discovered this, nullable
+	IsFavorite   bool       // Whether user marked this job as favorite
 }
 
 // InsertJob stores a new job. Returns ErrDuplicateJob if a job with the same
@@ -63,7 +64,7 @@ func (db *DB) InsertJob(ctx context.Context, job *Job) (string, error) {
 func (db *DB) GetJob(ctx context.Context, id string) (*Job, error) {
 	row := db.conn.QueryRowContext(ctx,
 		`SELECT id, source, source_id, title, company, location, description,
-		        url, posted_at, discovered_at, filter_id
+		        url, posted_at, discovered_at, filter_id, is_favorite
 		 FROM jobs WHERE id = ?`, id,
 	)
 
@@ -99,7 +100,7 @@ func (db *DB) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 	}
 
 	query := `SELECT id, source, source_id, title, company, location, description,
-	                 url, posted_at, discovered_at, filter_id
+	                 url, posted_at, discovered_at, filter_id, is_favorite
 	          FROM jobs ORDER BY discovered_at DESC`
 
 	if limit > 0 {
@@ -119,7 +120,7 @@ func (db *DB) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 func (db *DB) ListJobsByFilter(ctx context.Context, filterID string) ([]Job, error) {
 	rows, err := db.conn.QueryContext(ctx,
 		`SELECT id, source, source_id, title, company, location, description,
-		        url, posted_at, discovered_at, filter_id
+		        url, posted_at, discovered_at, filter_id, is_favorite
 		 FROM jobs WHERE filter_id = ? ORDER BY discovered_at DESC`,
 		filterID,
 	)
@@ -148,6 +149,75 @@ func (db *DB) DeleteJob(ctx context.Context, id string) error {
 		return ErrJobNotFound
 	}
 
+	return nil
+}
+
+// SetJobFavorite updates the favorite status for a single job.
+// Returns ErrJobNotFound if the job does not exist.
+func (db *DB) SetJobFavorite(ctx context.Context, id string, favorite bool) error {
+	var result sql.Result
+	var err error
+	retryErr := withSQLiteBusyRetry(func() error {
+		result, err = db.conn.ExecContext(ctx,
+			"UPDATE jobs SET is_favorite = ? WHERE id = ?",
+			boolToSQLiteInt(favorite), id,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
+	if err != nil {
+		return fmt.Errorf("updating favorite for job %q: %w", id, err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking favorite update result: %w", err)
+	}
+	if rows == 0 {
+		return ErrJobNotFound
+	}
+
+	return nil
+}
+
+// SetJobsFavorite updates favorite status for multiple jobs in one transaction.
+// Missing IDs are ignored so stale UI selections do not fail the entire action.
+func (db *DB) SetJobsFavorite(ctx context.Context, ids []string, favorite bool) error {
+	retryErr := withSQLiteBusyRetry(func() error {
+		tx, err := db.conn.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("beginning favorites update transaction: %w", err)
+		}
+		defer func() {
+			_ = tx.Rollback()
+		}()
+
+		stmt, err := tx.PrepareContext(ctx, "UPDATE jobs SET is_favorite = ? WHERE id = ?")
+		if err != nil {
+			return fmt.Errorf("preparing favorites update: %w", err)
+		}
+		defer stmt.Close()
+
+		for _, id := range ids {
+			trimmedID := strings.TrimSpace(id)
+			if trimmedID == "" {
+				continue
+			}
+			if _, err := stmt.ExecContext(ctx, boolToSQLiteInt(favorite), trimmedID); err != nil {
+				return fmt.Errorf("updating favorite for job %q: %w", trimmedID, err)
+			}
+		}
+
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("committing favorites update transaction: %w", err)
+		}
+		return nil
+	})
+	if retryErr != nil {
+		return retryErr
+	}
 	return nil
 }
 
@@ -189,11 +259,12 @@ func scanJob(row *sql.Row) (*Job, error) {
 	var j Job
 	var postedAt, discoveredAt sql.NullString
 	var filterID sql.NullString
+	var isFavorite int
 
 	err := row.Scan(
 		&j.ID, &j.Source, &j.SourceID, &j.Title, &j.Company,
 		&j.Location, &j.Description, &j.URL, &postedAt, &discoveredAt,
-		&filterID,
+		&filterID, &isFavorite,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -219,6 +290,7 @@ func scanJob(row *sql.Row) (*Job, error) {
 	if filterID.Valid {
 		j.FilterID = &filterID.String
 	}
+	j.IsFavorite = isFavorite == 1
 
 	return &j, nil
 }
@@ -231,11 +303,12 @@ func collectJobs(rows *sql.Rows) ([]Job, error) {
 		var j Job
 		var postedAt, discoveredAt sql.NullString
 		var filterID sql.NullString
+		var isFavorite int
 
 		err := rows.Scan(
 			&j.ID, &j.Source, &j.SourceID, &j.Title, &j.Company,
 			&j.Location, &j.Description, &j.URL, &postedAt, &discoveredAt,
-			&filterID,
+			&filterID, &isFavorite,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning job row: %w", err)
@@ -258,6 +331,7 @@ func collectJobs(rows *sql.Rows) ([]Job, error) {
 		if filterID.Valid {
 			j.FilterID = &filterID.String
 		}
+		j.IsFavorite = isFavorite == 1
 
 		jobs = append(jobs, j)
 	}
@@ -267,6 +341,13 @@ func collectJobs(rows *sql.Rows) ([]Job, error) {
 	}
 
 	return jobs, nil
+}
+
+func boolToSQLiteInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 // isUniqueViolation checks if an error is a SQLite UNIQUE constraint violation.

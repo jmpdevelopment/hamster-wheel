@@ -20,6 +20,7 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter()}
+        associatedJobCount={3}
         onToggle={async () => {}}
         onDelete={async () => {}}
       />
@@ -34,12 +35,12 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter()}
+        associatedJobCount={3}
         onToggle={async () => {}}
         onDelete={async () => {}}
       />
     );
 
-    // Location appears as "· London" in the details line.
     expect(screen.getByText(/· London/)).toBeInTheDocument();
   });
 
@@ -47,6 +48,7 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter({ Enabled: true })}
+        associatedJobCount={0}
         onToggle={async () => {}}
         onDelete={async () => {}}
       />
@@ -59,6 +61,7 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter({ Enabled: false })}
+        associatedJobCount={0}
         onToggle={async () => {}}
         onDelete={async () => {}}
       />
@@ -72,6 +75,7 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter({ Enabled: true })}
+        associatedJobCount={0}
         onToggle={onToggle}
         onDelete={async () => {}}
       />
@@ -85,6 +89,7 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter()}
+        associatedJobCount={3}
         onToggle={async () => {}}
         onDelete={async () => {}}
       />
@@ -100,14 +105,18 @@ describe("FilterCard", () => {
     expect(
       screen.getByRole("button", { name: /cancel delete/i })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /also delete 3 associated jobs/i })
+    ).toBeInTheDocument();
   });
 
-  it("calls onDelete when delete is confirmed", async () => {
+  it("calls onDelete(false) when delete is confirmed without checkbox", async () => {
     const onDelete = vi.fn().mockResolvedValue(undefined);
 
     render(
       <FilterCard
         filter={fakeFilter()}
+        associatedJobCount={3}
         onToggle={async () => {}}
         onDelete={onDelete}
       />
@@ -119,7 +128,51 @@ describe("FilterCard", () => {
     await userEvent.click(
       screen.getByRole("button", { name: /confirm delete/i })
     );
-    expect(onDelete).toHaveBeenCalledOnce();
+    expect(onDelete).toHaveBeenCalledWith(false);
+  });
+
+  it("calls onDelete(true) when checkbox is checked before confirm", async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <FilterCard
+        filter={fakeFilter()}
+        associatedJobCount={2}
+        onToggle={async () => {}}
+        onDelete={onDelete}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /delete filter/i })
+    );
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /also delete 2 associated jobs/i })
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /confirm delete/i })
+    );
+
+    expect(onDelete).toHaveBeenCalledWith(true);
+  });
+
+  it("does not show associated-job checkbox when count is zero", async () => {
+    render(
+      <FilterCard
+        filter={fakeFilter()}
+        associatedJobCount={0}
+        onToggle={async () => {}}
+        onDelete={async () => {}}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /delete filter/i })
+    );
+
+    expect(
+      screen.queryByRole("checkbox", { name: /also delete/i })
+    ).not.toBeInTheDocument();
   });
 
   it("does not call onDelete when delete is cancelled", async () => {
@@ -128,6 +181,7 @@ describe("FilterCard", () => {
     render(
       <FilterCard
         filter={fakeFilter()}
+        associatedJobCount={3}
         onToggle={async () => {}}
         onDelete={onDelete}
       />
@@ -139,8 +193,8 @@ describe("FilterCard", () => {
     await userEvent.click(
       screen.getByRole("button", { name: /cancel delete/i })
     );
+
     expect(onDelete).not.toHaveBeenCalled();
-    // Confirm buttons should be hidden again.
     expect(
       screen.queryByRole("button", { name: /confirm delete/i })
     ).not.toBeInTheDocument();

@@ -182,3 +182,61 @@ func TestRetryFetchDescriptionLoadError(t *testing.T) {
 		t.Fatalf("expected loading-job context in error, got %v", err)
 	}
 }
+
+func TestSetJobFavoriteUpdatesJob(t *testing.T) {
+	database := openJobServiceTestDB(t)
+	service := NewJobService(database, adapter.NewRegistry())
+
+	jobID := insertRetryJob(t, database, "reed_uk")
+
+	if err := service.SetJobFavorite(jobID, true); err != nil {
+		t.Fatalf("SetJobFavorite failed: %v", err)
+	}
+
+	job, err := database.GetJob(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("loading job: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected job to exist")
+	}
+	if !job.IsFavorite {
+		t.Fatal("expected job to be favorite")
+	}
+}
+
+func TestSetJobsFavoriteUpdatesJobs(t *testing.T) {
+	database := openJobServiceTestDB(t)
+	service := NewJobService(database, adapter.NewRegistry())
+
+	jobID1 := insertRetryJob(t, database, "reed_uk")
+	jobID2, err := database.InsertJob(context.Background(), &db.Job{
+		Source:      "reed_uk",
+		SourceID:    "source-456",
+		Title:       "React Engineer",
+		Company:     "Acme",
+		Location:    "Remote",
+		Description: "",
+		URL:         "https://example.com/jobs/456",
+	})
+	if err != nil {
+		t.Fatalf("inserting second job: %v", err)
+	}
+
+	if err := service.SetJobsFavorite([]string{jobID1, jobID2}, true); err != nil {
+		t.Fatalf("SetJobsFavorite failed: %v", err)
+	}
+
+	jobs, err := database.ListJobs(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("listing jobs: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+	for _, job := range jobs {
+		if !job.IsFavorite {
+			t.Fatalf("expected job %q to be favorite", job.ID)
+		}
+	}
+}

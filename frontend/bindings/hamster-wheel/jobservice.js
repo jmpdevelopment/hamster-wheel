@@ -76,6 +76,26 @@ export function RetryFetchDescription(jobID) {
     return $Call.ByID(492434294, jobID);
 }
 
+/**
+ * SetJobFavorite updates favorite state for one job.
+ * @param {string} id
+ * @param {boolean} favorite
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetJobFavorite(id, favorite) {
+    return $Call.ByID(1547693241, id, favorite);
+}
+
+/**
+ * SetJobsFavorite updates favorite state for multiple jobs.
+ * @param {string[]} ids
+ * @param {boolean} favorite
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetJobsFavorite(ids, favorite) {
+    return $Call.ByID(3257197714, ids, favorite);
+}
+
 // Private type creation functions
 const $$createType0 = db$0.Job.createFrom;
 const $$createType1 = $Create.Nullable($$createType0);

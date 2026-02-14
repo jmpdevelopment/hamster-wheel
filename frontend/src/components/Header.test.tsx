@@ -47,11 +47,13 @@ describe("Header", () => {
 
   it("shows 'Polling...' text while polling", () => {
     render(<Header {...defaultProps} isPolling={true} />);
-    expect(screen.getByText("Polling...")).toBeInTheDocument();
+    expect(
+      screen.getByText("Polling...", { selector: "span" })
+    ).toBeInTheDocument();
   });
 
   it("shows Pause button when polling is active", () => {
-    render(<Header {...defaultProps} />);
+    render(<Header {...defaultProps} pollingPaused={false} />);
     expect(
       screen.getByRole("button", { name: /pause auto-polling/i })
     ).toBeInTheDocument();
@@ -71,12 +73,16 @@ describe("Header", () => {
 
   it("shows next poll time when not paused", () => {
     render(
-      <Header {...defaultProps} nextPollAt="2026-02-08T22:00:00Z" />
+      <Header
+        {...defaultProps}
+        pollingPaused={false}
+        nextPollAt="2026-02-08T22:00:00Z"
+      />
     );
     expect(screen.getByText(/Next:/)).toBeInTheDocument();
   });
 
-  it("shows scheduling status while polling and next poll time is not yet available", () => {
+  it("shows polling status while polling and next poll time is not yet available", () => {
     render(
       <Header
         {...defaultProps}
@@ -85,22 +91,35 @@ describe("Header", () => {
         pollingPaused={false}
       />
     );
-    expect(screen.getByText("Scheduling next poll...")).toBeInTheDocument();
+    expect(
+      screen.getByText("Polling...", { selector: "span" })
+    ).toBeInTheDocument();
   });
 
-  it("does not show scheduling status before polling starts", () => {
+  it("does not show polling status before polling starts", () => {
     render(<Header {...defaultProps} isPolling={false} nextPollAt="" pollingPaused={false} />);
-    expect(screen.queryByText("Scheduling next poll...")).not.toBeInTheDocument();
+    expect(screen.queryByText("Polling...")).not.toBeInTheDocument();
   });
 
   it("calls onTogglePolling when Pause is clicked", async () => {
     const onTogglePolling = vi.fn();
-    render(<Header {...defaultProps} onTogglePolling={onTogglePolling} />);
+    render(
+      <Header
+        {...defaultProps}
+        pollingPaused={false}
+        onTogglePolling={onTogglePolling}
+      />
+    );
 
     await userEvent.click(
       screen.getByRole("button", { name: /pause auto-polling/i })
     );
     expect(onTogglePolling).toHaveBeenCalledOnce();
+  });
+
+  it("keeps Poll Now enabled while auto-polling is enabled", () => {
+    render(<Header {...defaultProps} pollingPaused={false} />);
+    expect(screen.getByRole("button", { name: /poll now/i })).toBeEnabled();
   });
 
   it("renders settings gear button", () => {

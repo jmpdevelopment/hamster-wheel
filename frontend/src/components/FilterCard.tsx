@@ -5,21 +5,30 @@ import { IconButton } from "./IconButton";
 
 interface FilterCardProps {
   filter: SearchFilter;
+  associatedJobCount: number;
   onToggle: (enabled: boolean) => Promise<void>;
-  onDelete: () => Promise<void>;
+  onDelete: (deleteAssociatedJobs: boolean) => Promise<void>;
 }
 
-export function FilterCard({ filter, onToggle, onDelete }: FilterCardProps) {
+export function FilterCard({
+  filter,
+  associatedJobCount,
+  onToggle,
+  onDelete,
+}: FilterCardProps) {
   const [confirming, setConfirming] = useState(false);
+  const [deleteAssociatedJobs, setDeleteAssociatedJobs] = useState(false);
 
   const handleDelete = () => {
     if (confirming) {
-      void onDelete().catch(() => {
+      void onDelete(deleteAssociatedJobs).catch(() => {
         // Parent tracks mutation errors for display.
       });
       setConfirming(false);
+      setDeleteAssociatedJobs(false);
     } else {
       setConfirming(true);
+      setDeleteAssociatedJobs(false);
     }
   };
 
@@ -54,7 +63,10 @@ export function FilterCard({ filter, onToggle, onDelete }: FilterCardProps) {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => setConfirming(false)}
+              onClick={() => {
+                setConfirming(false);
+                setDeleteAssociatedJobs(false);
+              }}
               aria-label="Cancel delete"
             >
               No
@@ -70,6 +82,20 @@ export function FilterCard({ filter, onToggle, onDelete }: FilterCardProps) {
           </IconButton>
         )}
       </div>
+
+      {confirming && associatedJobCount > 0 && (
+        <label className="mt-2 flex items-center gap-2 text-xs text-hw-text-muted">
+          <input
+            type="checkbox"
+            checked={deleteAssociatedJobs}
+            onChange={(event) => setDeleteAssociatedJobs(event.target.checked)}
+            className="h-3.5 w-3.5 rounded border-hw-border bg-hw-bg text-hw-accent focus:ring-hw-accent"
+            aria-label={`Also delete ${associatedJobCount} associated jobs`}
+          />
+          Also delete {associatedJobCount} associated{" "}
+          {associatedJobCount === 1 ? "job" : "jobs"}
+        </label>
+      )}
 
       <div className="flex items-center justify-between mt-2">
         <span className="text-xs text-hw-text-muted">{filter.Source}</span>

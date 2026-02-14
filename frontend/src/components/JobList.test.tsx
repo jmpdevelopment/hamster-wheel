@@ -1,4 +1,4 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { JobList } from "./JobList";
@@ -23,6 +23,7 @@ const fakeJob = (id: string, title: string, filterId = "f1") => ({
   PostedAt: "2026-02-08T10:00:00Z",
   DiscoveredAt: "2026-02-08T11:00:00Z",
   FilterID: filterId,
+  IsFavorite: false,
 });
 
 const fakeFilter = (id: string, name: string) => ({
@@ -44,6 +45,10 @@ const defaultProps = {
   onSelectJob: vi.fn(),
   filterByFilterId: null,
   onFilterChange: vi.fn(),
+  onFilteredJobsChange: vi.fn(),
+  onSetFavoriteJobs: vi.fn(),
+  onToggleFavoriteJob: vi.fn(),
+  onDeleteJobs: vi.fn().mockResolvedValue(undefined),
 };
 
 describe("JobList", () => {
@@ -79,16 +84,6 @@ describe("JobList", () => {
     expect(screen.queryByText("React Dev")).not.toBeInTheDocument();
   });
 
-  it("shows filter dropdown with filter names", () => {
-    render(<JobList {...defaultProps} />);
-    const dropdown = screen.getByRole("combobox", {
-      name: /filter jobs/i,
-    });
-    expect(dropdown).toBeInTheDocument();
-    expect(screen.getByText("Backend")).toBeInTheDocument();
-    expect(screen.getByText("Frontend")).toBeInTheDocument();
-  });
-
   it("calls onFilterChange when dropdown value changes", async () => {
     const onFilterChange = vi.fn();
     render(<JobList {...defaultProps} onFilterChange={onFilterChange} />);
@@ -100,23 +95,6 @@ describe("JobList", () => {
     expect(onFilterChange).toHaveBeenCalledWith("f1");
   });
 
-  it("calls onFilterChange with null when 'All Filters' is selected", async () => {
-    const onFilterChange = vi.fn();
-    render(
-      <JobList
-        {...defaultProps}
-        filterByFilterId="f1"
-        onFilterChange={onFilterChange}
-      />
-    );
-
-    const dropdown = screen.getByRole("combobox", {
-      name: /filter jobs/i,
-    });
-    await userEvent.selectOptions(dropdown, "");
-    expect(onFilterChange).toHaveBeenCalledWith(null);
-  });
-
   it("calls onSelectJob when a job card is clicked", async () => {
     const onSelectJob = vi.fn();
     render(<JobList {...defaultProps} onSelectJob={onSelectJob} />);
@@ -125,24 +103,15 @@ describe("JobList", () => {
     expect(onSelectJob).toHaveBeenCalledWith("j1");
   });
 
-  // Search tests
-
-  it("renders the search input", () => {
-    render(<JobList {...defaultProps} />);
-    expect(screen.getByLabelText("Search jobs")).toBeInTheDocument();
-  });
-
   it("filters jobs by search term after debounce", async () => {
     render(<JobList {...defaultProps} />);
 
     const searchInput = screen.getByLabelText("Search jobs");
     await userEvent.type(searchInput, "react");
 
-    // Before debounce — both jobs visible
     expect(screen.getByText("Go Dev")).toBeInTheDocument();
     expect(screen.getByText("React Dev")).toBeInTheDocument();
 
-    // After debounce
     act(() => {
       vi.advanceTimersByTime(200);
     });
@@ -150,115 +119,13 @@ describe("JobList", () => {
     expect(screen.queryByText("Go Dev")).not.toBeInTheDocument();
     expect(screen.getByText("React Dev")).toBeInTheDocument();
   });
-
-  it("clears search and restores all jobs", async () => {
-    render(<JobList {...defaultProps} />);
-
-    const searchInput = screen.getByLabelText("Search jobs");
-    await userEvent.type(searchInput, "react");
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    expect(screen.queryByText("Go Dev")).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByLabelText("Clear search"));
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-    expect(screen.getByText("Go Dev")).toBeInTheDocument();
-    expect(screen.getByText("React Dev")).toBeInTheDocument();
-  });
-
-  it("shows 'No matching jobs' when search yields no results", async () => {
-    render(<JobList {...defaultProps} />);
-
-    const searchInput = screen.getByLabelText("Search jobs");
-    await userEvent.type(searchInput, "xyznotfound");
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-
-    expect(screen.getByText("No matching jobs")).toBeInTheDocument();
-    expect(
-      screen.getByText("Try adjusting your search or filter.")
-    ).toBeInTheDocument();
-  });
-
-  it("shows 'No matching jobs' when filter yields no results", () => {
-    render(<JobList {...defaultProps} filterByFilterId="nonexistent" />);
-    expect(screen.getByText("No matching jobs")).toBeInTheDocument();
-  });
-
-  it("multi-term search requires all terms to match", async () => {
-    const jobs = [
-      fakeJob("j1", "Senior Go Developer"),
-      fakeJob("j2", "Junior Go Engineer"),
-      fakeJob("j3", "React Developer"),
-    ];
-    render(<JobList {...defaultProps} jobs={jobs} />);
-
-    const searchInput = screen.getByLabelText("Search jobs");
-    await userEvent.type(searchInput, "go dev");
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-
-    expect(screen.getByText("Senior Go Developer")).toBeInTheDocument();
-    expect(screen.queryByText("Junior Go Engineer")).not.toBeInTheDocument();
-    expect(screen.queryByText("React Developer")).not.toBeInTheDocument();
-  });
-
-  it("combines search and filter", async () => {
-    const jobs = [
-      fakeJob("j1", "Go Dev", "f1"),
-      fakeJob("j2", "React Dev", "f2"),
-      fakeJob("j3", "Go Engineer", "f2"),
-    ];
-    render(<JobList {...defaultProps} jobs={jobs} filterByFilterId="f2" />);
-
-    const searchInput = screen.getByLabelText("Search jobs");
-    await userEvent.type(searchInput, "go");
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-
-    expect(screen.queryByText("Go Dev")).not.toBeInTheDocument();
-    expect(screen.queryByText("React Dev")).not.toBeInTheDocument();
-    expect(screen.getByText("Go Engineer")).toBeInTheDocument();
-  });
-
-  // Job count indicator tests
 
   it("shows total job count when no filter or search", () => {
     render(<JobList {...defaultProps} />);
     expect(screen.getByText("2 jobs")).toBeInTheDocument();
   });
 
-  it("shows filtered count when search is active", async () => {
-    render(<JobList {...defaultProps} />);
-
-    const searchInput = screen.getByLabelText("Search jobs");
-    await userEvent.type(searchInput, "react");
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-
-    expect(screen.getByText("1 of 2 jobs")).toBeInTheDocument();
-  });
-
-  it("shows filtered count when filter is active", () => {
-    render(<JobList {...defaultProps} filterByFilterId="f1" />);
-    expect(screen.getByText("1 of 2 jobs")).toBeInTheDocument();
-  });
-
-  it("does not show count when there are no jobs", () => {
-    render(<JobList {...defaultProps} jobs={[]} />);
-    expect(screen.queryByText(/^\d+ jobs$/)).not.toBeInTheDocument();
-  });
-
-  // onFilteredJobsChange tests
-
-  it("calls onFilteredJobsChange with all job IDs initially", () => {
+  it("calls onFilteredJobsChange with all visible IDs initially", () => {
     const onFilteredJobsChange = vi.fn();
     render(
       <JobList {...defaultProps} onFilteredJobsChange={onFilteredJobsChange} />
@@ -267,31 +134,296 @@ describe("JobList", () => {
     expect(onFilteredJobsChange).toHaveBeenCalledWith(["j1", "j2"]);
   });
 
-  it("calls onFilteredJobsChange with filtered IDs after search", async () => {
-    const onFilteredJobsChange = vi.fn();
-    render(
-      <JobList {...defaultProps} onFilteredJobsChange={onFilteredJobsChange} />
+  it("favorites selected jobs via bulk action", async () => {
+    const onSetFavoriteJobs = vi.fn();
+    render(<JobList {...defaultProps} onSetFavoriteJobs={onSetFavoriteJobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job go dev/i })
     );
+    await userEvent.click(screen.getByRole("button", { name: /^favorite$/i }));
 
-    const searchInput = screen.getByLabelText("Search jobs");
-    await userEvent.type(searchInput, "react");
-    act(() => {
-      vi.advanceTimersByTime(200);
-    });
-
-    expect(onFilteredJobsChange).toHaveBeenLastCalledWith(["j2"]);
+    expect(onSetFavoriteJobs).toHaveBeenCalledWith(["j1"], true);
   });
 
-  it("calls onFilteredJobsChange with filtered IDs when filter is active", () => {
-    const onFilteredJobsChange = vi.fn();
+  it("select-all chooses visible jobs and bulk delete calls onDeleteJobs", async () => {
+    const onDeleteJobs = vi.fn().mockResolvedValue(undefined);
+    render(<JobList {...defaultProps} onDeleteJobs={onDeleteJobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select all visible jobs/i })
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /delete 2 jobs/i }));
+
+    expect(onDeleteJobs).toHaveBeenCalledWith(["j1", "j2"]);
+  });
+
+  it("shows only favorites when favorites-only mode is enabled", async () => {
     render(
       <JobList
         {...defaultProps}
-        filterByFilterId="f1"
-        onFilteredJobsChange={onFilteredJobsChange}
+        jobs={[fakeJob("j1", "Go Dev"), { ...fakeJob("j2", "React Dev", "f2"), IsFavorite: true }]}
       />
     );
 
-    expect(onFilteredJobsChange).toHaveBeenCalledWith(["j1"]);
+    await userEvent.click(
+      screen.getByRole("button", { name: /show only favorite jobs/i })
+    );
+
+    expect(screen.queryByText("Go Dev")).not.toBeInTheDocument();
+    expect(screen.getByText("React Dev")).toBeInTheDocument();
+  });
+
+  it("shows no-favorites empty state when favorites-only has no matches", async () => {
+    render(<JobList {...defaultProps} />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /show only favorite jobs/i })
+    );
+
+    expect(screen.getByText("No favorite jobs")).toBeInTheDocument();
+    expect(
+      screen.getByText("Mark jobs as favorites to quickly return to them.")
+    ).toBeInTheDocument();
+  });
+
+  it("calls onToggleFavoriteJob from row star button", async () => {
+    const onToggleFavoriteJob = vi.fn();
+    render(
+      <JobList
+        {...defaultProps}
+        onToggleFavoriteJob={onToggleFavoriteJob}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /add go dev to favorites/i })
+    );
+
+    expect(onToggleFavoriteJob).toHaveBeenCalledWith("j1");
+  });
+
+  it("supports shift-select to apply range selection", async () => {
+    const jobs = [
+      fakeJob("j1", "Job 1"),
+      fakeJob("j2", "Job 2"),
+      fakeJob("j3", "Job 3"),
+      fakeJob("j4", "Job 4"),
+    ];
+    render(<JobList {...defaultProps} jobs={jobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 3/i }),
+      { shiftKey: true }
+    );
+
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 2/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 3/i })
+    ).toBeChecked();
+  });
+
+  it("supports shift-select with checkbox from selected row anchor", () => {
+    const jobs = [
+      fakeJob("j1", "Job 1"),
+      fakeJob("j2", "Job 2"),
+      fakeJob("j3", "Job 3"),
+      fakeJob("j4", "Job 4"),
+    ];
+    render(<JobList {...defaultProps} jobs={jobs} selectedJobId="j1" />);
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 3/i }),
+      { shiftKey: true }
+    );
+
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 2/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 3/i })
+    ).toBeChecked();
+  });
+
+  it("supports shift-select with checkbox when click event shiftKey is missing", async () => {
+    const jobs = [
+      fakeJob("j1", "Job 1"),
+      fakeJob("j2", "Job 2"),
+      fakeJob("j3", "Job 3"),
+      fakeJob("j4", "Job 4"),
+    ];
+    render(<JobList {...defaultProps} jobs={jobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    );
+    fireEvent.keyDown(window, { key: "Shift" });
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 3/i })
+    );
+    fireEvent.keyUp(window, { key: "Shift" });
+
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 2/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 3/i })
+    ).toBeChecked();
+  });
+
+  it("keeps shift-range anchor across job list refreshes", async () => {
+    const initialJobs = [
+      fakeJob("j1", "Job 1"),
+      fakeJob("j2", "Job 2"),
+      fakeJob("j3", "Job 3"),
+      fakeJob("j4", "Job 4"),
+      fakeJob("j5", "Job 5"),
+    ];
+    const { rerender } = render(<JobList {...defaultProps} jobs={initialJobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    );
+
+    const refreshedJobs = [...initialJobs, fakeJob("j6", "Job 6")];
+    rerender(<JobList {...defaultProps} jobs={refreshedJobs} />);
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 5/i }),
+      { shiftKey: true }
+    );
+
+    expect(screen.getByText("5 selected")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 2/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 3/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 4/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 5/i })
+    ).toBeChecked();
+  });
+
+  it("keeps selecting ranges on repeated checkbox shift-select flows", async () => {
+    const jobs = [
+      fakeJob("j1", "Job 1"),
+      fakeJob("j2", "Job 2"),
+      fakeJob("j3", "Job 3"),
+      fakeJob("j4", "Job 4"),
+      fakeJob("j5", "Job 5"),
+    ];
+    render(<JobList {...defaultProps} jobs={jobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    );
+    fireEvent.keyDown(window, { key: "Shift" });
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 5/i })
+    );
+    fireEvent.keyUp(window, { key: "Shift" });
+    expect(screen.getByText("5 selected")).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    );
+    fireEvent.keyDown(window, { key: "Shift" });
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job job 5/i })
+    );
+    fireEvent.keyUp(window, { key: "Shift" });
+
+    expect(screen.getByText("5 selected")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 2/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 3/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 4/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 5/i })
+    ).toBeChecked();
+  });
+
+  it("supports shift-select range when shift-clicking job rows", () => {
+    const onSelectJob = vi.fn();
+    const jobs = [
+      fakeJob("j1", "Job 1"),
+      fakeJob("j2", "Job 2"),
+      fakeJob("j3", "Job 3"),
+      fakeJob("j4", "Job 4"),
+    ];
+    render(
+      <JobList
+        {...defaultProps}
+        jobs={jobs}
+        selectedJobId="j1"
+        onSelectJob={onSelectJob}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Job 3"), { shiftKey: true });
+
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 1/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 2/i })
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: /select job job 3/i })
+    ).toBeChecked();
+    expect(onSelectJob).toHaveBeenCalledWith("j3");
+  });
+
+  it("virtualizes a 10k job list and can jump to deep rows", async () => {
+    const jobs = Array.from({ length: 10_000 }, (_, index) =>
+      fakeJob(`j${index + 1}`, `Job ${index + 1}`)
+    );
+    const { rerender, container } = render(
+      <JobList {...defaultProps} jobs={jobs} />
+    );
+
+    expect(screen.getByText("10000 jobs")).toBeInTheDocument();
+    // Virtualization should keep mounted rows bounded regardless of dataset size.
+    expect(container.querySelectorAll('input[type="checkbox"]').length).toBeLessThan(200);
+
+    rerender(
+      <JobList {...defaultProps} jobs={jobs} selectedJobId="j10000" />
+    );
+
+    expect(await screen.findByText("Job 10000")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { GetKeyboardShortcuts } from "../bindings/hamster-wheel/settingsservice";
 import { useJobs } from "./hooks/useJobs";
 import { useFilters } from "./hooks/useFilters";
@@ -102,9 +102,34 @@ function App() {
     [jobs, selectedJobId]
   );
 
+  const handleDeleteJobs = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) {
+        return;
+      }
+
+      await jobs.deleteJobs(ids);
+      if (selectedJobId && ids.includes(selectedJobId)) {
+        setSelectedJobId(null);
+      }
+    },
+    [jobs, selectedJobId]
+  );
+
   const selectedJob = selectedJobId
     ? jobs.jobs.find((j) => j.ID === selectedJobId) ?? null
     : null;
+
+  const jobCountsByFilterId = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const job of jobs.jobs) {
+      if (!job.FilterID) {
+        continue;
+      }
+      counts[job.FilterID] = (counts[job.FilterID] ?? 0) + 1;
+    }
+    return counts;
+  }, [jobs.jobs]);
 
   const handleSelectJob = useCallback(
     (id: string | null) => {
@@ -153,12 +178,19 @@ function App() {
         {/* Left: Filters */}
         <FilterPanel
           filters={filters.filters}
+          jobCountsByFilterId={jobCountsByFilterId}
           loading={filters.loading}
           onCreateFilter={async (name, keywords, location, source) => {
             await filters.createFilter(name, keywords, location, source);
           }}
           onToggleFilter={handleToggleFilter}
-          onDeleteFilter={async (id) => {
+          onDeleteFilter={async (id, deleteAssociatedJobs) => {
+            if (deleteAssociatedJobs) {
+              const associatedJobIDs = jobs.jobs
+                .filter((job) => job.FilterID === id)
+                .map((job) => job.ID);
+              await handleDeleteJobs(associatedJobIDs);
+            }
             await filters.deleteFilter(id);
           }}
         />
@@ -175,6 +207,15 @@ function App() {
             onFilterChange={setFilterByFilterId}
             onFilteredJobsChange={setFilteredJobIds}
             searchInputRef={searchInputRef}
+            onSetFavoriteJobs={jobs.setJobsFavorite}
+            onToggleFavoriteJob={async (jobID) => {
+              const job = jobs.jobs.find((candidate) => candidate.ID === jobID);
+              if (!job) {
+                return;
+              }
+              await jobs.setJobFavorite(jobID, !job.IsFavorite);
+            }}
+            onDeleteJobs={handleDeleteJobs}
           />
         </div>
 

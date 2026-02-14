@@ -23,6 +23,7 @@ const fakeJob = (
   PostedAt: "2026-02-08T10:00:00Z",
   DiscoveredAt: "2026-02-08T11:00:00Z",
   FilterID: opts.filterId ?? "f1",
+  IsFavorite: false,
 });
 
 describe("useJobSearch", () => {

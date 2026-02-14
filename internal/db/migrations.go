@@ -61,6 +61,8 @@ var migrations = []string{
 		key   TEXT PRIMARY KEY,
 		value TEXT NOT NULL
 	);`,
+	// Migration 2: Persist job favorites.
+	`ALTER TABLE jobs ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // migrate applies any pending migrations based on the schema_version PRAGMA.

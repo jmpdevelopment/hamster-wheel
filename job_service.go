@@ -52,6 +52,16 @@ func (s *JobService) DeleteJob(id string) error {
 	return s.db.DeleteJob(context.Background(), id)
 }
 
+// SetJobFavorite updates favorite state for one job.
+func (s *JobService) SetJobFavorite(id string, favorite bool) error {
+	return s.db.SetJobFavorite(context.Background(), id, favorite)
+}
+
+// SetJobsFavorite updates favorite state for multiple jobs.
+func (s *JobService) SetJobsFavorite(ids []string, favorite bool) error {
+	return s.db.SetJobsFavorite(context.Background(), ids, favorite)
+}
+
 // RetryFetchDescription re-fetches the full description for a job from the
 // original source. Used when the initial detail fetch failed during polling.
 func (s *JobService) RetryFetchDescription(jobID string) error {

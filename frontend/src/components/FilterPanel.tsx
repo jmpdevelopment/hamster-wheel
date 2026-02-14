@@ -6,6 +6,7 @@ import { EmptyState } from "./EmptyState";
 
 interface FilterPanelProps {
   filters: SearchFilter[];
+  jobCountsByFilterId: Record<string, number>;
   loading: boolean;
   onCreateFilter: (
     name: string,
@@ -14,11 +15,15 @@ interface FilterPanelProps {
     source: string
   ) => Promise<void>;
   onToggleFilter: (filter: SearchFilter, enabled: boolean) => Promise<void>;
-  onDeleteFilter: (id: string) => Promise<void>;
+  onDeleteFilter: (
+    id: string,
+    deleteAssociatedJobs: boolean
+  ) => Promise<void>;
 }
 
 export function FilterPanel({
   filters,
+  jobCountsByFilterId,
   loading,
   onCreateFilter,
   onToggleFilter,
@@ -73,8 +78,11 @@ export function FilterPanel({
             <FilterCard
               key={filter.ID}
               filter={filter}
+              associatedJobCount={jobCountsByFilterId[filter.ID] ?? 0}
               onToggle={(enabled) => onToggleFilter(filter, enabled)}
-              onDelete={() => onDeleteFilter(filter.ID)}
+              onDelete={(deleteAssociatedJobs) =>
+                onDeleteFilter(filter.ID, deleteAssociatedJobs)
+              }
             />
           ))
         )}

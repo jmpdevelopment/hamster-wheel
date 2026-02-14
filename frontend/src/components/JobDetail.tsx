@@ -113,6 +113,7 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
               size="sm"
               onClick={handleDelete}
               className="border border-hw-danger/40 text-hw-danger hover:bg-hw-danger/10"
+              aria-label="Delete job"
             >
               Delete
             </Button>

@@ -6,11 +6,15 @@ import { useJobs } from "./useJobs";
 const mockGetJobs = vi.fn();
 const mockGetJobCount = vi.fn();
 const mockDeleteJob = vi.fn();
+const mockSetJobFavorite = vi.fn();
+const mockSetJobsFavorite = vi.fn();
 
 vi.mock("../../bindings/hamster-wheel/jobservice", () => ({
   GetJobs: (...args: unknown[]) => mockGetJobs(...args),
   GetJobCount: (...args: unknown[]) => mockGetJobCount(...args),
   DeleteJob: (...args: unknown[]) => mockDeleteJob(...args),
+  SetJobFavorite: (...args: unknown[]) => mockSetJobFavorite(...args),
+  SetJobsFavorite: (...args: unknown[]) => mockSetJobsFavorite(...args),
 }));
 
 const fakeJob = (id: string, title: string) => ({
@@ -25,6 +29,7 @@ const fakeJob = (id: string, title: string) => ({
   PostedAt: "2026-02-08T10:00:00Z",
   DiscoveredAt: "2026-02-08T11:00:00Z",
   FilterID: "filter-1",
+  IsFavorite: false,
 });
 
 beforeEach(() => {
@@ -32,6 +37,8 @@ beforeEach(() => {
   mockGetJobs.mockResolvedValue([fakeJob("1", "Go Dev"), fakeJob("2", "React Dev")]);
   mockGetJobCount.mockResolvedValue(2);
   mockDeleteJob.mockResolvedValue(undefined);
+  mockSetJobFavorite.mockResolvedValue(undefined);
+  mockSetJobsFavorite.mockResolvedValue(undefined);
 });
 
 describe("useJobs", () => {
@@ -99,6 +106,84 @@ describe("useJobs", () => {
 
     expect(mockDeleteJob).toHaveBeenCalledWith("1");
     // refresh is called after delete
+    expect(mockGetJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it("deleteJobs deletes all IDs and refreshes once", async () => {
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.deleteJobs(["1", "2", "1"]);
+    });
+
+    expect(mockDeleteJob).toHaveBeenCalledTimes(2);
+    expect(mockDeleteJob).toHaveBeenNthCalledWith(1, "1");
+    expect(mockDeleteJob).toHaveBeenNthCalledWith(2, "2");
+    expect(mockGetJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it("deleteJobs reports partial failures and still refreshes", async () => {
+    mockDeleteJob
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("missing"));
+
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await expect(result.current.deleteJobs(["1", "2"])).rejects.toThrow(
+        "Failed to delete 1 of 2 jobs: missing"
+      );
+    });
+
+    expect(mockGetJobs).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBe("Failed to delete 1 of 2 jobs: missing");
+  });
+
+  it("deleteJobs retries transient SQLITE_BUSY errors", async () => {
+    mockDeleteJob
+      .mockRejectedValueOnce(new Error("database is locked (5) (SQLITE_BUSY)"))
+      .mockResolvedValueOnce(undefined);
+
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.deleteJobs(["1"]);
+    });
+
+    expect(mockDeleteJob).toHaveBeenCalledTimes(2);
+    expect(mockGetJobs).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("setJobFavorite updates favorite and refreshes", async () => {
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.setJobFavorite("1", true);
+    });
+
+    expect(mockSetJobFavorite).toHaveBeenCalledWith("1", true);
+    expect(mockGetJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it("setJobsFavorite updates favorites in bulk and refreshes", async () => {
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.setJobsFavorite(["1", "2", "1"], false);
+    });
+
+    expect(mockSetJobsFavorite).toHaveBeenCalledWith(["1", "2"], false);
     expect(mockGetJobs).toHaveBeenCalledTimes(2);
   });
 

@@ -187,8 +187,10 @@ func (s *PollingService) SavePollReport(path, content string) error {
 
 // PollingStatus represents the current state of auto-polling.
 type PollingStatus struct {
-	Paused     bool   `json:"paused"`
-	NextPollAt string `json:"nextPollAt"` // RFC3339 timestamp, empty if not scheduled
+	Paused     bool           `json:"paused"`
+	IsPolling  bool           `json:"isPolling"`
+	NextPollAt string         `json:"nextPollAt"` // RFC3339 timestamp, empty if not scheduled
+	LastRun    *PollRunResult `json:"lastRun,omitempty"`
 }
 
 // GetPollingStatus returns whether auto-polling is paused and when the next poll is due.
@@ -198,13 +200,58 @@ func (s *PollingService) GetPollingStatus() PollingStatus {
 	if !next.IsZero() {
 		nextStr = next.Format(time.RFC3339)
 	}
-	return PollingStatus{
+	status := PollingStatus{
 		Paused:     s.scheduler.IsPaused(),
+		IsPolling:  s.scheduler.IsPolling(),
 		NextPollAt: nextStr,
 	}
+	if summary, ok := s.scheduler.LastPollSummary(); ok {
+		run := pollRunFromSchedulerSummary(summary)
+		status.LastRun = &run
+	}
+	return status
 }
 
 // SetPollingPaused pauses or resumes auto-polling. Manual PollNow still works.
 func (s *PollingService) SetPollingPaused(paused bool) {
 	s.scheduler.SetPaused(paused)
+}
+
+func pollRunFromSchedulerSummary(summary scheduler.PollCycleSummary) PollRunResult {
+	completedAt := summary.CompletedAt.UTC()
+	completedAtRFC3339 := ""
+	if !completedAt.IsZero() {
+		completedAtRFC3339 = completedAt.Format(time.RFC3339)
+	}
+
+	run := PollRunResult{
+		RunID:         fmt.Sprintf("auto-%d", completedAt.UnixNano()),
+		StartedAt:     completedAtRFC3339,
+		CompletedAt:   completedAtRFC3339,
+		DurationMs:    0,
+		TotalFilters:  summary.TotalFilters,
+		FailedFilters: summary.FailedFilters,
+		NewJobs:       summary.NewJobs,
+		Skipped:       summary.Skipped,
+	}
+	if summary.CycleError != "" {
+		run.CycleError = summary.CycleError
+	}
+	if len(summary.Filters) > 0 {
+		run.Filters = make([]PollFilterResult, 0, len(summary.Filters))
+		for _, filterSummary := range summary.Filters {
+			filter := PollFilterResult{
+				FilterID:   filterSummary.FilterID,
+				FilterName: filterSummary.FilterName,
+				Source:     filterSummary.Source,
+				NewJobs:    filterSummary.NewJobs,
+				Skipped:    filterSummary.Skipped,
+			}
+			if filterSummary.Error != "" {
+				filter.Error = filterSummary.Error
+			}
+			run.Filters = append(run.Filters, filter)
+		}
+	}
+	return run
 }

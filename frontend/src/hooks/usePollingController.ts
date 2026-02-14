@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type Dispatch,
   type SetStateAction,
@@ -19,7 +20,9 @@ const pollingStatusEvent = "polling:status-changed";
 
 type PollingStatusState = {
   paused: boolean;
+  isPolling: boolean;
   nextPollAt: string;
+  lastRun: PollRunResult | null;
 };
 
 export interface UsePollingControllerOptions {
@@ -66,14 +69,29 @@ const normalizePollingStatus = (raw: unknown): PollingStatusState => {
       ? (statusSource as Record<string, unknown>)
       : {};
 
+  const lastRunCandidate =
+    status.lastRun ?? status.LastRun ?? status.last_run;
+  let lastRun: PollRunResult | null = null;
+  if (lastRunCandidate && typeof lastRunCandidate === "object") {
+    try {
+      lastRun = PollRunResult.createFrom(lastRunCandidate);
+    } catch {
+      lastRun = null;
+    }
+  }
+
   return {
     paused: pickBoolean(status.paused, status.Paused) ?? false,
+    isPolling:
+      pickBoolean(status.isPolling, status.IsPolling, status.is_polling) ??
+      false,
     nextPollAt:
       pickNonEmptyString(
         status.nextPollAt,
         status.NextPollAt,
         status.next_poll_at
       ) ?? "",
+    lastRun,
   };
 };
 
@@ -92,6 +110,9 @@ const hasPollingStatusFields = (raw: unknown): boolean => {
   return (
     "paused" in status ||
     "Paused" in status ||
+    "isPolling" in status ||
+    "IsPolling" in status ||
+    "is_polling" in status ||
     "nextPollAt" in status ||
     "NextPollAt" in status ||
     "next_poll_at" in status
@@ -103,10 +124,13 @@ export function usePollingController({
   refreshFilters,
   setAppError,
 }: UsePollingControllerOptions): UsePollingControllerReturn {
-  const [isPolling, setIsPolling] = useState(false);
+  const [manualPollInFlight, setManualPollInFlight] = useState(false);
+  const [schedulerPolling, setSchedulerPolling] = useState(false);
   const [pollingPaused, setPollingPaused] = useState(false);
   const [nextPollAt, setNextPollAt] = useState("");
   const [pollRun, setPollRun] = useState<PollRunResult | null>(null);
+  const schedulerPollingRef = useRef(false);
+  const lastSchedulerRunIDRef = useRef<string>("");
 
   const predictNextPollAt = useCallback(() => {
     return new Date(Date.now() + defaultPollIntervalMs).toISOString();
@@ -114,6 +138,8 @@ export function usePollingController({
 
   const applyPollingStatus = useCallback((status: PollingStatusState) => {
     setPollingPaused(status.paused);
+    setSchedulerPolling(status.isPolling);
+    schedulerPollingRef.current = status.isPolling;
     setNextPollAt((prev) => {
       if (status.nextPollAt) {
         return status.nextPollAt;
@@ -125,11 +151,28 @@ export function usePollingController({
     });
   }, []);
 
+  const consumeSchedulerRun = useCallback((run: PollRunResult | null) => {
+    if (!run) {
+      return;
+    }
+    const runID =
+      run.runID ||
+      `${run.completedAt}|${run.totalFilters}|${run.newJobs}|${run.skipped}|${run.failedFilters}|${run.cycleError ?? ""}`;
+    if (runID === lastSchedulerRunIDRef.current) {
+      return;
+    }
+    lastSchedulerRunIDRef.current = runID;
+    if ((run.totalFilters ?? 0) > 0 || run.cycleError) {
+      setPollRun(run);
+    }
+  }, []);
+
   const refreshPollingStatus = useCallback(
     async (surfaceError: boolean = false) => {
       try {
         const status = normalizePollingStatus(await GetPollingStatus());
         applyPollingStatus(status);
+        consumeSchedulerRun(status.lastRun);
         return status;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
@@ -140,7 +183,7 @@ export function usePollingController({
         return null;
       }
     },
-    [applyPollingStatus, setAppError]
+    [applyPollingStatus, consumeSchedulerRun, setAppError]
   );
 
   useEffect(() => {
@@ -170,8 +213,13 @@ export function usePollingController({
       const payload = extractEventPayload(event);
 
       if (hasPollingStatusFields(payload)) {
+        const wasPolling = schedulerPollingRef.current;
         const status = normalizePollingStatus(payload);
         applyPollingStatus(status);
+        consumeSchedulerRun(status.lastRun);
+        if (wasPolling && !status.isPolling) {
+          void refreshPollingStatus(false);
+        }
         if (!status.paused && !status.nextPollAt) {
           syncNow();
         }
@@ -195,10 +243,14 @@ export function usePollingController({
       window.removeEventListener("focus", syncNow);
       document.removeEventListener("visibilitychange", syncIfVisible);
     };
-  }, [applyPollingStatus, refreshJobs, refreshPollingStatus]);
+  }, [applyPollingStatus, consumeSchedulerRun, refreshJobs, refreshPollingStatus]);
 
   const pollNow = useCallback(async () => {
-    setIsPolling(true);
+    if (schedulerPolling || manualPollInFlight) {
+      return;
+    }
+
+    setManualPollInFlight(true);
     setAppError(null);
     setPollRun(null);
     try {
@@ -222,9 +274,11 @@ export function usePollingController({
       console.error("Poll failed:", message);
       setAppError(message);
     } finally {
-      setIsPolling(false);
+      setManualPollInFlight(false);
     }
   }, [
+    manualPollInFlight,
+    schedulerPolling,
     pollingPaused,
     predictNextPollAt,
     refreshFilters,
@@ -254,7 +308,7 @@ export function usePollingController({
   }, []);
 
   return {
-    isPolling,
+    isPolling: manualPollInFlight || schedulerPolling,
     pollingPaused,
     nextPollAt,
     pollRun,

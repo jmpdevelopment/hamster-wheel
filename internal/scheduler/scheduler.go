@@ -45,11 +45,14 @@ type Scheduler struct {
 	reschedule chan struct{}      // nudges the loop to recalculate next timer
 
 	// stateMu protects running, paused, nextPollAt, statusChangedHook, cancel, done, and reschedule.
-	stateMu           sync.RWMutex
-	paused            bool
-	nextPollAt        time.Time
-	running           bool // true if scheduler is currently running
-	statusChangedHook func()
+	stateMu            sync.RWMutex
+	paused             bool
+	polling            bool
+	nextPollAt         time.Time
+	lastPollSummary    PollCycleSummary
+	hasLastPollSummary bool
+	running            bool // true if scheduler is currently running
+	statusChangedHook  func()
 }
 
 const (
@@ -168,15 +171,44 @@ func (s *Scheduler) safePoll(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("panic in poll cycle (recovered)", "panic", r)
+			s.setLastPollSummary(buildPollCycleSummary(nil, fmt.Errorf("panic: %v", r), time.Now().UTC()))
 		}
 	}()
-	if _, err := s.PollOnce(pollCtx); err != nil {
+	results, err := s.PollOnce(pollCtx)
+	if err != nil {
+		if errors.Is(err, ErrPollInProgress) {
+			slog.Debug("poll cycle skipped (already in progress)")
+			return
+		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			slog.Warn("poll cycle timed out", "timeout", pollTimeout)
+			s.setLastPollSummary(buildPollCycleSummary(results, err, time.Now().UTC()))
 			return
 		}
 		slog.Error("poll cycle failed", "error", err)
+		s.setLastPollSummary(buildPollCycleSummary(results, err, time.Now().UTC()))
+		return
 	}
+	s.setLastPollSummary(buildPollCycleSummary(results, nil, time.Now().UTC()))
+}
+
+func (s *Scheduler) beginPollCycle() bool {
+	s.stateMu.Lock()
+	if s.polling {
+		s.stateMu.Unlock()
+		return false
+	}
+	s.polling = true
+	s.stateMu.Unlock()
+	s.notifyStatusChanged()
+	return true
+}
+
+func (s *Scheduler) finishPollCycle() {
+	s.stateMu.Lock()
+	s.polling = false
+	s.stateMu.Unlock()
+	s.notifyStatusChanged()
 }
 
 // SetStatusChangedHook registers a callback that runs when polling status
@@ -195,6 +227,27 @@ func (s *Scheduler) notifyStatusChanged() {
 	if hook != nil {
 		hook()
 	}
+}
+
+func (s *Scheduler) setLastPollSummary(summary PollCycleSummary) {
+	s.stateMu.Lock()
+	s.lastPollSummary = summary
+	s.hasLastPollSummary = true
+	s.stateMu.Unlock()
+}
+
+// LastPollSummary returns the most recent scheduler-triggered poll summary.
+func (s *Scheduler) LastPollSummary() (PollCycleSummary, bool) {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	if !s.hasLastPollSummary {
+		return PollCycleSummary{}, false
+	}
+	summary := s.lastPollSummary
+	if len(summary.Filters) > 0 {
+		summary.Filters = append([]PollFilterSummary(nil), summary.Filters...)
+	}
+	return summary, true
 }
 
 func remainingUntil(t time.Time) time.Duration {
@@ -282,6 +335,13 @@ func (s *Scheduler) IsPaused() bool {
 	return s.paused
 }
 
+// IsPolling returns whether a poll cycle is currently running.
+func (s *Scheduler) IsPolling() bool {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.polling
+}
+
 // NextPollAt returns the scheduled time for the next poll cycle.
 // Returns zero time if the scheduler hasn't started yet.
 func (s *Scheduler) NextPollAt() time.Time {
@@ -319,6 +379,60 @@ type PollResult struct {
 	Err        error // Non-nil if the filter failed entirely
 }
 
+// PollFilterSummary stores one filter's poll result without Go error types.
+type PollFilterSummary struct {
+	FilterID   string
+	FilterName string
+	Source     string
+	NewJobs    int
+	Skipped    int
+	Error      string
+}
+
+// PollCycleSummary stores one completed scheduler-triggered poll cycle.
+type PollCycleSummary struct {
+	CompletedAt   time.Time
+	TotalFilters  int
+	FailedFilters int
+	NewJobs       int
+	Skipped       int
+	CycleError    string
+	Filters       []PollFilterSummary
+}
+
+func buildPollCycleSummary(results []PollResult, cycleErr error, completedAt time.Time) PollCycleSummary {
+	summary := PollCycleSummary{
+		CompletedAt:  completedAt,
+		TotalFilters: len(results),
+	}
+	if cycleErr != nil {
+		summary.CycleError = cycleErr.Error()
+	}
+	if len(results) == 0 {
+		return summary
+	}
+
+	summary.Filters = make([]PollFilterSummary, 0, len(results))
+	for _, result := range results {
+		filterSummary := PollFilterSummary{
+			FilterID:   result.FilterID,
+			FilterName: result.FilterName,
+			Source:     result.Source,
+			NewJobs:    result.NewJobs,
+			Skipped:    result.Skipped,
+		}
+		if result.Err != nil {
+			filterSummary.Error = result.Err.Error()
+			summary.FailedFilters++
+		}
+		summary.NewJobs += result.NewJobs
+		summary.Skipped += result.Skipped
+		summary.Filters = append(summary.Filters, filterSummary)
+	}
+
+	return summary
+}
+
 // fetchedJob is a job ready to be written to the database.
 // Produced by fetch goroutines, consumed by the single writer in PollOnce.
 type fetchedJob struct {
@@ -350,6 +464,11 @@ type filterFetchResult struct {
 //   - results + nil error for successful poll cycles (even if some filters failed)
 //   - nil + error only when the entire cycle couldn't run (e.g. DB unavailable)
 func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
+	if !s.beginPollCycle() {
+		return nil, ErrPollInProgress
+	}
+	defer s.finishPollCycle()
+
 	filters, err := s.store.ListEnabledFilters(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing enabled filters: %w", err)
@@ -589,3 +708,5 @@ type ErrAdapterNotFound struct {
 func (e *ErrAdapterNotFound) Error() string {
 	return "adapter not found: " + e.Source
 }
+
+var ErrPollInProgress = errors.New("poll already in progress")

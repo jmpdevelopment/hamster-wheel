@@ -193,7 +193,7 @@ func TestInsertJobWithFilterID(t *testing.T) {
 	db := testDB(t)
 
 	// Create a filter first.
-	filterID, err := db.CreateFilter(context.Background(),"Test", "golang", "London", "reed_uk")
+	filterID, err := db.CreateFilter(context.Background(), "Test", "golang", "London", "reed_uk")
 	if err != nil {
 		t.Fatalf("creating filter: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestJobExistsBySourceIDReturnsTrueForExisting(t *testing.T) {
 		t.Fatalf("inserting job: %v", err)
 	}
 
-	exists, err := db.JobExistsBySourceID(context.Background(),"reed_uk", "exists-check")
+	exists, err := db.JobExistsBySourceID(context.Background(), "reed_uk", "exists-check")
 	if err != nil {
 		t.Fatalf("checking existence: %v", err)
 	}
@@ -239,7 +239,7 @@ func TestJobExistsBySourceIDReturnsTrueForExisting(t *testing.T) {
 func TestJobExistsBySourceIDReturnsFalseForMissing(t *testing.T) {
 	db := testDB(t)
 
-	exists, err := db.JobExistsBySourceID(context.Background(),"reed_uk", "does-not-exist")
+	exists, err := db.JobExistsBySourceID(context.Background(), "reed_uk", "does-not-exist")
 	if err != nil {
 		t.Fatalf("checking existence: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestJobExistsBySourceIDDistinguishesSources(t *testing.T) {
 	}
 
 	// Same source_id but different source should not exist.
-	exists, err := db.JobExistsBySourceID(context.Background(),"glassdoor_uk", "source-specific")
+	exists, err := db.JobExistsBySourceID(context.Background(), "glassdoor_uk", "source-specific")
 	if err != nil {
 		t.Fatalf("checking existence: %v", err)
 	}
@@ -279,7 +279,7 @@ func TestListJobsReturnsAll(t *testing.T) {
 		}
 	}
 
-	jobs, err := db.ListJobs(context.Background(),0)
+	jobs, err := db.ListJobs(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("listing jobs: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestListJobsRespectsLimit(t *testing.T) {
 		}
 	}
 
-	jobs, err := db.ListJobs(context.Background(),2)
+	jobs, err := db.ListJobs(context.Background(), 2)
 	if err != nil {
 		t.Fatalf("listing jobs: %v", err)
 	}
@@ -311,7 +311,7 @@ func TestListJobsRespectsLimit(t *testing.T) {
 func TestListJobsReturnsEmptySlice(t *testing.T) {
 	db := testDB(t)
 
-	jobs, err := db.ListJobs(context.Background(),0)
+	jobs, err := db.ListJobs(context.Background(), 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestListJobsReturnsEmptySlice(t *testing.T) {
 func TestListJobsRejectsNegativeLimit(t *testing.T) {
 	db := testDB(t)
 
-	jobs, err := db.ListJobs(context.Background(),-1)
+	jobs, err := db.ListJobs(context.Background(), -1)
 	if err == nil {
 		t.Fatal("expected error for negative limit, got nil")
 	}
@@ -341,7 +341,7 @@ func TestListJobsRejectsNegativeLimit(t *testing.T) {
 func TestListJobsRejectsExcessiveLimit(t *testing.T) {
 	db := testDB(t)
 
-	jobs, err := db.ListJobs(context.Background(),maxJobsLimit + 1)
+	jobs, err := db.ListJobs(context.Background(), maxJobsLimit+1)
 	if err == nil {
 		t.Fatal("expected error for excessive limit, got nil")
 	}
@@ -356,8 +356,8 @@ func TestListJobsRejectsExcessiveLimit(t *testing.T) {
 func TestListJobsByFilterReturnsMatchingJobs(t *testing.T) {
 	db := testDB(t)
 
-	filterA, _ := db.CreateFilter(context.Background(),"Filter A", "go", "London", "reed_uk")
-	filterB, _ := db.CreateFilter(context.Background(),"Filter B", "python", "Remote", "reed_uk")
+	filterA, _ := db.CreateFilter(context.Background(), "Filter A", "go", "London", "reed_uk")
+	filterB, _ := db.CreateFilter(context.Background(), "Filter B", "python", "Remote", "reed_uk")
 
 	jobA := makeTestJob("filter-a-job")
 	jobA.FilterID = &filterA
@@ -373,7 +373,7 @@ func TestListJobsByFilterReturnsMatchingJobs(t *testing.T) {
 		t.Fatalf("inserting job B: %v", err)
 	}
 
-	jobs, err := db.ListJobsByFilter(context.Background(),filterA)
+	jobs, err := db.ListJobsByFilter(context.Background(), filterA)
 	if err != nil {
 		t.Fatalf("listing by filter: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestDeleteJobRemovesIt(t *testing.T) {
 		t.Fatalf("inserting job: %v", err)
 	}
 
-	err = db.DeleteJob(context.Background(),id)
+	err = db.DeleteJob(context.Background(), id)
 	if err != nil {
 		t.Fatalf("deleting job: %v", err)
 	}
@@ -411,7 +411,7 @@ func TestDeleteJobRemovesIt(t *testing.T) {
 func TestDeleteJobNotFoundReturnsError(t *testing.T) {
 	db := testDB(t)
 
-	err := db.DeleteJob(context.Background(),"nonexistent-id")
+	err := db.DeleteJob(context.Background(), "nonexistent-id")
 	if !errors.Is(err, ErrJobNotFound) {
 		t.Errorf("expected ErrJobNotFound, got: %v", err)
 	}
@@ -475,6 +475,89 @@ func TestUpdateJobDescriptionNotFound(t *testing.T) {
 	err := db.UpdateJobDescription(context.Background(), "nonexistent-id", "some text")
 	if !errors.Is(err, ErrJobNotFound) {
 		t.Errorf("expected ErrJobNotFound, got: %v", err)
+	}
+}
+
+func TestJobFavoriteDefaultsToFalse(t *testing.T) {
+	db := testDB(t)
+
+	id, err := db.InsertJob(context.Background(), makeTestJob("favorite-default"))
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+
+	job, err := db.GetJob(context.Background(), id)
+	if err != nil {
+		t.Fatalf("getting job: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected job, got nil")
+	}
+	if job.IsFavorite {
+		t.Fatal("expected IsFavorite=false by default")
+	}
+}
+
+func TestSetJobFavoriteUpdatesFavoriteState(t *testing.T) {
+	db := testDB(t)
+
+	id, err := db.InsertJob(context.Background(), makeTestJob("favorite-one"))
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+
+	if err := db.SetJobFavorite(context.Background(), id, true); err != nil {
+		t.Fatalf("setting favorite: %v", err)
+	}
+
+	job, err := db.GetJob(context.Background(), id)
+	if err != nil {
+		t.Fatalf("getting job: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected job, got nil")
+	}
+	if !job.IsFavorite {
+		t.Fatal("expected IsFavorite=true")
+	}
+}
+
+func TestSetJobFavoriteNotFound(t *testing.T) {
+	db := testDB(t)
+
+	err := db.SetJobFavorite(context.Background(), "missing-id", true)
+	if !errors.Is(err, ErrJobNotFound) {
+		t.Errorf("expected ErrJobNotFound, got %v", err)
+	}
+}
+
+func TestSetJobsFavoriteUpdatesMultipleJobs(t *testing.T) {
+	db := testDB(t)
+
+	id1, err := db.InsertJob(context.Background(), makeTestJob("favorite-many-1"))
+	if err != nil {
+		t.Fatalf("inserting first job: %v", err)
+	}
+	id2, err := db.InsertJob(context.Background(), makeTestJob("favorite-many-2"))
+	if err != nil {
+		t.Fatalf("inserting second job: %v", err)
+	}
+
+	if err := db.SetJobsFavorite(context.Background(), []string{id1, id2}, true); err != nil {
+		t.Fatalf("setting favorites: %v", err)
+	}
+
+	jobs, err := db.ListJobs(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("listing jobs: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Fatalf("expected 2 jobs, got %d", len(jobs))
+	}
+	for _, job := range jobs {
+		if !job.IsFavorite {
+			t.Fatalf("expected job %q to be favorite", job.ID)
+		}
 	}
 }
 

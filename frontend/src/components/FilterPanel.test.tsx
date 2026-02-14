@@ -16,10 +16,14 @@ const fakeFilter = (id: string, name: string, enabled = true) => ({
 
 const defaultProps = {
   filters: [fakeFilter("f1", "Backend"), fakeFilter("f2", "Frontend", false)],
+  jobCountsByFilterId: { f1: 12, f2: 4 },
   loading: false,
   onCreateFilter: vi.fn().mockResolvedValue(undefined),
   onToggleFilter: vi.fn().mockResolvedValue(undefined),
-  onDeleteFilter: vi.fn().mockResolvedValue(undefined),
+  onDeleteFilter: vi.fn().mockResolvedValue(undefined) as (
+    id: string,
+    deleteAssociatedJobs: boolean
+  ) => Promise<void>,
 };
 
 describe("FilterPanel", () => {

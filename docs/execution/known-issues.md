@@ -6,6 +6,23 @@ Last reviewed: 2026-02-14
 
 - No confirmed open functional defects are currently tracked in this file.
 
+## Recently Resolved
+
+- 2026-02-14: shift-range selection on job checkboxes was inconsistent after
+  list refreshes and could only work once; fixed by stabilizing the
+  selection-anchor state used by checkbox and card interactions.
+- 2026-02-14: bulk-delete operations could fail with `SQLITE_BUSY` under heavy
+  concurrent delete requests from UI; fixed by serializing delete calls and
+  adding bounded retry for transient SQLite lock contention.
+- 2026-02-14: favorites were stored only in frontend state and were lost on app
+  restart; fixed by persisting favorite state in the `jobs` table.
+- 2026-02-14: settings/favorite writes could intermittently fail with
+  `SQLITE_BUSY` while poll writes were active; fixed by adding bounded SQLite
+  busy-retry handling on DB write paths.
+- 2026-02-14: first app-start poll completion did not show toast feedback;
+  fixed by exposing latest scheduler run in polling status/event payloads and
+  consuming it in frontend poll state.
+
 When a bug is found, record:
 
 - Severity (`critical`, `high`, `medium`, `low`)

@@ -14,5 +14,7 @@ export {
 };
 
 export {
+    PollFilterResult,
+    PollRunResult,
     PollingStatus
 } from "./models.js";

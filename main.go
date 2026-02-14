@@ -105,10 +105,15 @@ func main() {
 		if !next.IsZero() {
 			nextPollAt = next.Format(time.RFC3339)
 		}
-		app.Event.Emit("polling:status-changed", map[string]any{
+		payload := map[string]any{
 			"paused":     sched.IsPaused(),
+			"isPolling":  sched.IsPolling(),
 			"nextPollAt": nextPollAt,
-		})
+		}
+		if summary, ok := sched.LastPollSummary(); ok {
+			payload["lastRun"] = pollRunFromSchedulerSummary(summary)
+		}
+		app.Event.Emit("polling:status-changed", payload)
 	})
 
 	// Create the main application window.

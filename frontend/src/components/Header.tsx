@@ -36,13 +36,13 @@ export function Header({
     ? "Add a filter to start monitoring"
     : !hasEnabledFilters
       ? "Enable a filter to start monitoring"
+      : isPolling
+        ? "Polling..."
       : pollingPaused
         ? "Auto-poll paused"
         : nextPollAt
           ? `Next: ${formatNextPoll(nextPollAt)}`
-          : isPolling
-            ? "Scheduling next poll..."
-            : "";
+          : "";
 
   const disabledReason = !hasFilters
     ? "No filters configured"

@@ -12,21 +12,20 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 /**
+ * ClearReedAPIKey removes the stored Reed API key and clears the active adapter key.
+ * @returns {$CancellablePromise<void>}
+ */
+export function ClearReedAPIKey() {
+    return $Call.ByID(2946820606);
+}
+
+/**
  * GetKeyboardShortcuts returns whether keyboard shortcuts are enabled ("true", "false", or "" if unset).
  * Empty string means default (enabled).
  * @returns {$CancellablePromise<string>}
  */
 export function GetKeyboardShortcuts() {
     return $Call.ByID(961249936);
-}
-
-/**
- * HasReedAPIKey reports whether a Reed API key is currently stored.
- * It never returns the secret to the frontend.
- * @returns {$CancellablePromise<boolean>}
- */
-export function HasReedAPIKey() {
-    return $Call.ByID(3464400619);
 }
 
 /**
@@ -38,11 +37,12 @@ export function GetTheme() {
 }
 
 /**
- * ClearReedAPIKey removes the stored Reed API key and clears the active adapter key.
- * @returns {$CancellablePromise<void>}
+ * HasReedAPIKey reports whether a Reed API key is currently stored.
+ * It never returns the secret to the frontend.
+ * @returns {$CancellablePromise<boolean>}
  */
-export function ClearReedAPIKey() {
-    return $Call.ByID(2946820606);
+export function HasReedAPIKey() {
+    return $Call.ByID(3464400619);
 }
 
 /**

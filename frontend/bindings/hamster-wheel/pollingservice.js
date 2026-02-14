@@ -9,7 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
+import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -27,6 +27,9 @@ export function GetPollingStatus() {
 
 /**
  * PollNow triggers an immediate poll cycle and returns structured run metadata.
+ * 
+ * Poll-cycle failures are reported in CycleError while preserving diagnostics.
+ * The call only returns a transport error if the runtime itself fails.
  * @returns {$CancellablePromise<$models.PollRunResult>}
  */
 export function PollNow() {
