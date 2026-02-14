@@ -22,13 +22,14 @@ Build sequence remains:
 ## Phase 2: LLM Matching
 
 1. LLM provider interface and provider registry.
-2. Claude provider implementation.
-3. CV parser path for matching inputs.
-4. Provider-agnostic matcher logic.
-5. Poll-cycle integration of matching.
-6. Native notifications for high-score matches.
-7. Match score surfaces in list/detail UI.
-8. Match-threshold controls in settings.
+2. OpenAI provider implementation.
+3. OpenAI-compatible provider path (configurable base URL/model) for self-hosted/local models (for example llama/deepseek deployments).
+4. CV parser path for matching inputs.
+5. Provider-agnostic matcher logic.
+6. Async post-poll matching orchestration (queue + worker); polling remains ingestion-only.
+7. Native notifications for high-score matches.
+8. Match score and pending-state surfaces in list/detail UI.
+9. Match-threshold controls in settings.
 
 ## Phase 3: Document Tailoring
 

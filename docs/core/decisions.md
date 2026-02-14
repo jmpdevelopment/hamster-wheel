@@ -58,3 +58,9 @@ Status legend:
 - Status: Accepted
 - Decision: All DB methods accept `context.Context`.
 - Rationale: Enables cancellation/timeouts and consistent request-scoped tracing in future enhancements.
+
+## D-010: Decouple matching from polling via async pipeline
+
+- Status: Accepted
+- Decision: Polling only ingests and persists jobs. Matching runs asynchronously after ingestion via a separate background worker, and UI surfaces pending match state until scoring completes.
+- Rationale: Reduces poll-cycle latency, keeps scheduler behavior deterministic, enables incremental scaling of match throughput, and isolates matching/provider failures from job discovery.

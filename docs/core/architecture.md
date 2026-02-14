@@ -10,16 +10,18 @@
 | Frontend | React 18 + TypeScript + Vite + Tailwind |
 | Secrets | `zalando/go-keyring` |
 | Notifications | Wails native notifications |
-| LLM integration | Direct provider HTTP APIs via provider interface |
+| LLM integration | Direct provider HTTP APIs via provider interface (OpenAI-first with OpenAI-compatible extension path) |
 
 ## Runtime Model
 
 1. Scheduler polls enabled filters.
 2. Adapter fetches jobs from source APIs.
 3. Jobs are deduplicated by `UNIQUE(source, source_id)`.
-4. New jobs are persisted and surfaced to UI.
-5. If LLM is configured, matching runs after ingestion.
-6. High-score matches can trigger native notifications.
+4. New jobs are persisted and surfaced to UI immediately.
+5. Newly discovered jobs are queued for asynchronous matching.
+6. Match worker processes queued jobs independently of poll-cycle timing.
+7. UI shows pending state while score is computing and updates when match completes.
+8. High-score matches can trigger native notifications.
 
 ## Service Boundaries
 
@@ -36,6 +38,7 @@ Internal packages:
 - `internal/db`: migrations and typed DB operations.
 - `internal/adapter`: source adapters and registry.
 - `internal/scheduler`: polling orchestration.
+- `internal/matcher`: provider-agnostic matching + async orchestration.
 - `internal/keychain`: key storage abstraction.
 - `internal/diagnostics`: poll diagnostics retention/export support.
 
@@ -63,7 +66,7 @@ Representative keys:
 
 - `poll_interval_minutes` (default 30)
 - `match_threshold` (default 0.7)
-- `llm_provider` (default `claude`)
+- `llm_provider` (default `openai`)
 - `cv_path`, `cover_letter_draft`, `custom_instructions`
 - `first_run_complete`
 
@@ -72,7 +75,7 @@ Representative keys:
 - `id`, `job_id`
 - `match_score` (0.0-1.0)
 - `match_summary`
-- `status`
+- `status` (`pending`, `processing`, `matched`, `failed`)
 - `tailored_cv_path`, `tailored_cl_path`
 - `status_updated_at`, `created_at`
 
@@ -91,6 +94,7 @@ Representative keys:
 ## LLM Extension Point
 
 Provider logic is isolated behind an interface so matching/tailoring flows stay provider-agnostic.
+Initial production provider is OpenAI. Registry design should allow additional providers, including OpenAI-compatible local/self-hosted endpoints used by OSS models.
 
 ```go
 type LLMProvider interface {

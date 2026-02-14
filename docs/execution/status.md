@@ -14,6 +14,8 @@ Last updated: 2026-02-14
   - Favorites are persisted in SQLite and survive app restart.
   - `Poll Now` is available when filters are enabled and blocked only during active poll cycles (spinner/status shown).
 - Phase 2 has started with keychain manager completed.
+- Phase 2 LLM sequencing is now OpenAI-first; Claude is deferred behind provider registry completion.
+- Phase 2 matching architecture is async and decoupled from polling; UI should show pending match state while scores compute.
 - Reliability hardening pass is complete and regression-covered.
 
 ## Key Reliability Outcomes
@@ -42,6 +44,8 @@ Last updated: 2026-02-14
 ## Next Work Queue
 
 1. Phase 2: implement provider interface + registry.
-2. Phase 2: implement Claude provider.
-3. Phase 2: implement matcher and poll-cycle integration.
-4. Phase 2: wire match results and threshold controls in UI.
+2. Phase 2: implement OpenAI provider.
+3. Phase 2: implement OpenAI-compatible provider path for self-hosted/local models.
+4. Phase 2: implement CV parser path for matching inputs.
+5. Phase 2: implement async matcher orchestration and decouple from poll cycle.
+6. Phase 2: wire match results, pending state, and threshold controls in UI.
