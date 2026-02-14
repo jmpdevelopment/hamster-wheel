@@ -5,7 +5,7 @@ import {
   SetPollingPaused,
 } from "../bindings/hamster-wheel/pollingservice";
 import { GetKeyboardShortcuts } from "../bindings/hamster-wheel/settingsservice";
-import { PollResult } from "../bindings/hamster-wheel/internal/scheduler/models";
+import { PollRunResult } from "../bindings/hamster-wheel/models";
 import { useJobs } from "./hooks/useJobs";
 import { useFilters } from "./hooks/useFilters";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -29,7 +29,7 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [filterByFilterId, setFilterByFilterId] = useState<string | null>(null);
   const [isPolling, setIsPolling] = useState(false);
-  const [pollResults, setPollResults] = useState<PollResult[] | null>(
+  const [pollRun, setPollRun] = useState<PollRunResult | null>(
     null
   );
   const [appError, setAppError] = useState<string | null>(null);
@@ -62,11 +62,14 @@ function App() {
   const handlePollNow = useCallback(async () => {
     setIsPolling(true);
     setAppError(null);
-    setPollResults(null);
+    setPollRun(null);
     try {
-      const results = await PollNow();
-      if (results && results.length > 0) {
-        setPollResults(results);
+      const run = await PollNow();
+      if (run && (run.totalFilters > 0 || run.cycleError)) {
+        setPollRun(run);
+      }
+      if (run?.diagnosticsError) {
+        setAppError(run.diagnosticsError);
       }
       // Refresh data and polling status after polling.
       const [, , status] = await Promise.all([
@@ -219,8 +222,8 @@ function App() {
       </div>
 
       <PollResultToast
-        results={pollResults}
-        onDismiss={() => setPollResults(null)}
+        run={pollRun}
+        onDismiss={() => setPollRun(null)}
       />
 
       {shortcutsHelpOpen && (

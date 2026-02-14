@@ -9,11 +9,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore: Unused imports
-import * as scheduler$0 from "./internal/scheduler/models.js";
+import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -30,12 +26,12 @@ export function GetPollingStatus() {
 }
 
 /**
- * PollNow triggers an immediate poll cycle and returns the results.
- * @returns {$CancellablePromise<scheduler$0.PollResult[]>}
+ * PollNow triggers an immediate poll cycle and returns structured run metadata.
+ * @returns {$CancellablePromise<$models.PollRunResult>}
  */
 export function PollNow() {
     return $Call.ByID(2173790801).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
+        return $$createType1($result);
     }));
 }
 
@@ -50,5 +46,4 @@ export function SetPollingPaused(paused) {
 
 // Private type creation functions
 const $$createType0 = $models.PollingStatus.createFrom;
-const $$createType1 = scheduler$0.PollResult.createFrom;
-const $$createType2 = $Create.Array($$createType1);
+const $$createType1 = $models.PollRunResult.createFrom;

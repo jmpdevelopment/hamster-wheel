@@ -15,6 +15,7 @@ import (
 	"hamster-wheel/internal/adapter"
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
+	"hamster-wheel/internal/diagnostics"
 	"hamster-wheel/internal/keychain"
 	"hamster-wheel/internal/scheduler"
 )
@@ -48,12 +49,13 @@ func testServices(t *testing.T) (
 	}
 
 	sched := scheduler.New(database, adapters, 1*time.Hour)
+	diagStore := diagnostics.NewStore(t.TempDir(), 50, 24*time.Hour)
 	kc := keychain.NewMemoryStore()
 
 	appSvc := NewAppService(database, sched)
 	jobSvc := NewJobService(database, adapters)
 	filterSvc := NewFilterService(database)
-	pollSvc := NewPollingService(sched)
+	pollSvc := NewPollingService(sched, diagStore)
 	settingsSvc := NewSettingsService(database, kc, reedAdapter)
 
 	return appSvc, jobSvc, filterSvc, pollSvc, settingsSvc, database, sched, reedAdapter
@@ -302,7 +304,8 @@ func TestServiceDependencies(t *testing.T) {
 			name:        "PollingService",
 			serviceType: reflect.TypeOf(PollingService{}),
 			expectedFields: map[string]string{
-				"scheduler": "*scheduler.Scheduler",
+				"scheduler":   "*scheduler.Scheduler",
+				"diagnostics": "*diagnostics.Store",
 			},
 		},
 		{
@@ -680,4 +683,3 @@ func TestServiceFailureIsolation(t *testing.T) {
 		t.Error("SettingsService GetTheme should error after DB closure")
 	}
 }
-

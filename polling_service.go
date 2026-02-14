@@ -2,20 +2,52 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
+	"hamster-wheel/internal/diagnostics"
 	"hamster-wheel/internal/scheduler"
+
+	"github.com/google/uuid"
 )
 
 // PollingService handles job polling and scheduler control operations exposed to the frontend.
 type PollingService struct {
-	scheduler *scheduler.Scheduler
+	scheduler   *scheduler.Scheduler
+	diagnostics *diagnostics.Store
+}
+
+// PollFilterResult reports the outcome of polling one filter.
+type PollFilterResult struct {
+	FilterID   string `json:"filterID"`
+	FilterName string `json:"filterName"`
+	Source     string `json:"source"`
+	NewJobs    int    `json:"newJobs"`
+	Skipped    int    `json:"skipped"`
+	Error      string `json:"error,omitempty"`
+}
+
+// PollRunResult reports one manual poll run and where its diagnostics were stored.
+type PollRunResult struct {
+	RunID            string             `json:"runID"`
+	StartedAt        string             `json:"startedAt"`   // RFC3339 timestamp
+	CompletedAt      string             `json:"completedAt"` // RFC3339 timestamp
+	DurationMs       int64              `json:"durationMs"`
+	TotalFilters     int                `json:"totalFilters"`
+	FailedFilters    int                `json:"failedFilters"`
+	NewJobs          int                `json:"newJobs"`
+	Skipped          int                `json:"skipped"`
+	CycleError       string             `json:"cycleError,omitempty"`
+	DiagnosticsPath  string             `json:"diagnosticsPath,omitempty"`
+	DiagnosticsError string             `json:"diagnosticsError,omitempty"`
+	Filters          []PollFilterResult `json:"filters,omitempty"`
 }
 
 // NewPollingService creates a new PollingService.
-func NewPollingService(sched *scheduler.Scheduler) *PollingService {
+func NewPollingService(sched *scheduler.Scheduler, store *diagnostics.Store) *PollingService {
 	return &PollingService{
-		scheduler: sched,
+		scheduler:   sched,
+		diagnostics: store,
 	}
 }
 
@@ -24,11 +56,102 @@ func NewPollingService(sched *scheduler.Scheduler) *PollingService {
 // Reed API is slow or unresponsive.
 const pollNowTimeout = 5 * time.Minute
 
-// PollNow triggers an immediate poll cycle and returns the results.
-func (s *PollingService) PollNow() ([]scheduler.PollResult, error) {
+// PollNow triggers an immediate poll cycle and returns structured run metadata.
+//
+// Poll-cycle failures are reported in CycleError while preserving diagnostics.
+// The call only returns a transport error if the runtime itself fails.
+func (s *PollingService) PollNow() PollRunResult {
+	runID := uuid.NewString()
+	startedAt := time.Now().UTC()
+
 	ctx, cancel := context.WithTimeout(context.Background(), pollNowTimeout)
 	defer cancel()
-	return s.scheduler.PollOnce(ctx)
+
+	schedResults, cycleErr := s.scheduler.PollOnce(ctx)
+	completedAt := time.Now().UTC()
+
+	result := PollRunResult{
+		RunID:       runID,
+		StartedAt:   startedAt.Format(time.RFC3339),
+		CompletedAt: completedAt.Format(time.RFC3339),
+		DurationMs:  completedAt.Sub(startedAt).Milliseconds(),
+	}
+	if result.DurationMs < 0 {
+		result.DurationMs = 0
+	}
+
+	diagRun := diagnostics.PollRun{
+		RunID:       runID,
+		StartedAt:   startedAt,
+		CompletedAt: completedAt,
+		DurationMs:  result.DurationMs,
+	}
+
+	if cycleErr != nil {
+		result.CycleError = cycleErr.Error()
+		diagRun.CycleError = cycleErr.Error()
+	}
+
+	if len(schedResults) > 0 {
+		result.Filters = make([]PollFilterResult, 0, len(schedResults))
+		diagRun.Filters = make([]diagnostics.FilterResult, 0, len(schedResults))
+	}
+
+	for _, r := range schedResults {
+		filterResult := PollFilterResult{
+			FilterID:   r.FilterID,
+			FilterName: r.FilterName,
+			Source:     r.Source,
+			NewJobs:    r.NewJobs,
+			Skipped:    r.Skipped,
+		}
+		diagFilterResult := diagnostics.FilterResult{
+			FilterID:   r.FilterID,
+			FilterName: r.FilterName,
+			Source:     r.Source,
+			NewJobs:    r.NewJobs,
+			Skipped:    r.Skipped,
+		}
+		if r.Err != nil {
+			filterResult.Error = r.Err.Error()
+			diagFilterResult.Error = r.Err.Error()
+			result.FailedFilters++
+		}
+
+		result.NewJobs += r.NewJobs
+		result.Skipped += r.Skipped
+		result.Filters = append(result.Filters, filterResult)
+		diagRun.Filters = append(diagRun.Filters, diagFilterResult)
+	}
+
+	result.TotalFilters = len(result.Filters)
+	diagRun.TotalFilters = result.TotalFilters
+	diagRun.FailedFilters = result.FailedFilters
+	diagRun.NewJobs = result.NewJobs
+	diagRun.Skipped = result.Skipped
+
+	// No enabled filters and no cycle error: skip diagnostics persistence for this no-op.
+	if result.TotalFilters == 0 && result.CycleError == "" {
+		return result
+	}
+
+	if s.diagnostics == nil {
+		result.DiagnosticsError = "diagnostics store unavailable"
+		slog.Error("poll diagnostics store unavailable", "runID", runID)
+		return result
+	}
+
+	path, err := s.diagnostics.SavePollRun(diagRun)
+	if path != "" {
+		result.DiagnosticsPath = path
+	}
+	if err != nil {
+		result.DiagnosticsError = err.Error()
+		slog.Error("failed to persist poll diagnostics", "runID", runID, "error", err)
+		return result
+	}
+
+	return result
 }
 
 // PollingStatus represents the current state of auto-polling.

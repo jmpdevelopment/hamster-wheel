@@ -6,6 +6,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -14,6 +15,7 @@ import (
 	"hamster-wheel/internal/adapter"
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
+	"hamster-wheel/internal/diagnostics"
 	"hamster-wheel/internal/keychain"
 	"hamster-wheel/internal/scheduler"
 )
@@ -60,12 +62,17 @@ func main() {
 	// It starts polling when the app service receives ServiceStartup.
 	pollInterval := 30 * time.Minute
 	sched := scheduler.New(database, adapters, pollInterval)
+	diagStore := diagnostics.NewStore(
+		filepath.Join(os.TempDir(), "hamster-wheel", "poll-diagnostics"),
+		50,
+		24*time.Hour,
+	)
 
 	// Create all services with their dependencies injected.
 	appService := NewAppService(database, sched)
 	jobService := NewJobService(database, adapters)
 	filterService := NewFilterService(database)
-	pollingService := NewPollingService(sched)
+	pollingService := NewPollingService(sched, diagStore)
 	settingsService := NewSettingsService(database, keychainStore, reedAdapter)
 
 	// Create the Wails v3 application.
@@ -78,11 +85,11 @@ func main() {
 	app := application.New(application.Options{
 		Name: "Hamster Wheel",
 		Services: []application.Service{
-			application.NewService(appService),       // lifecycle (startup/shutdown)
-			application.NewService(jobService),       // job CRUD
-			application.NewService(filterService),    // filter CRUD
-			application.NewService(pollingService),   // scheduler control
-			application.NewService(settingsService),  // settings + API keys
+			application.NewService(appService),      // lifecycle (startup/shutdown)
+			application.NewService(jobService),      // job CRUD
+			application.NewService(filterService),   // filter CRUD
+			application.NewService(pollingService),  // scheduler control
+			application.NewService(settingsService), // settings + API keys
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assetsFS),
@@ -122,7 +129,7 @@ func setupSystemTray(app *application.App, window *application.WebviewWindow, sc
 	// Create system tray.
 	systray := app.SystemTray.New()
 	systray.SetTemplateIcon(trayIcon) // Template icon adapts to light/dark mode on macOS
-	systray.SetLabel("HW")             // Short label for menu bar
+	systray.SetLabel("HW")            // Short label for menu bar
 
 	// Create tray menu.
 	menu := app.NewMenu()

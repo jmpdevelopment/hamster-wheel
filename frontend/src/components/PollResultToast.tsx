@@ -1,43 +1,71 @@
-import { PollResult } from "../../bindings/hamster-wheel/internal/scheduler/models";
+import { PollRunResult } from "../../bindings/hamster-wheel/models";
+import { downloadPollReport } from "../lib/pollReport";
+import { Button } from "./Button";
 import { Toast } from "./Toast";
 
 interface PollResultToastProps {
-  results: PollResult[] | null;
+  run: PollRunResult | null;
   onDismiss: () => void;
 }
 
-export function PollResultToast({ results, onDismiss }: PollResultToastProps) {
-  if (!results || results.length === 0) return null;
+export function PollResultToast({ run, onDismiss }: PollResultToastProps) {
+  if (!run) return null;
+  if ((run.totalFilters ?? 0) === 0 && !run.cycleError) return null;
 
-  const totalNew = results.reduce((sum, r) => sum + (r.NewJobs ?? 0), 0);
-  const totalSkipped = results.reduce((sum, r) => sum + (r.Skipped ?? 0), 0);
-  const totalFailed = results.reduce((sum, r) => sum + (r.Err ? 1 : 0), 0);
-  const hasFailures = totalFailed > 0;
-  const summaryTitle = hasFailures
-    ? `Poll complete: ${totalNew} new, ${totalSkipped} skipped, ${totalFailed} failed`
-    : `Poll complete: ${totalNew} new, ${totalSkipped} skipped`;
+  const totalNew = run.newJobs ?? 0;
+  const totalSkipped = run.skipped ?? 0;
+  const totalFailed = run.failedFilters ?? 0;
+  const hasCycleError = Boolean(run.cycleError);
+  const hasFailures = totalFailed > 0 || hasCycleError;
+  const summaryTitle = hasCycleError
+    ? "Poll failed"
+    : hasFailures
+      ? `Poll complete: ${totalNew} new, ${totalSkipped} skipped, ${totalFailed} failed`
+      : `Poll complete: ${totalNew} new, ${totalSkipped} skipped`;
 
   return (
     <Toast
       variant={hasFailures ? "error" : totalNew > 0 ? "success" : "info"}
       title={summaryTitle}
-      duration={5000}
+      duration={hasFailures ? 0 : 5000}
       onDismiss={onDismiss}
     >
+      {run.cycleError && (
+        <p className="mb-1">
+          <span className="text-hw-danger">cycle error: {run.cycleError}</span>
+        </p>
+      )}
+      {run.diagnosticsError && (
+        <p className="mb-1">
+          diagnostics error: {run.diagnosticsError}
+        </p>
+      )}
       <ul className="space-y-1">
-        {results.map((r) => (
-          <li key={r.FilterID}>
-            {r.FilterName}:{" "}
-            {r.Err ? (
-              <span className="text-hw-danger">error: {String(r.Err)}</span>
+        {(run.filters ?? []).map((filter) => (
+          <li key={filter.filterID}>
+            {filter.filterName}:{" "}
+            {filter.error ? (
+              <span className="text-hw-danger">error: {filter.error}</span>
             ) : (
               <span>
-                {r.NewJobs ?? 0} new, {r.Skipped ?? 0} skipped
+                {filter.newJobs ?? 0} new, {filter.skipped ?? 0} skipped
               </span>
             )}
           </li>
         ))}
       </ul>
+      {hasFailures && (
+        <div className="mt-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => downloadPollReport(run)}
+          >
+            Save report
+          </Button>
+        </div>
+      )}
     </Toast>
   );
 }

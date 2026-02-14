@@ -26,6 +26,20 @@ const mockDeleteFilter = vi.fn();
 const mockPollNow = vi.fn();
 const mockGetPollingStatus = vi.fn();
 const mockSetPollingPaused = vi.fn();
+const noOpRun = {
+  runID: "",
+  startedAt: "",
+  completedAt: "",
+  durationMs: 0,
+  totalFilters: 0,
+  failedFilters: 0,
+  newJobs: 0,
+  skipped: 0,
+  cycleError: "",
+  diagnosticsPath: "",
+  diagnosticsError: "",
+  filters: [],
+};
 
 // Mock all Wails bindings.
 vi.mock("../bindings/hamster-wheel/jobservice", () => ({
@@ -76,7 +90,7 @@ beforeEach(() => {
   mockCreateFilter.mockResolvedValue("f1");
   mockUpdateFilter.mockResolvedValue(undefined);
   mockDeleteFilter.mockResolvedValue(undefined);
-  mockPollNow.mockResolvedValue([]);
+  mockPollNow.mockResolvedValue(noOpRun);
   mockGetPollingStatus.mockResolvedValue({ paused: false, nextPollAt: "" });
   mockSetPollingPaused.mockResolvedValue(undefined);
 });
@@ -103,7 +117,7 @@ describe("App", () => {
     });
   });
 
-  it("shows poll failure in error banner and no poll-complete toast", async () => {
+  it("shows complete poll failure in toast with report action", async () => {
     mockGetFilters.mockResolvedValue([
       {
         ID: "f1",
@@ -116,7 +130,20 @@ describe("App", () => {
         UpdatedAt: "2026-02-08T10:00:00Z",
       },
     ]);
-    mockPollNow.mockRejectedValue(new Error("database unavailable"));
+    mockPollNow.mockResolvedValue({
+      runID: "run-fail",
+      startedAt: "2026-02-14T12:00:00Z",
+      completedAt: "2026-02-14T12:00:01Z",
+      durationMs: 1000,
+      totalFilters: 0,
+      failedFilters: 0,
+      newJobs: 0,
+      skipped: 0,
+      cycleError: "listing enabled filters: database unavailable",
+      diagnosticsPath: "/tmp/poll-run-run-fail.json",
+      diagnosticsError: "",
+      filters: [],
+    });
 
     render(<App />);
 
@@ -127,9 +154,10 @@ describe("App", () => {
     await userEvent.click(screen.getByRole("button", { name: "Poll Now" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("database unavailable");
+      expect(screen.getByText("Poll failed")).toBeInTheDocument();
+      expect(screen.getByText(/cycle error:/i)).toBeInTheDocument();
     });
-    expect(screen.queryByText(/Poll complete:/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /save report/i })).toBeInTheDocument();
   });
 
   it("does not show poll-complete toast when poll returns empty results", async () => {
@@ -145,7 +173,7 @@ describe("App", () => {
         UpdatedAt: "2026-02-08T10:00:00Z",
       },
     ]);
-    mockPollNow.mockResolvedValue([]);
+    mockPollNow.mockResolvedValue(noOpRun);
 
     render(<App />);
 
