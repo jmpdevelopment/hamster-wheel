@@ -35,7 +35,7 @@ export const JobCard = memo(function JobCard({
           : "hover:bg-hw-surface-hover"
       }`}
     >
-      <div className="flex items-start gap-2 px-3 py-2.5">
+      <div className="flex items-start gap-2 px-3 py-2">
         <input
           type="checkbox"
           checked={isChecked}
@@ -43,7 +43,7 @@ export const JobCard = memo(function JobCard({
           onClick={(event) => {
             onToggleChecked(!isChecked, event.shiftKey);
           }}
-          className="mt-1.5 h-4 w-4 rounded border-hw-border bg-hw-bg text-hw-accent focus:ring-hw-accent"
+          className="mt-1 h-4 w-4 rounded border-hw-border bg-hw-bg text-hw-accent focus:ring-hw-accent"
           aria-label={`Select job ${job.Title}`}
         />
 
@@ -54,9 +54,20 @@ export const JobCard = memo(function JobCard({
           aria-selected={isSelected}
           className="flex-1 min-w-0 text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hw-accent focus-visible:ring-offset-1 focus-visible:ring-offset-hw-bg"
         >
-          <p className="text-sm font-semibold text-hw-text truncate leading-relaxed">
-            {job.Title}
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-semibold text-hw-text truncate leading-tight min-w-0">
+              {job.Title}
+            </p>
+            {matchStatusBadge && (
+              <span
+                aria-label={matchStatusBadge.ariaLabel}
+                className={`shrink-0 inline-flex items-center rounded-md border px-1.5 py-0 text-[10px] font-semibold leading-3 ${matchStatusBadge.className}`}
+                title={matchStatusBadge.label}
+              >
+                {matchStatusBadge.label}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2 mt-0.5">
             {job.Company && (
               <span className="text-xs text-hw-text-muted truncate">
@@ -72,24 +83,13 @@ export const JobCard = memo(function JobCard({
               </span>
             )}
           </div>
-          <div className="flex items-center justify-between mt-1">
+          <div className="flex items-center justify-between mt-0.5">
             <span className="text-xs text-hw-text-muted shrink-0">
               {relativeTime(job.DiscoveredAt)}
             </span>
-            <div className="flex items-center gap-2 min-w-0">
-              {matchStatusBadge && (
-                <span
-                  aria-label={matchStatusBadge.ariaLabel}
-                  className={`inline-flex max-w-[140px] items-center truncate rounded-md border px-2 py-0.5 text-[11px] font-semibold leading-4 whitespace-nowrap ${matchStatusBadge.className}`}
-                  title={matchStatusBadge.label}
-                >
-                  {matchStatusBadge.label}
-                </span>
-              )}
-              <span className="text-xs text-hw-text-muted/60 truncate max-w-[96px]">
-                {job.Source}
-              </span>
-            </div>
+            <span className="text-xs text-hw-text-muted/60 truncate max-w-[120px]">
+              {job.Source}
+            </span>
           </div>
         </button>
 

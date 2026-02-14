@@ -12,6 +12,9 @@ Last reviewed: 2026-02-14
   job cards, which could compress/overflow dense card rows; fixed by replacing
   it with a compact horizontal right-side status badge that uses explicit text
   labels plus color-coded styling for accessibility.
+- 2026-02-14: initial badge placement in the bottom row could still overflow
+  fixed-height virtualized job cards; fixed by moving the status badge to the
+  top-right title row and tightening vertical spacing to stay within row bounds.
 - 2026-02-14: SQLite foreign-key actions (`ON DELETE SET NULL` / `CASCADE`)
   could be inconsistently enforced across pooled DB connections; fixed by
   pinning the app DB to a single shared SQLite connection and preserving

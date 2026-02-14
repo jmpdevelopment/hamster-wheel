@@ -19,7 +19,7 @@ Last updated: 2026-02-14
 - Phase 2 async matching groundwork is implemented:
   - Polling now enqueues new jobs into `job_matches` with `pending` status.
   - Job queries expose match status/score/summary in the existing job payload.
-  - Job list UI now shows a compact horizontal match-status badge on the right side (instead of a vertical inline line) while preserving card density.
+  - Job list UI now shows a compact horizontal match-status badge in the title row (top-right) to preserve fixed card height and prevent row overflow.
 - Reliability hardening pass is complete and regression-covered.
 
 ## Key Reliability Outcomes
