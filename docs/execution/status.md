@@ -16,6 +16,10 @@ Last updated: 2026-02-14
 - Phase 2 has started with keychain manager completed.
 - Phase 2 LLM sequencing is now OpenAI-first; Claude is deferred behind provider registry completion.
 - Phase 2 matching architecture is async and decoupled from polling; UI should show pending match state while scores compute.
+- Phase 2 async matching groundwork is implemented:
+  - Polling now enqueues new jobs into `job_matches` with `pending` status.
+  - Job queries expose match status/score/summary in the existing job payload.
+  - Job list UI now shows `Calculating match score` while match status is `pending`/`processing`.
 - Reliability hardening pass is complete and regression-covered.
 
 ## Key Reliability Outcomes
@@ -47,5 +51,5 @@ Last updated: 2026-02-14
 2. Phase 2: implement OpenAI provider.
 3. Phase 2: implement OpenAI-compatible provider path for self-hosted/local models.
 4. Phase 2: implement CV parser path for matching inputs.
-5. Phase 2: implement async matcher orchestration and decouple from poll cycle.
-6. Phase 2: wire match results, pending state, and threshold controls in UI.
+5. Phase 2: implement async matcher worker orchestration (`pending` -> `processing` -> `matched`/`failed`).
+6. Phase 2: wire completed match results, threshold controls, and notifications in UI.

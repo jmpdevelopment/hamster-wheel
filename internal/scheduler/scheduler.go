@@ -29,6 +29,7 @@ type JobStore interface {
 	ListEnabledFilters(ctx context.Context) ([]db.SearchFilter, error)
 	JobExistsBySourceID(ctx context.Context, source, sourceID string) (bool, error)
 	InsertJob(ctx context.Context, job *db.Job) (string, error)
+	EnsureJobMatchPending(ctx context.Context, jobID string) error
 }
 
 // Scheduler manages periodic polling of job sources.
@@ -551,7 +552,7 @@ func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 				break
 			}
 
-			_, err := s.store.InsertJob(ctx, fj.job)
+			jobID, err := s.store.InsertJob(ctx, fj.job)
 			if err != nil {
 				if errors.Is(err, db.ErrDuplicateJob) {
 					// Race between dedup read and insert (rare but possible
@@ -566,6 +567,12 @@ func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 			}
 
 			result.NewJobs++
+			if err := s.store.EnsureJobMatchPending(ctx, jobID); err != nil {
+				slog.Error("failed to enqueue job for matching",
+					"job_id", jobID,
+					"title", fj.title,
+					"error", err)
+			}
 			slog.Info("new job stored",
 				"title", fj.title,
 				"company", fj.company,

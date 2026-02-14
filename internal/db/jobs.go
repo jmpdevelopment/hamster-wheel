@@ -27,6 +27,9 @@ type Job struct {
 	DiscoveredAt time.Time  // When Hamster Wheel found this job
 	FilterID     *string    // Which search filter discovered this, nullable
 	IsFavorite   bool       // Whether user marked this job as favorite
+	MatchStatus  string     // Current matching status (pending/processing/matched/failed), empty if unavailable
+	MatchScore   float64    // Latest match score (0.0-1.0)
+	MatchSummary string     // Latest match summary
 }
 
 // InsertJob stores a new job. Returns ErrDuplicateJob if a job with the same
@@ -70,9 +73,12 @@ func (db *DB) InsertJob(ctx context.Context, job *Job) (string, error) {
 // Returns nil and no error if the job doesn't exist.
 func (db *DB) GetJob(ctx context.Context, id string) (*Job, error) {
 	row := db.conn.QueryRowContext(ctx,
-		`SELECT id, source, source_id, title, company, location, description,
-		        url, posted_at, discovered_at, filter_id, is_favorite
-		 FROM jobs WHERE id = ?`, id,
+		`SELECT j.id, j.source, j.source_id, j.title, j.company, j.location, j.description,
+		        j.url, j.posted_at, j.discovered_at, j.filter_id, j.is_favorite,
+		        COALESCE(m.status, ''), COALESCE(m.match_score, 0.0), COALESCE(m.match_summary, '')
+		 FROM jobs j
+		 LEFT JOIN job_matches m ON m.job_id = j.id
+		 WHERE j.id = ?`, id,
 	)
 
 	return scanJob(row)
@@ -106,9 +112,12 @@ func (db *DB) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 		return nil, fmt.Errorf("limit %d exceeds maximum %d: %w", limit, maxJobsLimit, ErrInvalidLimit)
 	}
 
-	query := `SELECT id, source, source_id, title, company, location, description,
-	                 url, posted_at, discovered_at, filter_id, is_favorite
-	          FROM jobs ORDER BY discovered_at DESC`
+	query := `SELECT j.id, j.source, j.source_id, j.title, j.company, j.location, j.description,
+	                 j.url, j.posted_at, j.discovered_at, j.filter_id, j.is_favorite,
+	                 COALESCE(m.status, ''), COALESCE(m.match_score, 0.0), COALESCE(m.match_summary, '')
+	          FROM jobs j
+	          LEFT JOIN job_matches m ON m.job_id = j.id
+	          ORDER BY j.discovered_at DESC`
 
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
@@ -126,9 +135,12 @@ func (db *DB) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 // ListJobsByFilter returns jobs found through a specific search filter.
 func (db *DB) ListJobsByFilter(ctx context.Context, filterID string) ([]Job, error) {
 	rows, err := db.conn.QueryContext(ctx,
-		`SELECT id, source, source_id, title, company, location, description,
-		        url, posted_at, discovered_at, filter_id, is_favorite
-		 FROM jobs WHERE filter_id = ? ORDER BY discovered_at DESC`,
+		`SELECT j.id, j.source, j.source_id, j.title, j.company, j.location, j.description,
+		        j.url, j.posted_at, j.discovered_at, j.filter_id, j.is_favorite,
+		        COALESCE(m.status, ''), COALESCE(m.match_score, 0.0), COALESCE(m.match_summary, '')
+		 FROM jobs j
+		 LEFT JOIN job_matches m ON m.job_id = j.id
+		 WHERE j.filter_id = ? ORDER BY discovered_at DESC`,
 		filterID,
 	)
 	if err != nil {
@@ -291,7 +303,7 @@ func scanJob(row *sql.Row) (*Job, error) {
 	err := row.Scan(
 		&j.ID, &j.Source, &j.SourceID, &j.Title, &j.Company,
 		&j.Location, &j.Description, &j.URL, &postedAt, &discoveredAt,
-		&filterID, &isFavorite,
+		&filterID, &isFavorite, &j.MatchStatus, &j.MatchScore, &j.MatchSummary,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -335,7 +347,7 @@ func collectJobs(rows *sql.Rows) ([]Job, error) {
 		err := rows.Scan(
 			&j.ID, &j.Source, &j.SourceID, &j.Title, &j.Company,
 			&j.Location, &j.Description, &j.URL, &postedAt, &discoveredAt,
-			&filterID, &isFavorite,
+			&filterID, &isFavorite, &j.MatchStatus, &j.MatchScore, &j.MatchSummary,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scanning job row: %w", err)

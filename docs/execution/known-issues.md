@@ -42,6 +42,7 @@ When a bug is found, record:
 
 - Distribution signing/notarization is deferred; users may see trust warnings on unsigned builds.
 - LLM matching and tailoring phases are not fully implemented yet; quality depends on upcoming Phase 2-3 completion.
+- Match status enqueue + pending-state UI is implemented, but async worker execution (`pending` -> `matched`/`failed`) is still in progress.
 - PDF parsing/generation quality may vary by document structure and will need targeted validation.
 - Job retention is currently indefinite; data hygiene controls (retention policy, archival/cleanup UX, and safe defaults) are deferred to end-phase hardening.
 

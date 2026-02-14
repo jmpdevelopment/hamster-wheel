@@ -158,6 +158,16 @@ func TestPollOnceDiscoversNewJobs(t *testing.T) {
 	if count != 2 {
 		t.Errorf("expected 2 jobs in DB, got %d", count)
 	}
+
+	storedJobs, err := database.ListJobs(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("listing stored jobs: %v", err)
+	}
+	for _, job := range storedJobs {
+		if job.MatchStatus != db.JobMatchStatusPending {
+			t.Fatalf("expected pending match status for job %q, got %q", job.ID, job.MatchStatus)
+		}
+	}
 }
 
 func TestPollOnceDeduplicatesExistingJobs(t *testing.T) {

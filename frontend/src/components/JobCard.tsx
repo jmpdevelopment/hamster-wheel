@@ -23,6 +23,10 @@ export const JobCard = memo(function JobCard({
   onToggleFavorite,
   style,
 }: JobCardProps) {
+  const matchStatus = readMatchStatus(job);
+  const showPendingMatchLabel =
+    matchStatus === "pending" || matchStatus === "processing";
+
   return (
     <div
       style={style}
@@ -70,9 +74,16 @@ export const JobCard = memo(function JobCard({
             )}
           </div>
           <div className="flex items-center justify-between mt-1">
-            <span className="text-xs text-hw-text-muted">
-              {relativeTime(job.DiscoveredAt)}
-            </span>
+            <div className="flex flex-col min-w-0">
+              {showPendingMatchLabel && (
+                <span className="text-[11px] text-hw-text-muted">
+                  Calculating match score
+                </span>
+              )}
+              <span className="text-xs text-hw-text-muted">
+                {relativeTime(job.DiscoveredAt)}
+              </span>
+            </div>
             <span className="text-xs text-hw-text-muted/60">{job.Source}</span>
           </div>
         </button>
@@ -96,3 +107,11 @@ export const JobCard = memo(function JobCard({
     </div>
   );
 });
+
+function readMatchStatus(job: Job): string {
+  const candidate = (job as unknown as { MatchStatus?: unknown }).MatchStatus;
+  if (typeof candidate !== "string") {
+    return "";
+  }
+  return candidate.trim().toLowerCase();
+}

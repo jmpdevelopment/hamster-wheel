@@ -131,4 +131,26 @@ describe("JobCard", () => {
     expect(wrapper.style.position).toBe("absolute");
     expect(wrapper.style.height).toBe("74px");
   });
+
+  it("shows calculating label while match status is pending", () => {
+    render(
+      <JobCard
+        {...defaultProps}
+        job={fakeJob({ MatchStatus: "pending" })}
+      />
+    );
+    expect(screen.getByText("Calculating match score")).toBeInTheDocument();
+  });
+
+  it("does not show calculating label for matched status", () => {
+    render(
+      <JobCard
+        {...defaultProps}
+        job={fakeJob({ MatchStatus: "matched" })}
+      />
+    );
+    expect(
+      screen.queryByText("Calculating match score")
+    ).not.toBeInTheDocument();
+  });
 });

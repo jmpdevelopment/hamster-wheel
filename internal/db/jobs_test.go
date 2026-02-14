@@ -592,3 +592,55 @@ func TestInsertJobWithEmptyOptionalFields(t *testing.T) {
 		t.Errorf("expected nil FilterID, got %v", got.FilterID)
 	}
 }
+
+func TestGetJobIncludesMatchFields(t *testing.T) {
+	db := testDB(t)
+
+	jobID, err := db.InsertJob(context.Background(), makeTestJob("with-match-fields"))
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := db.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending match row: %v", err)
+	}
+
+	job, err := db.GetJob(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("getting job: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected job, got nil")
+	}
+	if job.MatchStatus != JobMatchStatusPending {
+		t.Fatalf("expected MatchStatus %q, got %q", JobMatchStatusPending, job.MatchStatus)
+	}
+	if job.MatchScore != 0 {
+		t.Fatalf("expected MatchScore 0.0 for pending match, got %v", job.MatchScore)
+	}
+	if job.MatchSummary != "" {
+		t.Fatalf("expected empty MatchSummary for pending match, got %q", job.MatchSummary)
+	}
+}
+
+func TestListJobsIncludesMatchFields(t *testing.T) {
+	db := testDB(t)
+
+	jobID, err := db.InsertJob(context.Background(), makeTestJob("list-with-match-fields"))
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := db.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending match row: %v", err)
+	}
+
+	jobs, err := db.ListJobs(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("listing jobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(jobs))
+	}
+	if jobs[0].MatchStatus != JobMatchStatusPending {
+		t.Fatalf("expected MatchStatus %q, got %q", JobMatchStatusPending, jobs[0].MatchStatus)
+	}
+}

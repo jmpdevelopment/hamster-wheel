@@ -63,6 +63,9 @@ var migrations = []string{
 	);`,
 	// Migration 2: Persist job favorites.
 	`ALTER TABLE jobs ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0;`,
+	// Migration 3: Enforce one match row per job and add status lookup index.
+	`CREATE UNIQUE INDEX IF NOT EXISTS idx_job_matches_job_id ON job_matches(job_id);
+	CREATE INDEX IF NOT EXISTS idx_job_matches_status_created_at ON job_matches(status, created_at);`,
 }
 
 // migrate applies any pending migrations based on the schema_version PRAGMA.
