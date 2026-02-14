@@ -8,26 +8,24 @@ Last updated: 2026-02-14
 - Architecture refactor is complete.
 - Phase 1.5 UX standards are complete.
 - Phase 2 has started with keychain manager completed.
-- Reliability hardening pass H1-H8 is complete.
+- Reliability hardening pass is complete and regression-covered.
 
-## Recently Completed Reliability Steps
+## Key Reliability Outcomes
 
-- H1: Removed stale source references and standardized on `reed_uk`.
-- H2: Polling outcome model supports partial success and total-failure propagation.
-- H3: Poll observability and exportable diagnostics added.
-- H4: API-key lifecycle hardened, frontend contract made secret-safe.
-- H5: Frontend mutation/error contract hardened.
-- H6: Startup/settings async error handling hardened.
-- H7: Reed adapter rate limiting made concurrency-safe.
-- H8: Testing and coverage enforcement improved.
-- H9: Added targeted backend failure-path tests (poll diagnostics/report IO, DB open/migration errors, settings keyboard shortcuts) and covered `cmd/generate-icon`.
+- Scheduler polls are timeout-bounded and panic-safe.
+- Poll status is event-driven (`polling:status-changed`) with focus/visibility fallback sync.
+- Polling schedule is deterministic:
+  - `nextPollAt` is published before cycle work.
+  - resume and manual `PollNow` both reschedule auto-poll to `now + interval`.
+- Frontend polling orchestration is isolated in `usePollingController`.
+- Poll diagnostics and export paths are available for failure triage.
 
 ## Verification Baseline from Latest Status Pass
 
 - Backend tests: passing.
 - Frontend tests: passing.
 - `go vet ./...`: passing.
-- Coverage gates: passing at current thresholds.
+- Coverage gates: passing.
 
 ## Next Work Queue
 

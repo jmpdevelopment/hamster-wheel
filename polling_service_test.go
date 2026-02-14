@@ -190,6 +190,38 @@ func TestPollNowNoEnabledFiltersSkipsDiagnosticsPersistence(t *testing.T) {
 	}
 }
 
+func TestPollNowReschedulesNextAutoPollWindow(t *testing.T) {
+	database := testPollingServiceDB(t)
+	registry := adapter.NewRegistry()
+	sched := scheduler.New(database, registry, 2*time.Second)
+	store := diagnostics.NewStore(t.TempDir(), 20, 24*time.Hour)
+	service := NewPollingService(sched, store)
+
+	sched.Start()
+	defer sched.Stop()
+
+	var initialNext time.Time
+	deadline := time.Now().Add(250 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		initialNext = sched.NextPollAt()
+		if !initialNext.IsZero() {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if initialNext.IsZero() {
+		t.Fatal("expected initial next poll schedule after scheduler start")
+	}
+
+	time.Sleep(20 * time.Millisecond)
+	_ = service.PollNow()
+
+	updatedNext := sched.NextPollAt()
+	if !updatedNext.After(initialNext) {
+		t.Fatalf("expected PollNow to move next poll forward, initial=%v updated=%v", initialNext, updatedNext)
+	}
+}
+
 func TestPollNowReportsDiagnosticsStoreUnavailable(t *testing.T) {
 	database := testPollingServiceDB(t)
 	registry := adapter.NewRegistry()

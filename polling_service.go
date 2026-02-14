@@ -73,6 +73,8 @@ func (s *PollingService) PollNow() PollRunResult {
 	ctx, cancel := context.WithTimeout(context.Background(), pollNowTimeout)
 	defer cancel()
 
+	// Manual polls reset the next auto-poll window to now + interval.
+	s.scheduler.RescheduleFromNow()
 	schedResults, cycleErr := s.scheduler.PollOnce(ctx)
 	completedAt := time.Now().UTC()
 

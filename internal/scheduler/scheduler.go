@@ -36,23 +36,50 @@ type Scheduler struct {
 	store    JobStore
 	adapters *adapter.Registry
 	interval time.Duration
+	// pollTimeout bounds one background poll cycle so sleep/wake networking
+	// stalls cannot block the scheduler loop indefinitely.
+	pollTimeout time.Duration
 
-	cancel context.CancelFunc // cancels the background goroutine
-	done   chan struct{}      // closed when the background goroutine exits
+	cancel     context.CancelFunc // cancels the background goroutine
+	done       chan struct{}      // closed when the background goroutine exits
+	reschedule chan struct{}      // nudges the loop to recalculate next timer
 
-	// stateMu protects running, paused, nextPollAt, cancel, and done
-	stateMu    sync.RWMutex
-	paused     bool
-	nextPollAt time.Time
-	running    bool // true if scheduler is currently running
+	// stateMu protects running, paused, nextPollAt, statusChangedHook, cancel, done, and reschedule.
+	stateMu           sync.RWMutex
+	paused            bool
+	nextPollAt        time.Time
+	running           bool // true if scheduler is currently running
+	statusChangedHook func()
+}
+
+const (
+	// Keep background polls bounded but generous enough for normal batches.
+	minPollTimeout = 2 * time.Minute
+	maxPollTimeout = 15 * time.Minute
+)
+
+func derivePollTimeout(interval time.Duration) time.Duration {
+	if interval <= 0 {
+		return minPollTimeout
+	}
+
+	timeout := interval / 2
+	if timeout < minPollTimeout {
+		return minPollTimeout
+	}
+	if timeout > maxPollTimeout {
+		return maxPollTimeout
+	}
+	return timeout
 }
 
 // New creates a scheduler. Call Start() to begin polling.
 func New(store JobStore, adapters *adapter.Registry, interval time.Duration) *Scheduler {
 	return &Scheduler{
-		store:    store,
-		adapters: adapters,
-		interval: interval,
+		store:       store,
+		adapters:    adapters,
+		interval:    interval,
+		pollTimeout: derivePollTimeout(interval),
 	}
 }
 
@@ -70,9 +97,11 @@ func (s *Scheduler) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
 	s.done = make(chan struct{})
+	s.reschedule = make(chan struct{}, 1)
+	reschedule := s.reschedule
 	s.stateMu.Unlock()
 
-	go func() {
+	go func(reschedule <-chan struct{}) {
 		defer close(s.done)
 		defer func() {
 			s.stateMu.Lock()
@@ -83,23 +112,37 @@ func (s *Scheduler) Start() {
 		slog.Info("scheduler started", "interval", s.interval)
 
 		// Run immediately on start, then on each tick.
+		// Set nextPollAt before polling so UI can show schedule even if a poll
+		// is currently in-flight or temporarily slow.
+		next := time.Now().Add(s.interval)
+		s.setNextPollAt(next)
 		s.safePoll(ctx)
-		s.setNextPollAt(time.Now().Add(s.interval))
 
-		ticker := time.NewTicker(s.interval)
-		defer ticker.Stop()
+		timer := time.NewTimer(remainingUntil(next))
+		defer timer.Stop()
 
 		for {
 			select {
 			case <-ctx.Done():
 				slog.Info("scheduler stopped")
 				return
-			case <-ticker.C:
+			case <-timer.C:
+				next = time.Now().Add(s.interval)
+				s.setNextPollAt(next)
 				s.safePoll(ctx)
-				s.setNextPollAt(time.Now().Add(s.interval))
+				resetTimer(timer, remainingUntil(next))
+			case <-reschedule:
+				s.stateMu.RLock()
+				next = s.nextPollAt
+				s.stateMu.RUnlock()
+				if next.IsZero() {
+					next = time.Now().Add(s.interval)
+					s.setNextPollAt(next)
+				}
+				resetTimer(timer, remainingUntil(next))
 			}
 		}
-	}()
+	}(reschedule)
 }
 
 // safePoll wraps PollOnce with panic recovery so a buggy adapter
@@ -107,6 +150,7 @@ func (s *Scheduler) Start() {
 func (s *Scheduler) safePoll(ctx context.Context) {
 	s.stateMu.RLock()
 	paused := s.paused
+	pollTimeout := s.pollTimeout
 	s.stateMu.RUnlock()
 
 	if paused {
@@ -114,13 +158,74 @@ func (s *Scheduler) safePoll(ctx context.Context) {
 		return
 	}
 
+	pollCtx := ctx
+	cancel := func() {}
+	if pollTimeout > 0 {
+		pollCtx, cancel = context.WithTimeout(ctx, pollTimeout)
+	}
+	defer cancel()
+
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("panic in poll cycle (recovered)", "panic", r)
 		}
 	}()
-	if _, err := s.PollOnce(ctx); err != nil {
+	if _, err := s.PollOnce(pollCtx); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("poll cycle timed out", "timeout", pollTimeout)
+			return
+		}
 		slog.Error("poll cycle failed", "error", err)
+	}
+}
+
+// SetStatusChangedHook registers a callback that runs when polling status
+// transitions (for example, next poll rescheduled or paused/resumed).
+// It is optional and safe to set once during startup wiring.
+func (s *Scheduler) SetStatusChangedHook(hook func()) {
+	s.stateMu.Lock()
+	s.statusChangedHook = hook
+	s.stateMu.Unlock()
+}
+
+func (s *Scheduler) notifyStatusChanged() {
+	s.stateMu.RLock()
+	hook := s.statusChangedHook
+	s.stateMu.RUnlock()
+	if hook != nil {
+		hook()
+	}
+}
+
+func remainingUntil(t time.Time) time.Duration {
+	remaining := time.Until(t)
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
+func resetTimer(timer *time.Timer, d time.Duration) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(d)
+}
+
+func (s *Scheduler) signalReschedule() {
+	s.stateMu.RLock()
+	ch := s.reschedule
+	s.stateMu.RUnlock()
+	if ch == nil {
+		return
+	}
+
+	select {
+	case ch <- struct{}{}:
+	default:
 	}
 }
 
@@ -130,6 +235,7 @@ func (s *Scheduler) setNextPollAt(t time.Time) {
 	s.nextPollAt = t
 	s.stateMu.Unlock()
 	slog.Info("next poll scheduled", "at", t.Format(time.RFC3339))
+	s.notifyStatusChanged()
 }
 
 // SetPaused pauses or resumes auto-polling. When paused, ticker
@@ -137,12 +243,36 @@ func (s *Scheduler) setNextPollAt(t time.Time) {
 func (s *Scheduler) SetPaused(paused bool) {
 	s.stateMu.Lock()
 	s.paused = paused
+	running := s.running
 	s.stateMu.Unlock()
 	if paused {
 		slog.Info("auto-polling paused")
 	} else {
 		slog.Info("auto-polling resumed")
 	}
+	// Ensure status callers and scheduler timer both move to a fresh schedule after resume.
+	if !paused && running {
+		s.RescheduleFromNow()
+		return
+	}
+	s.notifyStatusChanged()
+}
+
+// RescheduleFromNow pushes the next automatic poll to now + interval when
+// the scheduler is running and unpaused.
+func (s *Scheduler) RescheduleFromNow() {
+	s.stateMu.RLock()
+	running := s.running
+	paused := s.paused
+	interval := s.interval
+	s.stateMu.RUnlock()
+
+	if !running || paused {
+		return
+	}
+
+	s.setNextPollAt(time.Now().Add(interval))
+	s.signalReschedule()
 }
 
 // IsPaused returns whether auto-polling is currently paused.
@@ -168,6 +298,7 @@ func (s *Scheduler) Stop() {
 	done := s.done
 	s.cancel = nil
 	s.done = nil
+	s.reschedule = nil
 	s.stateMu.Unlock()
 
 	if cancel != nil {

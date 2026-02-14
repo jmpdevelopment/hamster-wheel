@@ -28,9 +28,3 @@ When a bug is found, record:
 | LLM API cost growth | Keep matching targeted and thresholds configurable; default model choice is cost-aware. |
 | Unsigned desktop package warnings | Document user workarounds now; revisit code-signing in distribution phase. |
 | PDF parse inaccuracies | Add preview/review steps and fallback text workflows before final tailoring. |
-
-## Reliability Notes
-
-- Poll diagnostics are now exportable for failure triage.
-- Poll-cycle errors now distinguish partial failures vs total run failures.
-- Secrets are no longer exposed through frontend read paths.

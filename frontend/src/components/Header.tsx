@@ -40,7 +40,9 @@ export function Header({
         ? "Auto-poll paused"
         : nextPollAt
           ? `Next: ${formatNextPoll(nextPollAt)}`
-          : "";
+          : isPolling
+            ? "Scheduling next poll..."
+            : "";
 
   const disabledReason = !hasFilters
     ? "No filters configured"

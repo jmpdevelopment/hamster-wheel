@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,6 +45,12 @@ func (m *mockAdapter) FetchNewJobs(_ context.Context, _ adapter.SearchParams) ([
 	return m.jobs, nil
 }
 
+func (m *mockAdapter) FetchCalls() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.fetchCalls
+}
+
 func (m *mockAdapter) FetchJobDetails(_ context.Context, job adapter.JobSummary) (*adapter.JobDetails, error) {
 	m.mu.Lock()
 	m.detailCalls++
@@ -76,6 +83,17 @@ func testSetup(t *testing.T) (*db.DB, *adapter.Registry) {
 
 	registry := adapter.NewRegistry()
 	return database, registry
+}
+
+func waitForCondition(timeout time.Duration, cond func() bool) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	return cond()
 }
 
 // --- Tests ---
@@ -488,6 +506,55 @@ func (p *panicAdapter) FetchJobDetails(_ context.Context, _ adapter.JobSummary) 
 	return nil, nil
 }
 
+// timeoutAwareAdapter blocks for the first N fetch calls until context cancellation.
+// Later calls return quickly so tests can verify scheduler recovery after timeout.
+type timeoutAwareAdapter struct {
+	name       string
+	blockCalls int
+
+	mu    sync.Mutex
+	calls int
+}
+
+func (t *timeoutAwareAdapter) Name() string                     { return t.name }
+func (t *timeoutAwareAdapter) DisplayName() string              { return t.name }
+func (t *timeoutAwareAdapter) Validate(_ context.Context) error { return nil }
+
+func (t *timeoutAwareAdapter) FetchNewJobs(ctx context.Context, _ adapter.SearchParams) ([]adapter.JobSummary, error) {
+	t.mu.Lock()
+	t.calls++
+	callNum := t.calls
+	shouldBlock := callNum <= t.blockCalls
+	t.mu.Unlock()
+
+	if shouldBlock {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	sourceID := fmt.Sprintf("timeout-aware-%d", callNum)
+	return []adapter.JobSummary{
+		{
+			SourceID: sourceID,
+			Title:    "Recovered Job",
+			URL:      "https://example.com/" + sourceID,
+		},
+	}, nil
+}
+
+func (t *timeoutAwareAdapter) FetchJobDetails(_ context.Context, job adapter.JobSummary) (*adapter.JobDetails, error) {
+	return &adapter.JobDetails{
+		JobSummary:      job,
+		FullDescription: "Recovered after timeout",
+	}, nil
+}
+
+func (t *timeoutAwareAdapter) Calls() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.calls
+}
+
 func TestSafePollRecoversFromPanic(t *testing.T) {
 	database, registry := testSetup(t)
 
@@ -527,6 +594,55 @@ func TestSafePollRecoversFromPanic(t *testing.T) {
 	}
 	if successCount < 1 {
 		t.Error("expected at least 1 successful poll after panic recovery")
+	}
+}
+
+func TestSafePollTimesOutLongRunningPoll(t *testing.T) {
+	database, registry := testSetup(t)
+
+	ta := &timeoutAwareAdapter{name: "timeout_source", blockCalls: 1}
+	registry.Register(ta)
+	database.CreateFilter(context.Background(), "Timeout Filter", "go", "London", "timeout_source")
+
+	s := New(database, registry, time.Minute)
+	s.pollTimeout = 25 * time.Millisecond
+
+	started := time.Now()
+	s.safePoll(context.Background())
+	elapsed := time.Since(started)
+
+	if elapsed > 500*time.Millisecond {
+		t.Fatalf("expected safePoll to return quickly after timeout, took %v", elapsed)
+	}
+	if ta.Calls() != 1 {
+		t.Fatalf("expected exactly 1 fetch call, got %d", ta.Calls())
+	}
+}
+
+func TestSchedulerContinuesAfterPollTimeout(t *testing.T) {
+	database, registry := testSetup(t)
+
+	ta := &timeoutAwareAdapter{name: "timeout_source", blockCalls: 1}
+	registry.Register(ta)
+	database.CreateFilter(context.Background(), "Timeout Recovery", "go", "London", "timeout_source")
+
+	s := New(database, registry, 40*time.Millisecond)
+	s.pollTimeout = 20 * time.Millisecond
+
+	s.Start()
+	time.Sleep(220 * time.Millisecond)
+	s.Stop()
+
+	if ta.Calls() < 2 {
+		t.Fatalf("expected scheduler to continue after timeout, fetch calls=%d", ta.Calls())
+	}
+
+	count, err := database.CountJobs(context.Background())
+	if err != nil {
+		t.Fatalf("counting jobs: %v", err)
+	}
+	if count < 1 {
+		t.Fatalf("expected at least one job stored after timeout recovery, got %d", count)
 	}
 }
 
@@ -637,6 +753,105 @@ func TestSetPausedSkipsPoll(t *testing.T) {
 	}
 }
 
+func TestSetPausedEmitsStatusChangedHook(t *testing.T) {
+	database, registry := testSetup(t)
+	s := New(database, registry, time.Minute)
+
+	var calls atomic.Int32
+	s.SetStatusChangedHook(func() {
+		calls.Add(1)
+	})
+
+	s.SetPaused(true)
+	s.SetPaused(false)
+
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("expected 2 status-change callbacks, got %d", got)
+	}
+}
+
+func TestSetPausedResumeSchedulesNextPollAtWhenRunning(t *testing.T) {
+	database, registry := testSetup(t)
+	s := New(database, registry, time.Minute)
+
+	s.stateMu.Lock()
+	s.running = true
+	s.paused = true
+	s.nextPollAt = time.Time{}
+	s.stateMu.Unlock()
+
+	s.SetPaused(false)
+
+	s.stateMu.RLock()
+	next := s.nextPollAt
+	s.stateMu.RUnlock()
+	if next.IsZero() {
+		t.Fatal("expected SetPaused(false) to schedule next poll when running")
+	}
+}
+
+func TestRescheduleFromNowMovesNextPollAtForward(t *testing.T) {
+	database, registry := testSetup(t)
+	s := New(database, registry, time.Minute)
+
+	s.stateMu.Lock()
+	s.running = true
+	s.paused = false
+	s.nextPollAt = time.Now().Add(20 * time.Second)
+	oldNext := s.nextPollAt
+	s.stateMu.Unlock()
+
+	s.RescheduleFromNow()
+
+	newNext := s.NextPollAt()
+	if !newNext.After(oldNext) {
+		t.Fatalf("expected next poll to move forward, old=%v new=%v", oldNext, newNext)
+	}
+}
+
+func TestRescheduleFromNowDelaysNextAutomaticPoll(t *testing.T) {
+	database, registry := testSetup(t)
+
+	mock := &mockAdapter{
+		name: "reschedule_source",
+		jobs: []adapter.JobSummary{
+			{SourceID: "rs-1", Title: "Job", URL: "https://example.com/rs-1"},
+		},
+	}
+	registry.Register(mock)
+	database.CreateFilter(context.Background(), "Reschedule", "go", "London", "reschedule_source")
+
+	interval := 300 * time.Millisecond
+	s := New(database, registry, interval)
+	s.Start()
+	defer s.Stop()
+
+	ok := waitForCondition(200*time.Millisecond, func() bool {
+		return mock.FetchCalls() >= 1
+	})
+	if !ok {
+		t.Fatal("expected initial immediate poll to run")
+	}
+	initialCalls := mock.FetchCalls()
+
+	time.Sleep(70 * time.Millisecond)
+	s.RescheduleFromNow()
+
+	// This point is after the original schedule (~300ms from start) but before
+	// the rescheduled window (~370ms from start).
+	time.Sleep(280 * time.Millisecond)
+	if got := mock.FetchCalls(); got != initialCalls {
+		t.Fatalf("expected no auto poll before rescheduled time, initial=%d got=%d", initialCalls, got)
+	}
+
+	ok = waitForCondition(250*time.Millisecond, func() bool {
+		return mock.FetchCalls() >= initialCalls+1
+	})
+	if !ok {
+		t.Fatalf("expected auto poll after rescheduled time, calls=%d", mock.FetchCalls())
+	}
+}
+
 func TestIsPaused(t *testing.T) {
 	database, registry := testSetup(t)
 	s := New(database, registry, time.Minute)
@@ -682,6 +897,55 @@ func TestNextPollAtTracked(t *testing.T) {
 	}
 
 	s.Stop()
+}
+
+func TestStartEmitsStatusChangedAfterPoll(t *testing.T) {
+	database, registry := testSetup(t)
+
+	mock := &mockAdapter{
+		name: "hook_source",
+		jobs: []adapter.JobSummary{
+			{SourceID: "hook-1", Title: "Hook Job", URL: "https://example.com/hook-1"},
+		},
+	}
+	registry.Register(mock)
+	database.CreateFilter(context.Background(), "Hook", "go", "London", "hook_source")
+
+	s := New(database, registry, 40*time.Millisecond)
+
+	var calls atomic.Int32
+	s.SetStatusChangedHook(func() {
+		calls.Add(1)
+	})
+
+	s.Start()
+	time.Sleep(120 * time.Millisecond)
+	s.Stop()
+
+	if got := calls.Load(); got < 1 {
+		t.Fatalf("expected status-change callback after scheduler poll, got %d", got)
+	}
+}
+
+func TestStartSetsNextPollAtBeforeInitialPollCompletes(t *testing.T) {
+	database, registry := testSetup(t)
+
+	ta := &timeoutAwareAdapter{name: "startup_block_source", blockCalls: 1}
+	registry.Register(ta)
+	database.CreateFilter(context.Background(), "Startup Block", "go", "London", "startup_block_source")
+
+	s := New(database, registry, 5*time.Minute)
+	s.pollTimeout = 200 * time.Millisecond
+
+	s.Start()
+	time.Sleep(20 * time.Millisecond)
+
+	next := s.NextPollAt()
+	s.Stop()
+
+	if next.IsZero() {
+		t.Fatal("expected NextPollAt to be scheduled before first poll completes")
+	}
 }
 
 func TestPollOnceWritePhaseContextCancellation(t *testing.T) {

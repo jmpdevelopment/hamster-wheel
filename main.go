@@ -98,6 +98,19 @@ func main() {
 		},
 	})
 
+	// Broadcast scheduler state transitions so the UI can refresh immediately.
+	sched.SetStatusChangedHook(func() {
+		next := sched.NextPollAt()
+		nextPollAt := ""
+		if !next.IsZero() {
+			nextPollAt = next.Format(time.RFC3339)
+		}
+		app.Event.Emit("polling:status-changed", map[string]any{
+			"paused":     sched.IsPaused(),
+			"nextPollAt": nextPollAt,
+		})
+	})
+
 	// Create the main application window.
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "Hamster Wheel",

@@ -76,6 +76,23 @@ describe("Header", () => {
     expect(screen.getByText(/Next:/)).toBeInTheDocument();
   });
 
+  it("shows scheduling status while polling and next poll time is not yet available", () => {
+    render(
+      <Header
+        {...defaultProps}
+        isPolling={true}
+        nextPollAt=""
+        pollingPaused={false}
+      />
+    );
+    expect(screen.getByText("Scheduling next poll...")).toBeInTheDocument();
+  });
+
+  it("does not show scheduling status before polling starts", () => {
+    render(<Header {...defaultProps} isPolling={false} nextPollAt="" pollingPaused={false} />);
+    expect(screen.queryByText("Scheduling next poll...")).not.toBeInTheDocument();
+  });
+
   it("calls onTogglePolling when Pause is clicked", async () => {
     const onTogglePolling = vi.fn();
     render(<Header {...defaultProps} onTogglePolling={onTogglePolling} />);

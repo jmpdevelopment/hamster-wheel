@@ -28,6 +28,7 @@ const mockPollNow = vi.fn();
 const mockGetPollingStatus = vi.fn();
 const mockSetPollingPaused = vi.fn();
 const mockGetKeyboardShortcuts = vi.fn();
+const mockEventsOn = vi.fn();
 const noOpRun = {
   runID: "",
   startedAt: "",
@@ -77,6 +78,9 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
 vi.mock("@wailsio/runtime", () => ({
   Browser: { OpenURL: vi.fn() },
   Dialogs: { SaveFile: vi.fn().mockResolvedValue("") },
+  Events: {
+    On: (...args: unknown[]) => mockEventsOn(...args),
+  },
 }));
 
 vi.mock("react-virtualized-auto-sizer", () => ({
@@ -100,6 +104,7 @@ beforeEach(() => {
   mockGetPollingStatus.mockResolvedValue({ paused: false, nextPollAt: "" });
   mockSetPollingPaused.mockResolvedValue(undefined);
   mockGetKeyboardShortcuts.mockResolvedValue("");
+  mockEventsOn.mockImplementation(() => vi.fn());
 });
 
 describe("App", () => {
@@ -144,6 +149,46 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("shortcuts load failed")).toBeInTheDocument();
     });
+  });
+
+  it("uses scheduler event payload to update next poll without extra status call", async () => {
+    mockGetFilters.mockResolvedValue([
+      {
+        ID: "f1",
+        Name: "Backend",
+        Keywords: "go",
+        Location: "London",
+        Source: "reed_uk",
+        Enabled: true,
+        CreatedAt: "2026-02-08T10:00:00Z",
+        UpdatedAt: "2026-02-08T10:00:00Z",
+      },
+    ]);
+    mockGetPollingStatus.mockResolvedValue({ paused: false, nextPollAt: "" });
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(mockGetPollingStatus).toHaveBeenCalledTimes(1);
+    });
+
+    const onStatusChanged = mockEventsOn.mock.calls.find(
+      (call) => call[0] === "polling:status-changed"
+    )?.[1] as ((event: unknown) => void) | undefined;
+
+    expect(onStatusChanged).toBeTypeOf("function");
+
+    act(() => {
+      onStatusChanged?.({
+        name: "polling:status-changed",
+        data: { paused: false, nextPollAt: "2026-02-14T11:40:30Z" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Next:/)).toBeInTheDocument();
+    });
+    expect(mockGetPollingStatus).toHaveBeenCalledTimes(1);
   });
 
   it("shows error when pause/resume toggle fails", async () => {

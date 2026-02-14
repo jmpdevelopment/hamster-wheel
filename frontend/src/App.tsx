@@ -1,14 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import {
-  PollNow,
-  GetPollingStatus,
-  SetPollingPaused,
-} from "../bindings/hamster-wheel/pollingservice";
 import { GetKeyboardShortcuts } from "../bindings/hamster-wheel/settingsservice";
-import { PollRunResult } from "../bindings/hamster-wheel/models";
 import { useJobs } from "./hooks/useJobs";
 import { useFilters } from "./hooks/useFilters";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { usePollingController } from "./hooks/usePollingController";
 import { Header } from "./components/Header";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { FilterPanel } from "./components/FilterPanel";
@@ -28,37 +23,22 @@ function App() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [filterByFilterId, setFilterByFilterId] = useState<string | null>(null);
-  const [isPolling, setIsPolling] = useState(false);
-  const [pollRun, setPollRun] = useState<PollRunResult | null>(
-    null
-  );
   const [appError, setAppError] = useState<string | null>(null);
-  const [pollingPaused, setPollingPaused] = useState(false);
-  const [nextPollAt, setNextPollAt] = useState("");
   const [filteredJobIds, setFilteredJobIds] = useState<string[]>([]);
   const [keyboardShortcutsEnabled, setKeyboardShortcutsEnabled] =
     useState(true);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const polling = usePollingController({
+    refreshJobs: jobs.refresh,
+    refreshFilters: filters.refresh,
+    setAppError,
+  });
 
-  // Fetch polling status and keyboard shortcuts setting on mount.
+  // Fetch keyboard shortcuts setting on mount.
   useEffect(() => {
     let cancelled = false;
 
-    const loadStartupState = async () => {
-      try {
-        const status = await GetPollingStatus();
-        if (!cancelled) {
-          setPollingPaused(status.paused);
-          setNextPollAt(status.nextPollAt);
-        }
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.error("Failed to load polling status:", message);
-        if (!cancelled) {
-          setAppError((prev) => prev ?? message);
-        }
-      }
-
+    const loadKeyboardShortcuts = async () => {
       try {
         const val = await GetKeyboardShortcuts();
         // Empty string means default (enabled).
@@ -74,7 +54,7 @@ function App() {
       }
     };
 
-    void loadStartupState();
+    void loadKeyboardShortcuts();
     return () => {
       cancelled = true;
     };
@@ -88,51 +68,6 @@ function App() {
     jobs.clearError();
     filters.clearError();
   };
-
-  const handlePollNow = useCallback(async () => {
-    setIsPolling(true);
-    setAppError(null);
-    setPollRun(null);
-    try {
-      const run = await PollNow();
-      if (run && (run.totalFilters > 0 || run.cycleError)) {
-        setPollRun(run);
-      }
-      if (run?.diagnosticsError) {
-        setAppError(run.diagnosticsError);
-      }
-      // Refresh data and polling status after polling.
-      const [, , status] = await Promise.all([
-        jobs.refresh(),
-        filters.refresh(),
-        GetPollingStatus(),
-      ]);
-      setNextPollAt(status.nextPollAt);
-      setPollingPaused(status.paused);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("Poll failed:", message);
-      setAppError(message);
-    } finally {
-      setIsPolling(false);
-    }
-  }, [jobs, filters]);
-
-  const handleTogglePolling = useCallback(async () => {
-    const newPaused = !pollingPaused;
-    try {
-      await SetPollingPaused(newPaused);
-      setPollingPaused(newPaused);
-      if (!newPaused) {
-        const status = await GetPollingStatus();
-        setNextPollAt(status.nextPollAt);
-      }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("Failed to toggle polling:", message);
-      setAppError(message);
-    }
-  }, [pollingPaused]);
 
   const handleToggleFilter = useCallback(
     async (
@@ -189,10 +124,10 @@ function App() {
     onCloseJobDetail: () => setSelectedJobId(null),
     onCloseSettings: () => setSettingsOpen(false),
     onOpenSettings: () => setSettingsOpen(true),
-    onPollNow: handlePollNow,
+    onPollNow: polling.pollNow,
     onDeleteJob: handleDeleteJob,
     onFocusSearch: () => searchInputRef.current?.focus(),
-    isPolling,
+    isPolling: polling.isPolling,
     canPoll:
       filters.filters.length > 0 &&
       filters.filters.some((f) => f.Enabled),
@@ -202,11 +137,11 @@ function App() {
     <div className="flex flex-col h-screen bg-hw-bg text-hw-text">
       <Header
         jobCount={jobs.jobCount}
-        onPollNow={handlePollNow}
-        isPolling={isPolling}
-        pollingPaused={pollingPaused}
-        nextPollAt={nextPollAt}
-        onTogglePolling={handleTogglePolling}
+        onPollNow={polling.pollNow}
+        isPolling={polling.isPolling}
+        pollingPaused={polling.pollingPaused}
+        nextPollAt={polling.nextPollAt}
+        onTogglePolling={polling.togglePolling}
         hasFilters={filters.filters.length > 0}
         hasEnabledFilters={filters.filters.some((f) => f.Enabled)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -269,8 +204,8 @@ function App() {
       </div>
 
       <PollResultToast
-        run={pollRun}
-        onDismiss={() => setPollRun(null)}
+        run={polling.pollRun}
+        onDismiss={polling.clearPollRun}
       />
 
       {shortcutsHelpOpen && (
