@@ -117,6 +117,30 @@ export class Job {
              */
             this["IsFavorite"] = false;
         }
+        if (!("MatchStatus" in $$source)) {
+            /**
+             * Current matching status (pending/processing/matched/failed), empty if unavailable
+             * @member
+             * @type {string}
+             */
+            this["MatchStatus"] = "";
+        }
+        if (!("MatchScore" in $$source)) {
+            /**
+             * Latest match score (0.0-1.0)
+             * @member
+             * @type {number}
+             */
+            this["MatchScore"] = 0;
+        }
+        if (!("MatchSummary" in $$source)) {
+            /**
+             * Latest match summary
+             * @member
+             * @type {string}
+             */
+            this["MatchSummary"] = "";
+        }
 
         Object.assign(this, $$source);
     }

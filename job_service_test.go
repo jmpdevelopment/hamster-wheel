@@ -240,3 +240,44 @@ func TestSetJobsFavoriteUpdatesJobs(t *testing.T) {
 		}
 	}
 }
+
+func TestRecalculateMatchScoreResetsToPending(t *testing.T) {
+	database := openJobServiceTestDB(t)
+	service := NewJobService(database, adapter.NewRegistry())
+
+	jobID := insertRetryJob(t, database, "reed_uk")
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending match row: %v", err)
+	}
+	if err := database.MarkJobMatchMatched(context.Background(), jobID, 0.78, "Good fit"); err != nil {
+		t.Fatalf("marking match as matched: %v", err)
+	}
+
+	if err := service.RecalculateMatchScore(jobID); err != nil {
+		t.Fatalf("RecalculateMatchScore failed: %v", err)
+	}
+
+	match, err := database.GetJobMatchByJobID(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("getting match row: %v", err)
+	}
+	if match == nil {
+		t.Fatal("expected match row")
+	}
+	if match.Status != db.JobMatchStatusPending {
+		t.Fatalf("expected status %q, got %q", db.JobMatchStatusPending, match.Status)
+	}
+	if match.MatchScore != 0 {
+		t.Fatalf("expected score reset to 0, got %.2f", match.MatchScore)
+	}
+}
+
+func TestRecalculateMatchScoreNotFound(t *testing.T) {
+	database := openJobServiceTestDB(t)
+	service := NewJobService(database, adapter.NewRegistry())
+
+	err := service.RecalculateMatchScore("missing-job")
+	if !errors.Is(err, db.ErrJobNotFound) {
+		t.Fatalf("expected ErrJobNotFound, got %v", err)
+	}
+}

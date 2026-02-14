@@ -24,7 +24,8 @@ export const JobCard = memo(function JobCard({
   style,
 }: JobCardProps) {
   const matchStatus = readMatchStatus(job);
-  const matchStatusBadge = getMatchStatusBadge(matchStatus);
+  const matchScore = readMatchScore(job);
+  const matchStatusBadge = getMatchStatusBadge(matchStatus, matchScore);
 
   return (
     <div
@@ -127,7 +128,10 @@ type MatchStatusBadge = {
   label: string;
 };
 
-function getMatchStatusBadge(status: string): MatchStatusBadge | null {
+function getMatchStatusBadge(
+  status: string,
+  score: number | null
+): MatchStatusBadge | null {
   switch (status) {
     case "pending":
       return {
@@ -142,10 +146,17 @@ function getMatchStatusBadge(status: string): MatchStatusBadge | null {
         label: "Matching",
       };
     case "matched":
+      if (score === null) {
+        return {
+          ariaLabel: "Match status: matched",
+          className: "border-hw-success/45 bg-hw-success/10 text-hw-success",
+          label: "Match score unavailable",
+        };
+      }
       return {
         ariaLabel: "Match status: matched",
         className: "border-hw-success/45 bg-hw-success/10 text-hw-success",
-        label: "Match ready",
+        label: `Match Score: ${Math.round(score * 100)}%`,
       };
     case "failed":
       return {
@@ -156,4 +167,18 @@ function getMatchStatusBadge(status: string): MatchStatusBadge | null {
     default:
       return null;
   }
+}
+
+function readMatchScore(job: Job): number | null {
+  const candidate = (job as unknown as { MatchScore?: unknown }).MatchScore;
+  if (typeof candidate !== "number") {
+    return null;
+  }
+  if (!Number.isFinite(candidate)) {
+    return null;
+  }
+  if (candidate < 0 || candidate > 1) {
+    return null;
+  }
+  return candidate;
 }

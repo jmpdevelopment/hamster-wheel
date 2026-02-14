@@ -25,6 +25,10 @@ Last updated: 2026-02-14
   - Claiming is atomic (`pending` -> `processing`) and stale `processing` rows are requeued on timeout windows.
   - Match updates emit `matching:status-changed` events and frontend coalesces refreshes for responsive UI updates.
   - Current default scorer is local heuristic (`heuristic_v1`) to keep latency low and token usage at zero while external providers are integrated.
+- Match visibility and recalc UX is improved:
+  - Matched badge now shows explicit score (`Match Score: X%`) instead of generic ready state.
+  - Job detail panel surfaces score, status, and summary.
+  - Job detail includes `Recalculate score` action that requeues the selected job to `pending`.
 - Reliability hardening pass is complete and regression-covered.
 
 ## Key Reliability Outcomes
@@ -58,3 +62,4 @@ Last updated: 2026-02-14
 4. Phase 2: implement CV parser path for matching inputs.
 5. Phase 2: tune token-efficiency controls (compact prompt shaping, prefilter thresholds, and bounded context windows).
 6. Phase 2: wire completed match thresholds and notifications in UI.
+7. Later UI step: add job-list sorting controls for posted date and match score.

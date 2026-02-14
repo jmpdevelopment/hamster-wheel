@@ -11,6 +11,7 @@ import (
 
 // retryFetchTimeout is the maximum time allowed for a retry description fetch.
 const retryFetchTimeout = 30 * time.Second
+const recalculateMatchTimeout = 10 * time.Second
 
 // JobService handles job-related operations exposed to the frontend.
 type JobService struct {
@@ -100,4 +101,24 @@ func (s *JobService) RetryFetchDescription(jobID string) error {
 
 	// Persist the description.
 	return s.db.UpdateJobDescription(ctx, jobID, details.FullDescription)
+}
+
+// RecalculateMatchScore resets one job's match row to pending so the async
+// matcher worker recomputes score/summary with the latest matching inputs.
+func (s *JobService) RecalculateMatchScore(jobID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), recalculateMatchTimeout)
+	defer cancel()
+
+	job, err := s.db.GetJob(ctx, jobID)
+	if err != nil {
+		return fmt.Errorf("loading job: %w", err)
+	}
+	if job == nil {
+		return db.ErrJobNotFound
+	}
+
+	if err := s.db.ResetJobMatchPending(ctx, jobID); err != nil {
+		return fmt.Errorf("resetting job match to pending: %w", err)
+	}
+	return nil
 }

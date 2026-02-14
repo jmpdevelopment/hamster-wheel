@@ -30,6 +30,7 @@ Build sequence remains:
 7. Native notifications for high-score matches.
 8. Match score and pending-state surfaces in list/detail UI.
 9. Match-threshold controls in settings.
+10. Job-list sort controls (posted date and match score) after core matching stability.
 
 ## Phase 3: Document Tailoring
 

@@ -67,6 +67,16 @@ export function GetJobsByFilter(filterID) {
 }
 
 /**
+ * RecalculateMatchScore resets one job's match row to pending so the async
+ * matcher worker recomputes score/summary with the latest matching inputs.
+ * @param {string} jobID
+ * @returns {$CancellablePromise<void>}
+ */
+export function RecalculateMatchScore(jobID) {
+    return $Call.ByID(1535395800, jobID);
+}
+
+/**
  * RetryFetchDescription re-fetches the full description for a job from the
  * original source. Used when the initial detail fetch failed during polling.
  * @param {string} jobID

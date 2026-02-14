@@ -12,12 +12,17 @@ vi.mock("@wailsio/runtime", () => ({
 // Mock jobservice bindings.
 vi.mock("../../bindings/hamster-wheel/jobservice", () => ({
   RetryFetchDescription: vi.fn(),
+  RecalculateMatchScore: vi.fn(),
 }));
 
 import { Browser } from "@wailsio/runtime";
-import { RetryFetchDescription } from "../../bindings/hamster-wheel/jobservice";
+import {
+  RecalculateMatchScore,
+  RetryFetchDescription,
+} from "../../bindings/hamster-wheel/jobservice";
 
 const mockedRetry = vi.mocked(RetryFetchDescription);
+const mockedRecalculate = vi.mocked(RecalculateMatchScore);
 
 const noop = async () => {};
 
@@ -205,5 +210,75 @@ describe("JobDetail", () => {
     expect(screen.getByText(/reed_uk/)).toBeInTheDocument();
     expect(screen.getByText(/Posted:/)).toBeInTheDocument();
     expect(screen.getByText(/Found:/)).toBeInTheDocument();
+  });
+
+  it("shows match score headline when status is matched", () => {
+    render(
+      <JobDetail
+        job={fakeJob({ MatchStatus: "matched", MatchScore: 0.84 })}
+        onDelete={noop}
+        onClose={() => {}}
+        onRefresh={noop}
+      />
+    );
+    expect(screen.getByText("Match Score: 84%")).toBeInTheDocument();
+    expect(screen.getByText("Matched")).toBeInTheDocument();
+  });
+
+  it("shows match summary when available", () => {
+    render(
+      <JobDetail
+        job={fakeJob({
+          MatchStatus: "matched",
+          MatchScore: 0.65,
+          MatchSummary: "Strong alignment with backend API keywords.",
+        })}
+        onDelete={noop}
+        onClose={() => {}}
+        onRefresh={noop}
+      />
+    );
+    expect(
+      screen.getByText("Strong alignment with backend API keywords.")
+    ).toBeInTheDocument();
+  });
+
+  it("calls RecalculateMatchScore and refreshes", async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    mockedRecalculate.mockResolvedValue(undefined);
+
+    render(
+      <JobDetail
+        job={fakeJob({ MatchStatus: "matched", MatchScore: 0.5 })}
+        onDelete={noop}
+        onClose={() => {}}
+        onRefresh={onRefresh}
+      />
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /recalculate score/i })
+    );
+
+    await waitFor(() => {
+      expect(mockedRecalculate).toHaveBeenCalledWith("j1");
+      expect(onRefresh).toHaveBeenCalledOnce();
+      expect(screen.getByText("Recalculation queued.")).toBeInTheDocument();
+    });
+  });
+
+  it("disables recalculate button while processing", () => {
+    render(
+      <JobDetail
+        job={fakeJob({ MatchStatus: "processing" })}
+        onDelete={noop}
+        onClose={() => {}}
+        onRefresh={noop}
+      />
+    );
+
+    expect(
+      screen.getByRole("button", { name: /calculating/i })
+    ).toBeDisabled();
   });
 });

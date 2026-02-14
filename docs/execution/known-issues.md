@@ -8,6 +8,9 @@ Last reviewed: 2026-02-14
 
 ## Recently Resolved
 
+- 2026-02-14: matched jobs were shown with generic `Match ready` state and no
+  detail-view recalc control; fixed by showing `Match Score: X%` in list/detail
+  UI and adding a per-job `Recalculate score` action that requeues matching.
 - 2026-02-14: matching was previously enqueue-only and could remain indefinitely
   pending; fixed by adding an async matcher worker with atomic claim transition
   (`pending` -> `processing`), stale-processing requeue, and explicit matched/

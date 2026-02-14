@@ -145,14 +145,14 @@ describe("JobCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows matched badge when status is matched", () => {
+  it("shows matched badge with score when status is matched", () => {
     render(
       <JobCard
         {...defaultProps}
-        job={fakeJob({ MatchStatus: "matched" })}
+        job={fakeJob({ MatchStatus: "matched", MatchScore: 0.83 })}
       />
     );
-    expect(screen.getByText("Match ready")).toBeInTheDocument();
+    expect(screen.getByText("Match Score: 83%")).toBeInTheDocument();
   });
 
   it("shows failed badge when status is failed", () => {

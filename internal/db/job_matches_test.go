@@ -240,3 +240,61 @@ func TestRequeueStaleProcessingJobMatchesMovesOldRows(t *testing.T) {
 		t.Fatalf("expected status %q after requeue, got %q", JobMatchStatusPending, match.Status)
 	}
 }
+
+func TestResetJobMatchPendingResetsMatchedRow(t *testing.T) {
+	database := testDB(t)
+	jobID, err := database.InsertJob(context.Background(), makeTestJob("reset-pending"))
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending: %v", err)
+	}
+	if err := database.MarkJobMatchMatched(context.Background(), jobID, 0.92, "Great fit."); err != nil {
+		t.Fatalf("marking matched: %v", err)
+	}
+
+	if err := database.ResetJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("resetting pending: %v", err)
+	}
+
+	match, err := database.GetJobMatchByJobID(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("getting match: %v", err)
+	}
+	if match == nil {
+		t.Fatal("expected match row")
+	}
+	if match.Status != JobMatchStatusPending {
+		t.Fatalf("expected status %q, got %q", JobMatchStatusPending, match.Status)
+	}
+	if match.MatchScore != 0 {
+		t.Fatalf("expected score reset to 0, got %.2f", match.MatchScore)
+	}
+	if match.MatchSummary != "" {
+		t.Fatalf("expected summary reset to empty, got %q", match.MatchSummary)
+	}
+}
+
+func TestResetJobMatchPendingCreatesRowWhenMissing(t *testing.T) {
+	database := testDB(t)
+	jobID, err := database.InsertJob(context.Background(), makeTestJob("reset-create"))
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+
+	if err := database.ResetJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("resetting pending for missing row: %v", err)
+	}
+
+	match, err := database.GetJobMatchByJobID(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("getting match row: %v", err)
+	}
+	if match == nil {
+		t.Fatal("expected created row")
+	}
+	if match.Status != JobMatchStatusPending {
+		t.Fatalf("expected status %q, got %q", JobMatchStatusPending, match.Status)
+	}
+}

@@ -217,6 +217,13 @@ export class PollingStatus {
              */
             this["nextPollAt"] = "";
         }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {PollRunResult | null | undefined}
+             */
+            this["lastRun"] = undefined;
+        }
 
         Object.assign(this, $$source);
     }
@@ -227,7 +234,11 @@ export class PollingStatus {
      * @returns {PollingStatus}
      */
     static createFrom($$source = {}) {
+        const $$createField3_0 = $$createType3;
         let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("lastRun" in $$parsedSource) {
+            $$parsedSource["lastRun"] = $$createField3_0($$parsedSource["lastRun"]);
+        }
         return new PollingStatus(/** @type {Partial<PollingStatus>} */($$parsedSource));
     }
 }
@@ -235,3 +246,5 @@ export class PollingStatus {
 // Private type creation functions
 const $$createType0 = PollFilterResult.createFrom;
 const $$createType1 = $Create.Array($$createType0);
+const $$createType2 = PollRunResult.createFrom;
+const $$createType3 = $Create.Nullable($$createType2);

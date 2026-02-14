@@ -64,6 +64,60 @@ func (db *DB) EnsureJobMatchPending(ctx context.Context, jobID string) error {
 	return nil
 }
 
+// ResetJobMatchPending ensures a match row exists and sets it back to pending.
+// Existing score/summary are cleared so UI does not show stale results.
+func (db *DB) ResetJobMatchPending(ctx context.Context, jobID string) error {
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return fmt.Errorf("job ID is required: %w", ErrInvalidInput)
+	}
+
+	var err error
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		tx, txErr := db.conn.BeginTx(ctx, nil)
+		if txErr != nil {
+			return fmt.Errorf("beginning reset pending transaction: %w", txErr)
+		}
+		defer func() {
+			_ = tx.Rollback()
+		}()
+
+		// Upsert semantic: insert pending when missing.
+		matchID := uuid.NewString()
+		if _, txErr = tx.ExecContext(ctx,
+			`INSERT INTO job_matches (id, job_id, status)
+			 SELECT ?, ?, ?
+			 WHERE NOT EXISTS (SELECT 1 FROM job_matches WHERE job_id = ?)`,
+			matchID, jobID, JobMatchStatusPending, jobID,
+		); txErr != nil {
+			return fmt.Errorf("inserting missing job match row: %w", txErr)
+		}
+
+		// Always reset existing row back to pending and clear stale output.
+		if _, txErr = tx.ExecContext(ctx,
+			`UPDATE job_matches
+			 SET status = ?, match_score = 0.0, match_summary = '', status_updated_at = datetime('now')
+			 WHERE job_id = ?`,
+			JobMatchStatusPending, jobID,
+		); txErr != nil {
+			return fmt.Errorf("resetting job match row to pending: %w", txErr)
+		}
+
+		if txErr = tx.Commit(); txErr != nil {
+			return fmt.Errorf("committing reset pending transaction: %w", txErr)
+		}
+		return nil
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
+	if err != nil {
+		return fmt.Errorf("resetting pending match for job %q: %w", jobID, err)
+	}
+
+	return nil
+}
+
 // GetJobMatchByJobID returns the match row for one job.
 // Returns nil and no error when the job has no match row yet.
 func (db *DB) GetJobMatchByJobID(ctx context.Context, jobID string) (*JobMatch, error) {
