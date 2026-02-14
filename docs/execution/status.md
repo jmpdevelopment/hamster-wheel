@@ -29,6 +29,10 @@ Last updated: 2026-02-14
   - Matched badge now shows explicit score (`Match Score: X%`) instead of generic ready state.
   - Job detail panel surfaces score, status, and summary.
   - Job detail includes `Recalculate score` action that requeues the selected job to `pending`.
+- Match observability and status-style consistency are improved:
+  - Matcher worker now emits structured lifecycle and per-job calculation logs and supports shared logger injection from app bootstrap.
+  - Match status parsing/meta labels are centralized in a shared frontend helper and consumed by both list and detail views.
+  - Reusable `hw-match-badge` variants now provide consistent status color/text treatment across light and dark themes.
 - Reliability hardening pass is complete and regression-covered.
 
 ## Key Reliability Outcomes

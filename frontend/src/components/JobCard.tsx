@@ -1,6 +1,11 @@
 import { memo } from "react";
 import { Job } from "../../bindings/hamster-wheel/internal/db/models";
 import { relativeTime } from "../lib/format";
+import {
+  buildMatchStatusMeta,
+  readMatchScore,
+  readMatchStatus,
+} from "../lib/matchStatus";
 
 interface JobCardProps {
   job: Job;
@@ -25,7 +30,7 @@ export const JobCard = memo(function JobCard({
 }: JobCardProps) {
   const matchStatus = readMatchStatus(job);
   const matchScore = readMatchScore(job);
-  const matchStatusBadge = getMatchStatusBadge(matchStatus, matchScore);
+  const matchMeta = buildMatchStatusMeta(matchStatus, matchScore);
 
   return (
     <div
@@ -59,13 +64,13 @@ export const JobCard = memo(function JobCard({
             <p className="text-sm font-semibold text-hw-text truncate leading-tight min-w-0">
               {job.Title}
             </p>
-            {matchStatusBadge && (
+            {matchStatus !== "unknown" && (
               <span
-                aria-label={matchStatusBadge.ariaLabel}
-                className={`shrink-0 inline-flex items-center rounded-md border px-1.5 py-0 text-[10px] font-semibold leading-3 ${matchStatusBadge.className}`}
-                title={matchStatusBadge.label}
+                aria-label={matchMeta.badgeAriaLabel}
+                className={`hw-match-badge hw-match-badge--compact shrink-0 ${matchMeta.badgeVariantClass}`}
+                title={matchMeta.badgeLabel}
               >
-                {matchStatusBadge.label}
+                {matchMeta.badgeLabel}
               </span>
             )}
           </div>
@@ -113,72 +118,3 @@ export const JobCard = memo(function JobCard({
     </div>
   );
 });
-
-function readMatchStatus(job: Job): string {
-  const candidate = (job as unknown as { MatchStatus?: unknown }).MatchStatus;
-  if (typeof candidate !== "string") {
-    return "";
-  }
-  return candidate.trim().toLowerCase();
-}
-
-type MatchStatusBadge = {
-  ariaLabel: string;
-  className: string;
-  label: string;
-};
-
-function getMatchStatusBadge(
-  status: string,
-  score: number | null
-): MatchStatusBadge | null {
-  switch (status) {
-    case "pending":
-      return {
-        ariaLabel: "Match status: pending",
-        className: "border-hw-accent/45 bg-hw-accent/10 text-hw-accent border-dashed",
-        label: "Match pending",
-      };
-    case "processing":
-      return {
-        ariaLabel: "Match status: processing",
-        className: "border-hw-accent/60 bg-hw-accent/15 text-hw-accent",
-        label: "Matching",
-      };
-    case "matched":
-      if (score === null) {
-        return {
-          ariaLabel: "Match status: matched",
-          className: "border-hw-success/45 bg-hw-success/10 text-hw-success",
-          label: "Match score unavailable",
-        };
-      }
-      return {
-        ariaLabel: "Match status: matched",
-        className: "border-hw-success/45 bg-hw-success/10 text-hw-success",
-        label: `Match Score: ${Math.round(score * 100)}%`,
-      };
-    case "failed":
-      return {
-        ariaLabel: "Match status: failed",
-        className: "border-hw-danger/45 bg-hw-danger/10 text-hw-danger",
-        label: "Match failed",
-      };
-    default:
-      return null;
-  }
-}
-
-function readMatchScore(job: Job): number | null {
-  const candidate = (job as unknown as { MatchScore?: unknown }).MatchScore;
-  if (typeof candidate !== "number") {
-    return null;
-  }
-  if (!Number.isFinite(candidate)) {
-    return null;
-  }
-  if (candidate < 0 || candidate > 1) {
-    return null;
-  }
-  return candidate;
-}

@@ -72,6 +72,7 @@ func main() {
 		PollInterval: 3 * time.Second,
 		BatchSize:    3,
 	})
+	matchWorker.SetLogger(slog.With("component", "matcher_worker"))
 	diagStore := diagnostics.NewStore(
 		filepath.Join(os.TempDir(), "hamster-wheel", "poll-diagnostics"),
 		50,

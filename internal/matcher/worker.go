@@ -47,6 +47,7 @@ type WorkerConfig struct {
 type Worker struct {
 	store     Store
 	providers *llm.Registry
+	logger    *slog.Logger
 
 	providerName     string
 	pollInterval     time.Duration
@@ -92,6 +93,7 @@ func New(store Store, providers *llm.Registry, cfg WorkerConfig) *Worker {
 	return &Worker{
 		store:            store,
 		providers:        providers,
+		logger:           slog.Default().With("component", "matcher_worker"),
 		providerName:     providerName,
 		pollInterval:     pollInterval,
 		batchSize:        batchSize,
@@ -115,6 +117,13 @@ func (w *Worker) Start() {
 	done := w.done
 	pollInterval := w.pollInterval
 	w.stateMu.Unlock()
+	w.log().Info("matcher worker starting",
+		"provider", w.providerName,
+		"poll_interval", pollInterval,
+		"batch_size", w.batchSize,
+		"match_timeout", w.matchTimeout,
+		"stale_after", w.staleAfter,
+	)
 
 	go func() {
 		defer close(done)
@@ -127,6 +136,7 @@ func (w *Worker) Start() {
 		for {
 			select {
 			case <-ctx.Done():
+				w.log().Info("matcher worker stopped")
 				return
 			case <-ticker.C:
 				w.requeueStale(ctx)
@@ -161,6 +171,16 @@ func (w *Worker) SetStatusChangedHook(hook func(jobID, status string)) {
 	w.stateMu.Unlock()
 }
 
+// SetLogger allows callers to inject a shared logger configuration.
+func (w *Worker) SetLogger(logger *slog.Logger) {
+	if logger == nil {
+		return
+	}
+	w.stateMu.Lock()
+	w.logger = logger
+	w.stateMu.Unlock()
+}
+
 // RunOnce processes up to one configured batch. Useful for tests.
 func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 	if err := w.requeueStale(ctx); err != nil {
@@ -176,7 +196,7 @@ func (w *Worker) requeueStale(ctx context.Context) error {
 		return fmt.Errorf("requeueing stale processing matches: %w", err)
 	}
 	if requeued > 0 {
-		slog.Warn("requeued stale processing matches", "count", requeued)
+		w.log().Warn("requeued stale processing matches", "count", requeued)
 	}
 	return nil
 }
@@ -190,21 +210,32 @@ func (w *Worker) processBatch(ctx context.Context) int {
 
 		claimed, err := w.store.ClaimNextPendingJobMatch(ctx)
 		if err != nil {
-			slog.Error("matcher failed to claim pending row", "error", err)
+			w.log().Error("matcher failed to claim pending row", "error", err)
 			break
 		}
 		if claimed == nil {
 			break
 		}
 
+		w.log().Info("match calculation started",
+			"job_id", claimed.JobID,
+			"provider", w.providerName,
+		)
 		w.emitStatusChanged(claimed.JobID, db.JobMatchStatusProcessing)
 		if err := w.processOne(ctx, claimed.JobID); err != nil {
-			slog.Error("matcher failed to process claimed row",
+			w.log().Error("matcher failed to process claimed row",
 				"job_id", claimed.JobID,
+				"provider", w.providerName,
 				"error", err,
 			)
 		}
 		processed++
+	}
+	if processed > 0 {
+		w.log().Info("match batch processed",
+			"count", processed,
+			"provider", w.providerName,
+		)
 	}
 	return processed
 }
@@ -260,6 +291,12 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 		}
 		return fmt.Errorf("marking job as matched: %w", err)
 	}
+	w.log().Info("match calculation completed",
+		"job_id", jobID,
+		"provider", w.providerName,
+		"score", score,
+		"estimated_prompt_tokens", result.EstimatedPromptTokens,
+	)
 	w.emitStatusChanged(jobID, db.JobMatchStatusMatched)
 	return nil
 }
@@ -286,6 +323,11 @@ func (w *Worker) failMatch(ctx context.Context, jobID string, reason string) err
 		}
 		return err
 	}
+	w.log().Warn("match calculation failed",
+		"job_id", jobID,
+		"provider", w.providerName,
+		"reason", reason,
+	)
 	w.emitStatusChanged(jobID, db.JobMatchStatusFailed)
 	return nil
 }
@@ -297,4 +339,14 @@ func (w *Worker) emitStatusChanged(jobID, status string) {
 	if hook != nil {
 		hook(jobID, status)
 	}
+}
+
+func (w *Worker) log() *slog.Logger {
+	w.stateMu.RLock()
+	logger := w.logger
+	w.stateMu.RUnlock()
+	if logger == nil {
+		return slog.Default()
+	}
+	return logger
 }

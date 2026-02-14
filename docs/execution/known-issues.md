@@ -22,6 +22,13 @@ Last reviewed: 2026-02-14
 - 2026-02-14: initial badge placement in the bottom row could still overflow
   fixed-height virtualized job cards; fixed by moving the status badge to the
   top-right title row and tightening vertical spacing to stay within row bounds.
+- 2026-02-14: match-status labels/styles were duplicated across job list/detail
+  components, causing drift risk and inconsistent theme behavior; fixed by
+  centralizing status metadata and introducing reusable `hw-match-badge`
+  variant classes consumed by both views.
+- 2026-02-14: matcher logging was sparse/inconsistent and harder to correlate;
+  fixed by adding structured worker lifecycle and per-job logs with shared
+  logger injection from app startup.
 - 2026-02-14: SQLite foreign-key actions (`ON DELETE SET NULL` / `CASCADE`)
   could be inconsistently enforced across pooled DB connections; fixed by
   pinning the app DB to a single shared SQLite connection and preserving

@@ -35,6 +35,10 @@ vi.mock("@wailsio/runtime", () => ({
       (factory: (value: unknown) => unknown) =>
       (values: unknown) =>
         Array.isArray(values) ? values.map((value) => factory(value)) : [],
+    Nullable:
+      (factory: (value: unknown) => unknown) =>
+      (value: unknown) =>
+        value == null ? null : factory(value),
   },
   Events: {
     On: (...args: unknown[]) => mockEventsOn(...args),

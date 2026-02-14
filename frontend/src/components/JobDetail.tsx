@@ -5,6 +5,12 @@ import {
   RetryFetchDescription,
 } from "../../bindings/hamster-wheel/jobservice";
 import { formatDate, relativeTime } from "../lib/format";
+import {
+  buildMatchStatusMeta,
+  readMatchScore,
+  readMatchStatus,
+  readMatchSummary,
+} from "../lib/matchStatus";
 import { containsHTML, sanitizeHTML } from "../lib/sanitize";
 import { Browser } from "@wailsio/runtime";
 import { Button } from "./Button";
@@ -28,6 +34,7 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
   const matchStatus = readMatchStatus(job);
   const matchScore = readMatchScore(job);
   const matchSummary = readMatchSummary(job);
+  const matchMeta = buildMatchStatusMeta(matchStatus, matchScore);
 
   const handleDelete = () => {
     if (confirming) {
@@ -107,14 +114,12 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
         <div className="mt-3 rounded-md border border-hw-border bg-hw-surface/40 px-3 py-2">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-hw-text">
-              {buildMatchHeadline(matchStatus, matchScore)}
+              {matchMeta.detailHeadline}
             </span>
             <span
-              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold ${matchBadgeClass(
-                matchStatus
-              )}`}
+              className={`hw-match-badge hw-match-badge--regular ${matchMeta.badgeVariantClass}`}
             >
-              {buildMatchStatusLabel(matchStatus)}
+              {matchMeta.detailStatusLabel}
             </span>
           </div>
           {matchSummary && (
@@ -243,79 +248,4 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
       </div>
     </div>
   );
-}
-
-function readMatchStatus(job: Job): string {
-  const candidate = (job as unknown as { MatchStatus?: unknown }).MatchStatus;
-  if (typeof candidate !== "string") {
-    return "";
-  }
-  return candidate.trim().toLowerCase();
-}
-
-function readMatchScore(job: Job): number | null {
-  const candidate = (job as unknown as { MatchScore?: unknown }).MatchScore;
-  if (typeof candidate !== "number") {
-    return null;
-  }
-  if (!Number.isFinite(candidate) || candidate < 0 || candidate > 1) {
-    return null;
-  }
-  return candidate;
-}
-
-function readMatchSummary(job: Job): string {
-  const candidate = (job as unknown as { MatchSummary?: unknown }).MatchSummary;
-  if (typeof candidate !== "string") {
-    return "";
-  }
-  return candidate.trim();
-}
-
-function buildMatchHeadline(status: string, score: number | null): string {
-  switch (status) {
-    case "matched":
-      if (score === null) {
-        return "Match score unavailable";
-      }
-      return `Match Score: ${Math.round(score * 100)}%`;
-    case "processing":
-      return "Calculating match score...";
-    case "pending":
-      return "Match queued for calculation";
-    case "failed":
-      return "Match calculation failed";
-    default:
-      return "Match not calculated yet";
-  }
-}
-
-function buildMatchStatusLabel(status: string): string {
-  switch (status) {
-    case "matched":
-      return "Matched";
-    case "processing":
-      return "Calculating";
-    case "pending":
-      return "Queued";
-    case "failed":
-      return "Failed";
-    default:
-      return "Not scored";
-  }
-}
-
-function matchBadgeClass(status: string): string {
-  switch (status) {
-    case "matched":
-      return "border-hw-success/45 bg-hw-success/10 text-hw-success";
-    case "processing":
-      return "border-hw-accent/60 bg-hw-accent/15 text-hw-accent";
-    case "pending":
-      return "border-hw-accent/45 bg-hw-accent/10 text-hw-accent border-dashed";
-    case "failed":
-      return "border-hw-danger/45 bg-hw-danger/10 text-hw-danger";
-    default:
-      return "border-hw-border bg-hw-bg text-hw-text-muted";
-  }
 }

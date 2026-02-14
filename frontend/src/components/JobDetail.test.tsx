@@ -222,7 +222,10 @@ describe("JobDetail", () => {
       />
     );
     expect(screen.getByText("Match Score: 84%")).toBeInTheDocument();
-    expect(screen.getByText("Matched")).toBeInTheDocument();
+    const statusBadge = screen.getByText("Matched");
+    expect(statusBadge).toBeInTheDocument();
+    expect(statusBadge.className).toContain("hw-match-badge");
+    expect(statusBadge.className).toContain("hw-match-badge--matched");
   });
 
   it("shows match summary when available", () => {

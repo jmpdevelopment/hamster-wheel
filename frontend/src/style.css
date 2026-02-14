@@ -49,3 +49,58 @@ body {
     "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
     sans-serif;
 }
+
+@layer components {
+  .hw-match-badge {
+    display: inline-flex;
+    align-items: center;
+    border-width: 1px;
+    border-radius: 0.375rem;
+    font-weight: 700;
+    letter-spacing: 0.005em;
+    white-space: nowrap;
+  }
+
+  .hw-match-badge--compact {
+    padding: 0 0.375rem;
+    font-size: 10px;
+    line-height: 0.95rem;
+  }
+
+  .hw-match-badge--regular {
+    padding: 0.125rem 0.5rem;
+    font-size: 11px;
+    line-height: 1rem;
+  }
+
+  .hw-match-badge--pending {
+    color: rgb(var(--hw-accent));
+    background-color: rgb(var(--hw-accent) / 0.12);
+    border-color: rgb(var(--hw-accent) / 0.5);
+    border-style: dashed;
+  }
+
+  .hw-match-badge--processing {
+    color: rgb(var(--hw-accent));
+    background-color: rgb(var(--hw-accent) / 0.16);
+    border-color: rgb(var(--hw-accent) / 0.6);
+  }
+
+  .hw-match-badge--matched {
+    color: rgb(var(--hw-success));
+    background-color: rgb(var(--hw-success) / 0.12);
+    border-color: rgb(var(--hw-success) / 0.5);
+  }
+
+  .hw-match-badge--failed {
+    color: rgb(var(--hw-danger));
+    background-color: rgb(var(--hw-danger) / 0.12);
+    border-color: rgb(var(--hw-danger) / 0.55);
+  }
+
+  .hw-match-badge--neutral {
+    color: rgb(var(--hw-text-muted));
+    background-color: rgb(var(--hw-surface));
+    border-color: rgb(var(--hw-border));
+  }
+}

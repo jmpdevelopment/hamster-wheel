@@ -152,7 +152,10 @@ describe("JobCard", () => {
         job={fakeJob({ MatchStatus: "matched", MatchScore: 0.83 })}
       />
     );
-    expect(screen.getByText("Match Score: 83%")).toBeInTheDocument();
+    const badge = screen.getByText("Match Score: 83%");
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain("hw-match-badge");
+    expect(badge.className).toContain("hw-match-badge--matched");
   });
 
   it("shows failed badge when status is failed", () => {
