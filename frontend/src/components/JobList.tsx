@@ -378,15 +378,12 @@ export function JobList({
             >
               {showFavoritesOnly ? "Show all" : "Favorites only"}
             </Button>
-          </div>
-        )}
-
-        {!loading && jobs.length > 0 && (
-          <p className="text-xs text-hw-text-muted">
+            <p className="text-xs text-hw-text-muted">
             {visibleJobs.length === jobs.length && !showFavoritesOnly
               ? `${jobs.length} jobs`
               : `${visibleJobs.length} of ${jobs.length} jobs`}
           </p>
+          </div>
         )}
       </div>
 
