@@ -32,6 +32,23 @@ export function ClearReedAPIKey() {
 }
 
 /**
+ * GetAutoMatchEnabled returns whether new jobs should be auto-queued for matching.
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetAutoMatchEnabled() {
+    return $Call.ByID(3937480409);
+}
+
+/**
+ * GetAutoMatchLimit returns the maximum number of auto-queued matches per poll cycle.
+ * A value of 0 means unlimited.
+ * @returns {$CancellablePromise<number>}
+ */
+export function GetAutoMatchLimit() {
+    return $Call.ByID(3208356667);
+}
+
+/**
  * GetCVPath returns the configured CV file path used for matching context.
  * @returns {$CancellablePromise<string>}
  */
@@ -166,6 +183,25 @@ export function PullLocalRuntimeModel(model) {
     return $Call.ByID(666476807, model).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType3($result);
     }));
+}
+
+/**
+ * SetAutoMatchEnabled saves whether new jobs should be auto-queued for matching.
+ * @param {boolean} enabled
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetAutoMatchEnabled(enabled) {
+    return $Call.ByID(1926788837, enabled);
+}
+
+/**
+ * SetAutoMatchLimit saves the maximum number of auto-queued matches per poll cycle.
+ * A value of 0 means unlimited.
+ * @param {number} limit
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetAutoMatchLimit(limit) {
+    return $Call.ByID(3478362263, limit);
 }
 
 /**

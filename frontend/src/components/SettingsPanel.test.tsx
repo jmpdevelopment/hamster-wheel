@@ -9,6 +9,10 @@ const mockClearReedAPIKey = vi.fn();
 const mockHasOpenAIAPIKey = vi.fn();
 const mockSetOpenAIAPIKey = vi.fn();
 const mockClearOpenAIAPIKey = vi.fn();
+const mockGetAutoMatchEnabled = vi.fn();
+const mockSetAutoMatchEnabled = vi.fn();
+const mockGetAutoMatchLimit = vi.fn();
+const mockSetAutoMatchLimit = vi.fn();
 const mockGetLLMMode = vi.fn();
 const mockSetLLMMode = vi.fn();
 const mockGetLLMProvider = vi.fn();
@@ -39,6 +43,10 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   HasOpenAIAPIKey: (...args: unknown[]) => mockHasOpenAIAPIKey(...args),
   SetOpenAIAPIKey: (...args: unknown[]) => mockSetOpenAIAPIKey(...args),
   ClearOpenAIAPIKey: (...args: unknown[]) => mockClearOpenAIAPIKey(...args),
+  GetAutoMatchEnabled: (...args: unknown[]) => mockGetAutoMatchEnabled(...args),
+  SetAutoMatchEnabled: (...args: unknown[]) => mockSetAutoMatchEnabled(...args),
+  GetAutoMatchLimit: (...args: unknown[]) => mockGetAutoMatchLimit(...args),
+  SetAutoMatchLimit: (...args: unknown[]) => mockSetAutoMatchLimit(...args),
   GetLLMMode: (...args: unknown[]) => mockGetLLMMode(...args),
   SetLLMMode: (...args: unknown[]) => mockSetLLMMode(...args),
   GetLLMProvider: (...args: unknown[]) => mockGetLLMProvider(...args),
@@ -97,6 +105,10 @@ beforeEach(() => {
   mockHasOpenAIAPIKey.mockResolvedValue(false);
   mockSetOpenAIAPIKey.mockResolvedValue(undefined);
   mockClearOpenAIAPIKey.mockResolvedValue(undefined);
+  mockGetAutoMatchEnabled.mockResolvedValue(true);
+  mockSetAutoMatchEnabled.mockResolvedValue(undefined);
+  mockGetAutoMatchLimit.mockResolvedValue(0);
+  mockSetAutoMatchLimit.mockResolvedValue(undefined);
   mockGetLLMMode.mockResolvedValue("cloud");
   mockSetLLMMode.mockResolvedValue(undefined);
   mockGetLLMProvider.mockResolvedValue("openai");
@@ -308,6 +320,48 @@ describe("SettingsPanel", () => {
     expect(
       screen.getByText("Key is stored securely in your OS keychain.")
     ).toBeInTheDocument();
+  });
+
+  it("loads and saves auto match settings", async () => {
+    mockGetAutoMatchEnabled.mockResolvedValue(false);
+    mockGetAutoMatchLimit.mockResolvedValue(12);
+
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Disabled" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+      expect(screen.getByLabelText("Auto Match Limit")).toHaveValue(12);
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Enabled" }));
+    await userEvent.clear(screen.getByLabelText("Auto Match Limit"));
+    await userEvent.type(screen.getByLabelText("Auto Match Limit"), "5");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save auto-match settings" })
+    );
+
+    expect(mockSetAutoMatchEnabled).toHaveBeenCalledWith(true);
+    expect(mockSetAutoMatchLimit).toHaveBeenCalledWith(5);
+  });
+
+  it("reports validation errors for invalid auto match limit", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+
+    await userEvent.clear(screen.getByLabelText("Auto Match Limit"));
+    await userEvent.type(screen.getByLabelText("Auto Match Limit"), "-1");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save auto-match settings" })
+    );
+
+    expect(defaultProps.onError).toHaveBeenCalledWith(
+      "Auto-match limit must be a whole number greater than or equal to 0."
+    );
+    expect(mockSetAutoMatchLimit).not.toHaveBeenCalled();
   });
 
   it("switches mode sections and gates base url to advanced only", async () => {

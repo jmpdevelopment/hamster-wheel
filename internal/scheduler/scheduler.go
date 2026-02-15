@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +32,7 @@ type JobStore interface {
 	JobExistsBySourceID(ctx context.Context, source, sourceID string) (bool, error)
 	InsertJob(ctx context.Context, job *db.Job) (string, error)
 	EnsureJobMatchPending(ctx context.Context, jobID string) error
+	GetSetting(ctx context.Context, key string) (string, error)
 }
 
 // Scheduler manages periodic polling of job sources.
@@ -60,7 +63,17 @@ const (
 	// Keep background polls bounded but generous enough for normal batches.
 	minPollTimeout = 2 * time.Minute
 	maxPollTimeout = 15 * time.Minute
+
+	settingAutoMatchEnabled = "auto_match_enabled"
+	settingAutoMatchLimit   = "auto_match_limit"
+	defaultAutoMatchLimit   = 0
+	defaultAutoMatchEnabled = true
 )
+
+type autoMatchPolicy struct {
+	enabled bool
+	limit   int
+}
 
 func derivePollTimeout(interval time.Duration) time.Duration {
 	if interval <= 0 {
@@ -481,6 +494,9 @@ func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 	}
 
 	slog.Info("poll cycle starting", "filters", len(filters))
+	autoMatch := s.resolveAutoMatchPolicy(ctx)
+	autoMatchQueued := 0
+	autoMatchSuppressed := 0
 
 	// Phase 1: Fetch concurrently — goroutines do HTTP + dedup reads.
 	var (
@@ -567,11 +583,24 @@ func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 			}
 
 			result.NewJobs++
-			if err := s.store.EnsureJobMatchPending(ctx, jobID); err != nil {
-				slog.Error("failed to enqueue job for matching",
+			withinLimit := autoMatch.limit == 0 || autoMatchQueued < autoMatch.limit
+			if autoMatch.enabled && withinLimit {
+				if err := s.store.EnsureJobMatchPending(ctx, jobID); err != nil {
+					slog.Error("failed to enqueue job for matching",
+						"job_id", jobID,
+						"title", fj.title,
+						"error", err)
+				} else {
+					autoMatchQueued++
+				}
+			} else {
+				autoMatchSuppressed++
+				slog.Info("auto match queue skipped for new job",
 					"job_id", jobID,
 					"title", fj.title,
-					"error", err)
+					"auto_match_enabled", autoMatch.enabled,
+					"auto_match_limit", autoMatch.limit,
+				)
 			}
 			slog.Info("new job stored",
 				"title", fj.title,
@@ -598,9 +627,61 @@ func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 	slog.Info("poll cycle complete",
 		"filters", len(filters),
 		"new_jobs", totalNew,
-		"skipped", totalSkipped)
+		"skipped", totalSkipped,
+		"auto_match_enabled", autoMatch.enabled,
+		"auto_match_limit", autoMatch.limit,
+		"auto_match_queued", autoMatchQueued,
+		"auto_match_suppressed", autoMatchSuppressed)
 
 	return results, nil
+}
+
+func (s *Scheduler) resolveAutoMatchPolicy(ctx context.Context) autoMatchPolicy {
+	policy := autoMatchPolicy{
+		enabled: defaultAutoMatchEnabled,
+		limit:   defaultAutoMatchLimit,
+	}
+
+	enabledRaw, err := s.store.GetSetting(ctx, settingAutoMatchEnabled)
+	if err != nil {
+		slog.Warn("failed to load auto match enabled setting, using default", "error", err)
+	} else {
+		switch strings.ToLower(strings.TrimSpace(enabledRaw)) {
+		case "":
+			// Default applies.
+		case "true":
+			policy.enabled = true
+		case "false":
+			policy.enabled = false
+		default:
+			slog.Warn(
+				"invalid auto match enabled setting value, using default",
+				"value",
+				enabledRaw,
+			)
+		}
+	}
+
+	limitRaw, err := s.store.GetSetting(ctx, settingAutoMatchLimit)
+	if err != nil {
+		slog.Warn("failed to load auto match limit setting, using default", "error", err)
+		return policy
+	}
+	limitRaw = strings.TrimSpace(limitRaw)
+	if limitRaw == "" {
+		return policy
+	}
+	limit, parseErr := strconv.Atoi(limitRaw)
+	if parseErr != nil || limit < 0 {
+		slog.Warn(
+			"invalid auto match limit setting value, using default",
+			"value",
+			limitRaw,
+		)
+		return policy
+	}
+	policy.limit = limit
+	return policy
 }
 
 // fetchFilter does the I/O-heavy work for a single filter: looks up the

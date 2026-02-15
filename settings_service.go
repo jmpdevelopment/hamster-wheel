@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"hamster-wheel/internal/adapter/reed"
@@ -26,12 +27,16 @@ const (
 	settingLLMBaseURL         = "llm_base_url"
 	settingLocalRuntimeEngine = "local_runtime_engine"
 	settingLocalRuntimeModel  = "local_runtime_model"
+	settingAutoMatchEnabled   = "auto_match_enabled"
+	settingAutoMatchLimit     = "auto_match_limit"
 	settingCVPath             = "cv_path"
 
-	defaultLLMProvider  = "openai"
-	defaultLLMModel     = "gpt-4o-mini"
-	defaultLLMMode      = "cloud"
-	defaultRuntimeModel = "llama3.1:8b"
+	defaultLLMProvider      = "openai"
+	defaultLLMModel         = "gpt-4o-mini"
+	defaultLLMMode          = "cloud"
+	defaultRuntimeModel     = "llama3.1:8b"
+	defaultAutoMatchLimit   = 0
+	defaultAutoMatchEnabled = true
 )
 
 // SettingsService handles application settings operations exposed to the frontend.
@@ -344,6 +349,78 @@ func (s *SettingsService) SetLocalRuntimeModel(model string) error {
 		return fmt.Errorf("setting local runtime model: %w", err)
 	}
 	slog.Info("local runtime model updated", "model", model)
+	return nil
+}
+
+// GetAutoMatchEnabled returns whether new jobs should be auto-queued for matching.
+func (s *SettingsService) GetAutoMatchEnabled() (bool, error) {
+	value, err := s.db.GetSetting(context.Background(), settingAutoMatchEnabled)
+	if err != nil {
+		return false, fmt.Errorf("getting auto match enabled setting: %w", err)
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return defaultAutoMatchEnabled, nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		slog.Warn(
+			"invalid auto match enabled setting value, using default",
+			"value",
+			value,
+		)
+		return defaultAutoMatchEnabled, nil
+	}
+}
+
+// SetAutoMatchEnabled saves whether new jobs should be auto-queued for matching.
+func (s *SettingsService) SetAutoMatchEnabled(enabled bool) error {
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	if err := s.db.SetSetting(context.Background(), settingAutoMatchEnabled, value); err != nil {
+		return fmt.Errorf("setting auto match enabled: %w", err)
+	}
+	slog.Info("auto match enabled updated", "enabled", enabled)
+	return nil
+}
+
+// GetAutoMatchLimit returns the maximum number of auto-queued matches per poll cycle.
+// A value of 0 means unlimited.
+func (s *SettingsService) GetAutoMatchLimit() (int, error) {
+	value, err := s.db.GetSetting(context.Background(), settingAutoMatchLimit)
+	if err != nil {
+		return 0, fmt.Errorf("getting auto match limit setting: %w", err)
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultAutoMatchLimit, nil
+	}
+	limit, parseErr := strconv.Atoi(value)
+	if parseErr != nil || limit < 0 {
+		slog.Warn(
+			"invalid auto match limit setting value, using default",
+			"value",
+			value,
+		)
+		return defaultAutoMatchLimit, nil
+	}
+	return limit, nil
+}
+
+// SetAutoMatchLimit saves the maximum number of auto-queued matches per poll cycle.
+// A value of 0 means unlimited.
+func (s *SettingsService) SetAutoMatchLimit(limit int) error {
+	if limit < 0 {
+		return fmt.Errorf("invalid auto match limit %d: must be >= 0", limit)
+	}
+	if err := s.db.SetSetting(context.Background(), settingAutoMatchLimit, strconv.Itoa(limit)); err != nil {
+		return fmt.Errorf("setting auto match limit: %w", err)
+	}
+	slog.Info("auto match limit updated", "limit", limit)
 	return nil
 }
 

@@ -61,6 +61,9 @@ Last updated: 2026-02-15
   - Runtime manager now tracks app-managed process state and reaps stale managed runtime processes on next launch after abnormal app exit.
   - OpenAI-compatible provider error text is now endpoint-agnostic to avoid cloud-brand leakage when local runtime path is active.
   - Local setup UI now surfaces Llama license/use-policy links and `Built with Llama` attribution notice.
+- Phase 2 matching cost/control guardrails are now in place:
+  - Users can now control auto-match queueing in Settings (`enabled/disabled` + per-poll-cycle limit with `0 = unlimited`).
+  - When auto-match is disabled or capped, new jobs are still ingested while manual per-job recalculation remains available.
 
 ## Current Runtime Posture (Preserve)
 

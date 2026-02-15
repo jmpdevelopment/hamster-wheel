@@ -170,6 +170,112 @@ func TestPollOnceDiscoversNewJobs(t *testing.T) {
 	}
 }
 
+func TestPollOnceSkipsAutoMatchWhenDisabled(t *testing.T) {
+	database, registry := testSetup(t)
+
+	mock := &mockAdapter{
+		name:        "test_source",
+		displayName: "Test Source",
+		jobs: []adapter.JobSummary{
+			{SourceID: "j1", Title: "Go Dev", Company: "Acme", URL: "https://example.com/1", PostedAt: time.Now()},
+			{SourceID: "j2", Title: "React Dev", Company: "Beta", URL: "https://example.com/2", PostedAt: time.Now()},
+		},
+	}
+	registry.Register(mock)
+
+	if err := database.SetSetting(context.Background(), settingAutoMatchEnabled, "false"); err != nil {
+		t.Fatalf("disabling auto match setting: %v", err)
+	}
+
+	if _, err := database.CreateFilter(context.Background(), "Test Filter", "golang", "London", "test_source"); err != nil {
+		t.Fatalf("creating filter: %v", err)
+	}
+
+	s := New(database, registry, time.Minute)
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].NewJobs != 2 {
+		t.Fatalf("expected 2 new jobs, got %d", results[0].NewJobs)
+	}
+
+	storedJobs, err := database.ListJobs(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("listing stored jobs: %v", err)
+	}
+	for _, job := range storedJobs {
+		if job.MatchStatus != "" {
+			t.Fatalf("expected empty match status when auto match is disabled, got %q", job.MatchStatus)
+		}
+	}
+}
+
+func TestPollOnceHonorsAutoMatchLimitPerCycle(t *testing.T) {
+	database, registry := testSetup(t)
+
+	mock := &mockAdapter{
+		name:        "limit_source",
+		displayName: "Limit Source",
+		jobs: []adapter.JobSummary{
+			{SourceID: "j1", Title: "Go Dev", URL: "https://example.com/1", PostedAt: time.Now()},
+			{SourceID: "j2", Title: "React Dev", URL: "https://example.com/2", PostedAt: time.Now()},
+			{SourceID: "j3", Title: "Data Dev", URL: "https://example.com/3", PostedAt: time.Now()},
+		},
+	}
+	registry.Register(mock)
+
+	if err := database.SetSetting(context.Background(), settingAutoMatchEnabled, "true"); err != nil {
+		t.Fatalf("enabling auto match setting: %v", err)
+	}
+	if err := database.SetSetting(context.Background(), settingAutoMatchLimit, "1"); err != nil {
+		t.Fatalf("setting auto match limit: %v", err)
+	}
+
+	if _, err := database.CreateFilter(context.Background(), "Limit Filter", "golang", "Remote", "limit_source"); err != nil {
+		t.Fatalf("creating filter: %v", err)
+	}
+
+	s := New(database, registry, time.Minute)
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].NewJobs != 3 {
+		t.Fatalf("expected 3 new jobs, got %d", results[0].NewJobs)
+	}
+
+	storedJobs, err := database.ListJobs(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("listing stored jobs: %v", err)
+	}
+
+	pendingCount := 0
+	unknownCount := 0
+	for _, job := range storedJobs {
+		switch job.MatchStatus {
+		case db.JobMatchStatusPending:
+			pendingCount++
+		case "":
+			unknownCount++
+		default:
+			t.Fatalf("unexpected match status %q", job.MatchStatus)
+		}
+	}
+	if pendingCount != 1 {
+		t.Fatalf("expected exactly 1 auto-queued pending match, got %d", pendingCount)
+	}
+	if unknownCount != 2 {
+		t.Fatalf("expected 2 jobs without queued match rows, got %d", unknownCount)
+	}
+}
+
 func TestPollOnceDeduplicatesExistingJobs(t *testing.T) {
 	database, registry := testSetup(t)
 

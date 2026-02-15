@@ -3,6 +3,8 @@ import { Browser, Dialogs } from "@wailsio/runtime";
 import {
   ClearOpenAIAPIKey,
   ClearReedAPIKey,
+  GetAutoMatchEnabled,
+  GetAutoMatchLimit,
   GetCVPath,
   GetLLMBaseURL,
   GetLLMMode,
@@ -24,6 +26,8 @@ import {
   SetLocalRuntimeEngine,
   SetLocalRuntimeModel,
   SetOpenAIAPIKey,
+  SetAutoMatchEnabled,
+  SetAutoMatchLimit,
   SetReedAPIKey,
   StartLocalRuntime,
   StopLocalRuntime,
@@ -167,6 +171,10 @@ export function SettingsPanel({
     });
   const [llmConfigSaving, setLLMConfigSaving] = useState(false);
   const [llmConfigSaved, setLLMConfigSaved] = useState(false);
+  const [autoMatchEnabled, setAutoMatchEnabledState] = useState(true);
+  const [autoMatchLimit, setAutoMatchLimitState] = useState("0");
+  const [autoMatchSaving, setAutoMatchSaving] = useState(false);
+  const [autoMatchSaved, setAutoMatchSaved] = useState(false);
   const [cvPath, setCVPathState] = useState("");
   const [cvPathSaving, setCVPathSaving] = useState(false);
   const [cvPathSaved, setCVPathSaved] = useState(false);
@@ -174,6 +182,7 @@ export function SettingsPanel({
   const reedSavedTimeoutRef = useRef<number | null>(null);
   const openAISavedTimeoutRef = useRef<number | null>(null);
   const llmSavedTimeoutRef = useRef<number | null>(null);
+  const autoMatchSavedTimeoutRef = useRef<number | null>(null);
   const cvSavedTimeoutRef = useRef<number | null>(null);
 
   const refreshLocalPullProgress = async (reportErrors = true) => {
@@ -339,6 +348,28 @@ export function SettingsPanel({
       }
 
       try {
+        const enabled = await GetAutoMatchEnabled();
+        if (!cancelled) {
+          setAutoMatchEnabledState(Boolean(enabled));
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load auto match enabled setting:", err);
+      }
+
+      try {
+        const limit = await GetAutoMatchLimit();
+        if (!cancelled) {
+          const normalizedLimit =
+            Number.isFinite(limit) && Number(limit) >= 0
+              ? Math.floor(Number(limit))
+              : 0;
+          setAutoMatchLimitState(String(normalizedLimit));
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load auto match limit setting:", err);
+      }
+
+      try {
         const storedPath = await GetCVPath();
         if (!cancelled) {
           setCVPathState(storedPath || "");
@@ -368,6 +399,9 @@ export function SettingsPanel({
       }
       if (llmSavedTimeoutRef.current !== null) {
         clearTimeout(llmSavedTimeoutRef.current);
+      }
+      if (autoMatchSavedTimeoutRef.current !== null) {
+        clearTimeout(autoMatchSavedTimeoutRef.current);
       }
       if (cvSavedTimeoutRef.current !== null) {
         clearTimeout(cvSavedTimeoutRef.current);
@@ -660,6 +694,34 @@ export function SettingsPanel({
     }
   };
 
+  const handleSaveAutoMatchSettings = async () => {
+    const trimmedLimit = autoMatchLimit.trim();
+    const parsedLimit = Number(trimmedLimit);
+    if (
+      !Number.isFinite(parsedLimit) ||
+      !Number.isInteger(parsedLimit) ||
+      parsedLimit < 0
+    ) {
+      onError("Auto-match limit must be a whole number greater than or equal to 0.");
+      return;
+    }
+
+    setAutoMatchSaving(true);
+    setAutoMatchSaved(false);
+    try {
+      await SetAutoMatchEnabled(autoMatchEnabled);
+      await SetAutoMatchLimit(parsedLimit);
+      setAutoMatchLimitState(String(parsedLimit));
+      setTimedSavedState(setAutoMatchSaved, autoMatchSavedTimeoutRef);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save auto match settings:", message);
+      onError(message);
+    } finally {
+      setAutoMatchSaving(false);
+    }
+  };
+
   const handleBrowseCVPath = async () => {
     try {
       const picked = await Dialogs.OpenFile({
@@ -896,6 +958,74 @@ export function SettingsPanel({
           hidden={activeTab !== "llm-providers"}
           className="space-y-6"
         >
+          <section>
+            <h3 className="text-sm font-semibold text-hw-text mb-2">
+              Auto Match Calculations
+            </h3>
+            <p className="text-xs text-hw-text-muted mb-2">
+              Control automatic match scoring for newly discovered jobs. Manual
+              `Recalculate score` remains available per job.
+            </p>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Button
+                  variant={autoMatchEnabled ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => {
+                    setAutoMatchEnabledState(true);
+                    setAutoMatchSaved(false);
+                  }}
+                  aria-pressed={autoMatchEnabled}
+                >
+                  Enabled
+                </Button>
+                <Button
+                  variant={!autoMatchEnabled ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => {
+                    setAutoMatchEnabledState(false);
+                    setAutoMatchSaved(false);
+                  }}
+                  aria-pressed={!autoMatchEnabled}
+                >
+                  Disabled
+                </Button>
+              </div>
+              <div>
+                <label
+                  htmlFor="auto-match-limit"
+                  className="block text-xs text-hw-text-muted mb-1"
+                >
+                  Auto-match limit per poll cycle (0 = no limit)
+                </label>
+                <Input
+                  id="auto-match-limit"
+                  aria-label="Auto Match Limit"
+                  type="number"
+                  size="sm"
+                  min={0}
+                  step={1}
+                  value={autoMatchLimit}
+                  onChange={(e) => {
+                    setAutoMatchLimitState(e.target.value);
+                    setAutoMatchSaved(false);
+                  }}
+                />
+                <p className="mt-1 text-xs text-hw-text-muted">
+                  Use a smaller limit to reduce cloud token costs and local CPU/RAM pressure.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleSaveAutoMatchSettings}
+                loading={autoMatchSaving}
+              >
+                {autoMatchSaved ? "Saved" : "Save auto-match settings"}
+              </Button>
+            </div>
+          </section>
+
           <section>
             <h3 className="text-sm font-semibold text-hw-text mb-2">
               CV Context for Matching

@@ -748,6 +748,112 @@ func TestLLMModelDatabaseErrors(t *testing.T) {
 	}
 }
 
+func TestAutoMatchSettingsLifecycleAndValidation(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	enabled, err := svc.GetAutoMatchEnabled()
+	if err != nil {
+		t.Fatalf("getting default auto match enabled: %v", err)
+	}
+	if !enabled {
+		t.Fatal("expected auto match enabled by default")
+	}
+
+	limit, err := svc.GetAutoMatchLimit()
+	if err != nil {
+		t.Fatalf("getting default auto match limit: %v", err)
+	}
+	if limit != 0 {
+		t.Fatalf("expected default auto match limit 0 (unlimited), got %d", limit)
+	}
+
+	if err := svc.SetAutoMatchEnabled(false); err != nil {
+		t.Fatalf("setting auto match enabled false: %v", err)
+	}
+	enabled, err = svc.GetAutoMatchEnabled()
+	if err != nil {
+		t.Fatalf("getting auto match enabled after set: %v", err)
+	}
+	if enabled {
+		t.Fatal("expected auto match enabled=false after update")
+	}
+
+	if err := svc.SetAutoMatchLimit(15); err != nil {
+		t.Fatalf("setting auto match limit: %v", err)
+	}
+	limit, err = svc.GetAutoMatchLimit()
+	if err != nil {
+		t.Fatalf("getting auto match limit after set: %v", err)
+	}
+	if limit != 15 {
+		t.Fatalf("expected auto match limit 15, got %d", limit)
+	}
+
+	if err := svc.SetAutoMatchLimit(0); err != nil {
+		t.Fatalf("setting auto match limit unlimited: %v", err)
+	}
+	limit, err = svc.GetAutoMatchLimit()
+	if err != nil {
+		t.Fatalf("getting auto match limit after unlimited set: %v", err)
+	}
+	if limit != 0 {
+		t.Fatalf("expected auto match limit 0 after unlimited set, got %d", limit)
+	}
+
+	if err := svc.SetAutoMatchLimit(-1); err == nil {
+		t.Fatal("expected validation error for negative auto match limit")
+	}
+
+	if err := database.SetSetting(context.Background(), settingAutoMatchEnabled, "unexpected"); err != nil {
+		t.Fatalf("seeding invalid auto match enabled value: %v", err)
+	}
+	enabled, err = svc.GetAutoMatchEnabled()
+	if err != nil {
+		t.Fatalf("getting auto match enabled fallback: %v", err)
+	}
+	if !enabled {
+		t.Fatal("expected invalid auto match enabled value to fallback to default true")
+	}
+
+	if err := database.SetSetting(context.Background(), settingAutoMatchLimit, "not-a-number"); err != nil {
+		t.Fatalf("seeding invalid auto match limit value: %v", err)
+	}
+	limit, err = svc.GetAutoMatchLimit()
+	if err != nil {
+		t.Fatalf("getting auto match limit fallback: %v", err)
+	}
+	if limit != 0 {
+		t.Fatalf("expected invalid auto match limit to fallback to 0, got %d", limit)
+	}
+}
+
+func TestAutoMatchSettingsDatabaseErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	if _, err := svc.GetAutoMatchEnabled(); err == nil {
+		t.Fatal("expected GetAutoMatchEnabled to fail on closed DB")
+	}
+	if err := svc.SetAutoMatchEnabled(true); err == nil {
+		t.Fatal("expected SetAutoMatchEnabled to fail on closed DB")
+	}
+	if _, err := svc.GetAutoMatchLimit(); err == nil {
+		t.Fatal("expected GetAutoMatchLimit to fail on closed DB")
+	}
+	if err := svc.SetAutoMatchLimit(10); err == nil {
+		t.Fatal("expected SetAutoMatchLimit to fail on closed DB")
+	}
+}
+
 func TestLLMBaseURLLifecycleAndValidation(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()
