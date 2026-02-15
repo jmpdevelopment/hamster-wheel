@@ -400,7 +400,6 @@ func (w *Worker) cvProfileForJob(ctx context.Context) string {
 	if err != nil {
 		w.log().Warn(
 			"cv profile unavailable; continuing without cv context",
-			"cv_path", cvPath,
 			"error", err,
 		)
 		return ""
