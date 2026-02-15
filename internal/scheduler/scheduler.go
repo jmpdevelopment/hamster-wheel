@@ -100,9 +100,10 @@ func New(store JobStore, adapters *adapter.Registry, interval time.Duration) *Sc
 	}
 }
 
-// Start begins the background polling loop. It immediately runs one poll cycle,
-// then repeats at the configured interval. Thread-safe: calling Start() while
-// already running is a no-op. Can be restarted after Stop().
+// Start begins the background polling loop. When unpaused, it immediately runs
+// one poll cycle, then repeats at the configured interval. When paused, it
+// stays idle until resumed. Thread-safe: calling Start() while already running
+// is a no-op. Can be restarted after Stop().
 func (s *Scheduler) Start() {
 	s.stateMu.Lock()
 	if s.running {
@@ -128,35 +129,68 @@ func (s *Scheduler) Start() {
 
 		slog.Info("scheduler started", "interval", s.interval)
 
-		// Run immediately on start, then on each tick.
+		var timer *time.Timer
+		var timerC <-chan time.Time
+		stopTimer := func() {
+			if timer == nil {
+				return
+			}
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			timer = nil
+			timerC = nil
+		}
+		defer stopTimer()
+
+		// scheduleNextPollFromNow updates nextPollAt and timer state based on
+		// current pause/interval settings.
+		scheduleNextPollFromNow := func() bool {
+			s.stateMu.RLock()
+			paused := s.paused
+			interval := s.interval
+			s.stateMu.RUnlock()
+
+			if paused {
+				s.clearNextPollAt()
+				stopTimer()
+				return false
+			}
+
+			next := time.Now().Add(interval)
+			s.setNextPollAt(next)
+			delay := remainingUntil(next)
+			if timer == nil {
+				timer = time.NewTimer(delay)
+			} else {
+				resetTimer(timer, delay)
+			}
+			timerC = timer.C
+			return true
+		}
+
+		// Run immediately on start when unpaused.
 		// Set nextPollAt before polling so UI can show schedule even if a poll
 		// is currently in-flight or temporarily slow.
-		next := time.Now().Add(s.interval)
-		s.setNextPollAt(next)
-		s.safePoll(ctx)
-
-		timer := time.NewTimer(remainingUntil(next))
-		defer timer.Stop()
+		if scheduleNextPollFromNow() {
+			s.safePoll(ctx)
+		}
 
 		for {
 			select {
 			case <-ctx.Done():
 				slog.Info("scheduler stopped")
 				return
-			case <-timer.C:
-				next = time.Now().Add(s.interval)
-				s.setNextPollAt(next)
-				s.safePoll(ctx)
-				resetTimer(timer, remainingUntil(next))
-			case <-reschedule:
-				s.stateMu.RLock()
-				next = s.nextPollAt
-				s.stateMu.RUnlock()
-				if next.IsZero() {
-					next = time.Now().Add(s.interval)
-					s.setNextPollAt(next)
+			case <-timerC:
+				if !scheduleNextPollFromNow() {
+					continue
 				}
-				resetTimer(timer, remainingUntil(next))
+				s.safePoll(ctx)
+			case <-reschedule:
+				scheduleNextPollFromNow()
 			}
 		}
 	}(reschedule)
@@ -305,8 +339,49 @@ func (s *Scheduler) setNextPollAt(t time.Time) {
 	s.notifyStatusChanged()
 }
 
-// SetPaused pauses or resumes auto-polling. When paused, ticker
-// events are silently skipped. Manual PollNow calls still work.
+// clearNextPollAt clears the next automatic poll timestamp.
+func (s *Scheduler) clearNextPollAt() {
+	s.stateMu.Lock()
+	s.nextPollAt = time.Time{}
+	s.stateMu.Unlock()
+	slog.Info("next poll cleared")
+	s.notifyStatusChanged()
+}
+
+// SetInterval updates the automatic polling interval.
+// When running and unpaused, next poll time is rescheduled from now.
+func (s *Scheduler) SetInterval(interval time.Duration) error {
+	if interval <= 0 {
+		return fmt.Errorf("invalid poll interval %s: must be > 0", interval)
+	}
+
+	s.stateMu.Lock()
+	s.interval = interval
+	s.pollTimeout = derivePollTimeout(interval)
+	running := s.running
+	paused := s.paused
+	s.stateMu.Unlock()
+
+	slog.Info("poll interval updated", "interval", interval)
+
+	if running && !paused {
+		s.RescheduleFromNow()
+		return nil
+	}
+
+	s.notifyStatusChanged()
+	return nil
+}
+
+// Interval returns the configured automatic polling interval.
+func (s *Scheduler) Interval() time.Duration {
+	s.stateMu.RLock()
+	defer s.stateMu.RUnlock()
+	return s.interval
+}
+
+// SetPaused pauses or resumes auto-polling. When paused, no next
+// automatic poll is scheduled. Manual PollNow calls still work.
 func (s *Scheduler) SetPaused(paused bool) {
 	s.stateMu.Lock()
 	s.paused = paused
@@ -314,6 +389,11 @@ func (s *Scheduler) SetPaused(paused bool) {
 	s.stateMu.Unlock()
 	if paused {
 		slog.Info("auto-polling paused")
+		s.clearNextPollAt()
+		if running {
+			s.signalReschedule()
+		}
+		return
 	} else {
 		slog.Info("auto-polling resumed")
 	}

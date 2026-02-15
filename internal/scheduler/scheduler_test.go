@@ -906,6 +906,23 @@ func TestSetPausedResumeSchedulesNextPollAtWhenRunning(t *testing.T) {
 	}
 }
 
+func TestSetPausedClearsNextPollAt(t *testing.T) {
+	database, registry := testSetup(t)
+	s := New(database, registry, time.Minute)
+
+	s.stateMu.Lock()
+	s.running = true
+	s.paused = false
+	s.nextPollAt = time.Now().Add(10 * time.Minute)
+	s.stateMu.Unlock()
+
+	s.SetPaused(true)
+
+	if next := s.NextPollAt(); !next.IsZero() {
+		t.Fatalf("expected SetPaused(true) to clear next poll, got %v", next)
+	}
+}
+
 func TestRescheduleFromNowMovesNextPollAtForward(t *testing.T) {
 	database, registry := testSetup(t)
 	s := New(database, registry, time.Minute)
@@ -1013,6 +1030,33 @@ func TestNextPollAtTracked(t *testing.T) {
 	}
 
 	s.Stop()
+}
+
+func TestStartPausedDoesNotScheduleOrPoll(t *testing.T) {
+	database, registry := testSetup(t)
+
+	mock := &mockAdapter{
+		name: "start_paused_source",
+		jobs: []adapter.JobSummary{
+			{SourceID: "sp-1", Title: "Start Paused Job", URL: "https://example.com/sp-1"},
+		},
+	}
+	registry.Register(mock)
+	database.CreateFilter(context.Background(), "Start Paused", "go", "London", "start_paused_source")
+
+	s := New(database, registry, 50*time.Millisecond)
+	s.SetPaused(true)
+	s.Start()
+	defer s.Stop()
+
+	time.Sleep(120 * time.Millisecond)
+
+	if next := s.NextPollAt(); !next.IsZero() {
+		t.Fatalf("expected zero NextPollAt while paused, got %v", next)
+	}
+	if got := mock.FetchCalls(); got != 0 {
+		t.Fatalf("expected 0 fetch calls while paused, got %d", got)
+	}
 }
 
 func TestStartEmitsStatusChangedAfterPoll(t *testing.T) {

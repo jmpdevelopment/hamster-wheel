@@ -826,6 +826,104 @@ func TestLLMModelDatabaseErrors(t *testing.T) {
 	}
 }
 
+func TestAutoPollingSettingsLifecycleAndValidation(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	enabled, err := svc.GetAutoPollingEnabled()
+	if err != nil {
+		t.Fatalf("getting default auto polling enabled: %v", err)
+	}
+	if enabled {
+		t.Fatal("expected auto polling disabled by default")
+	}
+
+	intervalMinutes, err := svc.GetPollIntervalMinutes()
+	if err != nil {
+		t.Fatalf("getting default poll interval minutes: %v", err)
+	}
+	if intervalMinutes != defaultPollIntervalMin {
+		t.Fatalf("expected default poll interval %d, got %d", defaultPollIntervalMin, intervalMinutes)
+	}
+
+	if err := svc.SetAutoPollingEnabled(true); err != nil {
+		t.Fatalf("setting auto polling enabled true: %v", err)
+	}
+	enabled, err = svc.GetAutoPollingEnabled()
+	if err != nil {
+		t.Fatalf("getting auto polling enabled after set: %v", err)
+	}
+	if !enabled {
+		t.Fatal("expected auto polling enabled=true after update")
+	}
+
+	if err := svc.SetPollIntervalMinutes(120); err != nil {
+		t.Fatalf("setting poll interval minutes: %v", err)
+	}
+	intervalMinutes, err = svc.GetPollIntervalMinutes()
+	if err != nil {
+		t.Fatalf("getting poll interval minutes after set: %v", err)
+	}
+	if intervalMinutes != 120 {
+		t.Fatalf("expected poll interval 120, got %d", intervalMinutes)
+	}
+
+	if err := svc.SetPollIntervalMinutes(minPollIntervalMinutes - 1); err == nil {
+		t.Fatalf("expected validation error for interval below %d", minPollIntervalMinutes)
+	}
+	if err := svc.SetPollIntervalMinutes(maxPollIntervalMinutes + 1); err == nil {
+		t.Fatalf("expected validation error for interval above %d", maxPollIntervalMinutes)
+	}
+
+	if err := database.SetSetting(context.Background(), settingAutoPollingEnabled, "unexpected"); err != nil {
+		t.Fatalf("seeding invalid auto polling enabled value: %v", err)
+	}
+	enabled, err = svc.GetAutoPollingEnabled()
+	if err != nil {
+		t.Fatalf("getting auto polling enabled fallback: %v", err)
+	}
+	if enabled {
+		t.Fatal("expected invalid auto polling enabled value to fallback to default false")
+	}
+
+	if err := database.SetSetting(context.Background(), settingPollIntervalMinutes, "not-a-number"); err != nil {
+		t.Fatalf("seeding invalid poll interval value: %v", err)
+	}
+	intervalMinutes, err = svc.GetPollIntervalMinutes()
+	if err != nil {
+		t.Fatalf("getting poll interval fallback: %v", err)
+	}
+	if intervalMinutes != defaultPollIntervalMin {
+		t.Fatalf("expected invalid poll interval to fallback to %d, got %d", defaultPollIntervalMin, intervalMinutes)
+	}
+}
+
+func TestAutoPollingSettingsDatabaseErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	if _, err := svc.GetAutoPollingEnabled(); err == nil {
+		t.Fatal("expected GetAutoPollingEnabled to fail on closed DB")
+	}
+	if err := svc.SetAutoPollingEnabled(false); err == nil {
+		t.Fatal("expected SetAutoPollingEnabled to fail on closed DB")
+	}
+	if _, err := svc.GetPollIntervalMinutes(); err == nil {
+		t.Fatal("expected GetPollIntervalMinutes to fail on closed DB")
+	}
+	if err := svc.SetPollIntervalMinutes(30); err == nil {
+		t.Fatal("expected SetPollIntervalMinutes to fail on closed DB")
+	}
+}
+
 func TestAutoMatchSettingsLifecycleAndValidation(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()

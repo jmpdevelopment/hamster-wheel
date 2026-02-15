@@ -7,10 +7,12 @@ import {
   HasAdzunaCredentials,
   GetAutoMatchEnabled,
   GetAutoMatchLimit,
+  GetAutoPollingEnabled,
   GetCVPath,
   GetLLMBaseURL,
   GetLLMMode,
   GetLLMModel,
+  GetPollIntervalMinutes,
   GetLLMProvider,
   GetLocalRuntimeModels,
   GetLocalRuntimeModel,
@@ -24,17 +26,23 @@ import {
   SetLLMBaseURL,
   SetLLMMode,
   SetLLMModel,
+  SetPollIntervalMinutes,
   SetLLMProvider,
   SetLocalRuntimeEngine,
   SetLocalRuntimeModel,
   SetOpenAIAPIKey,
   SetAutoMatchEnabled,
+  SetAutoPollingEnabled,
   SetAutoMatchLimit,
   SetAdzunaCredentials,
   SetReedAPIKey,
   StartLocalRuntime,
   StopLocalRuntime,
 } from "../../bindings/hamster-wheel/settingsservice";
+import {
+  SetPollingIntervalMinutes as ApplyPollingIntervalMinutes,
+  SetPollingPaused as ApplyPollingPaused,
+} from "../../bindings/hamster-wheel/pollingservice";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import { Input } from "./Input";
@@ -90,6 +98,8 @@ const localModelName = "llama3.1:8b";
 const localModelEstimatedBytes = 4_900_000_000;
 const llamaLicenseURL = "https://www.llama.com/llama3_1/license/";
 const llamaUsePolicyURL = "https://www.llama.com/llama3_1/use-policy/";
+const minPollingIntervalMinutes = 30;
+const maxPollingIntervalMinutes = 24 * 60;
 
 function formatGiB(bytes: number): string {
   return `${(bytes / (1024 ** 3)).toFixed(1)} GiB`;
@@ -180,6 +190,10 @@ export function SettingsPanel({
     });
   const [llmConfigSaving, setLLMConfigSaving] = useState(false);
   const [llmConfigSaved, setLLMConfigSaved] = useState(false);
+  const [autoPollingEnabled, setAutoPollingEnabledState] = useState(false);
+  const [pollIntervalMinutes, setPollIntervalMinutesState] = useState("30");
+  const [autoPollingSaving, setAutoPollingSaving] = useState(false);
+  const [autoPollingSaved, setAutoPollingSaved] = useState(false);
   const [autoMatchEnabled, setAutoMatchEnabledState] = useState(true);
   const [autoMatchLimit, setAutoMatchLimitState] = useState("0");
   const [autoMatchSaving, setAutoMatchSaving] = useState(false);
@@ -192,6 +206,7 @@ export function SettingsPanel({
   const adzunaSavedTimeoutRef = useRef<number | null>(null);
   const openAISavedTimeoutRef = useRef<number | null>(null);
   const llmSavedTimeoutRef = useRef<number | null>(null);
+  const autoPollingSavedTimeoutRef = useRef<number | null>(null);
   const autoMatchSavedTimeoutRef = useRef<number | null>(null);
   const cvSavedTimeoutRef = useRef<number | null>(null);
 
@@ -367,6 +382,30 @@ export function SettingsPanel({
       }
 
       try {
+        const enabled = await GetAutoPollingEnabled();
+        if (!cancelled) {
+          setAutoPollingEnabledState(Boolean(enabled));
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load auto polling enabled setting:", err);
+      }
+
+      try {
+        const minutes = await GetPollIntervalMinutes();
+        if (!cancelled) {
+          const normalizedMinutes =
+            Number.isFinite(minutes) &&
+            Number(minutes) >= minPollingIntervalMinutes &&
+            Number(minutes) <= maxPollingIntervalMinutes
+              ? Math.floor(Number(minutes))
+              : minPollingIntervalMinutes;
+          setPollIntervalMinutesState(String(normalizedMinutes));
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load poll interval setting:", err);
+      }
+
+      try {
         const enabled = await GetAutoMatchEnabled();
         if (!cancelled) {
           setAutoMatchEnabledState(Boolean(enabled));
@@ -421,6 +460,9 @@ export function SettingsPanel({
       }
       if (llmSavedTimeoutRef.current !== null) {
         clearTimeout(llmSavedTimeoutRef.current);
+      }
+      if (autoPollingSavedTimeoutRef.current !== null) {
+        clearTimeout(autoPollingSavedTimeoutRef.current);
       }
       if (autoMatchSavedTimeoutRef.current !== null) {
         clearTimeout(autoMatchSavedTimeoutRef.current);
@@ -755,6 +797,39 @@ export function SettingsPanel({
     }
   };
 
+  const handleSaveAutoPollingSettings = async () => {
+    const trimmedMinutes = pollIntervalMinutes.trim();
+    const parsedMinutes = Number(trimmedMinutes);
+    if (
+      !Number.isFinite(parsedMinutes) ||
+      !Number.isInteger(parsedMinutes) ||
+      parsedMinutes < minPollingIntervalMinutes ||
+      parsedMinutes > maxPollingIntervalMinutes
+    ) {
+      onError(
+        `Polling interval must be a whole number between ${minPollingIntervalMinutes} and ${maxPollingIntervalMinutes} minutes.`
+      );
+      return;
+    }
+
+    setAutoPollingSaving(true);
+    setAutoPollingSaved(false);
+    try {
+      await SetAutoPollingEnabled(autoPollingEnabled);
+      await SetPollIntervalMinutes(parsedMinutes);
+      await ApplyPollingIntervalMinutes(parsedMinutes);
+      await ApplyPollingPaused(!autoPollingEnabled);
+      setPollIntervalMinutesState(String(parsedMinutes));
+      setTimedSavedState(setAutoPollingSaved, autoPollingSavedTimeoutRef);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save auto polling settings:", message);
+      onError(message);
+    } finally {
+      setAutoPollingSaving(false);
+    }
+  };
+
   const handleSaveAutoMatchSettings = async () => {
     const trimmedLimit = autoMatchLimit.trim();
     const parsedLimit = Number(trimmedLimit);
@@ -1084,6 +1159,73 @@ export function SettingsPanel({
                 Obtain Credentials
               </Button>
             )}
+          </section>
+          <section className="mt-5">
+            <h3 className="text-sm font-semibold text-hw-text mb-2">
+              Auto Polling
+            </h3>
+            <p className="text-xs text-hw-text-muted mb-2">
+              Background polling is disabled by default. Enable it to run automatic checks between {minPollingIntervalMinutes} minutes and {maxPollingIntervalMinutes / 60} hours.
+            </p>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <Button
+                  variant={autoPollingEnabled ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => {
+                    setAutoPollingEnabledState(true);
+                    setAutoPollingSaved(false);
+                  }}
+                  aria-pressed={autoPollingEnabled}
+                >
+                  Enabled
+                </Button>
+                <Button
+                  variant={!autoPollingEnabled ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => {
+                    setAutoPollingEnabledState(false);
+                    setAutoPollingSaved(false);
+                  }}
+                  aria-pressed={!autoPollingEnabled}
+                >
+                  Disabled
+                </Button>
+              </div>
+              <div>
+                <label
+                  htmlFor="poll-interval-minutes"
+                  className="block text-xs text-hw-text-muted mb-1"
+                >
+                  Poll interval (minutes)
+                </label>
+                <Input
+                  id="poll-interval-minutes"
+                  aria-label="Poll Interval Minutes"
+                  type="number"
+                  size="sm"
+                  min={minPollingIntervalMinutes}
+                  max={maxPollingIntervalMinutes}
+                  step={1}
+                  value={pollIntervalMinutes}
+                  onChange={(e) => {
+                    setPollIntervalMinutesState(e.target.value);
+                    setAutoPollingSaved(false);
+                  }}
+                />
+                <p className="mt-1 text-xs text-hw-text-muted">
+                  Minimum {minPollingIntervalMinutes} minutes. Maximum {maxPollingIntervalMinutes} minutes.
+                </p>
+              </div>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleSaveAutoPollingSettings}
+                loading={autoPollingSaving}
+              >
+                {autoPollingSaved ? "Saved" : "Save polling settings"}
+              </Button>
+            </div>
           </section>
         </div>
 

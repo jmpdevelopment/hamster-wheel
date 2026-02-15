@@ -57,6 +57,14 @@ export function GetAutoMatchLimit() {
 }
 
 /**
+ * GetAutoPollingEnabled returns whether background auto-polling is enabled.
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetAutoPollingEnabled() {
+    return $Call.ByID(4079842599);
+}
+
+/**
  * GetCVPath returns the configured CV file path used for matching context.
  * @returns {$CancellablePromise<string>}
  */
@@ -157,6 +165,14 @@ export function GetLocalRuntimeStatus() {
 }
 
 /**
+ * GetPollIntervalMinutes returns the configured polling interval in minutes.
+ * @returns {$CancellablePromise<number>}
+ */
+export function GetPollIntervalMinutes() {
+    return $Call.ByID(2769535497);
+}
+
+/**
  * GetTheme returns the stored theme preference ("dark", "light", "system", or "" if unset).
  * @returns {$CancellablePromise<string>}
  */
@@ -228,6 +244,15 @@ export function SetAutoMatchEnabled(enabled) {
  */
 export function SetAutoMatchLimit(limit) {
     return $Call.ByID(3478362263, limit);
+}
+
+/**
+ * SetAutoPollingEnabled saves whether background auto-polling should run.
+ * @param {boolean} enabled
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetAutoPollingEnabled(enabled) {
+    return $Call.ByID(1492627947, enabled);
 }
 
 /**
@@ -311,6 +336,15 @@ export function SetLocalRuntimeModel(model) {
  */
 export function SetOpenAIAPIKey(key) {
     return $Call.ByID(2467546573, key);
+}
+
+/**
+ * SetPollIntervalMinutes saves the polling interval in minutes.
+ * @param {number} minutes
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetPollIntervalMinutes(minutes) {
+    return $Call.ByID(416301429, minutes);
 }
 
 /**

@@ -250,6 +250,32 @@ func TestPollNowReportsDiagnosticsStoreUnavailable(t *testing.T) {
 	}
 }
 
+func TestPollingIntervalSettings(t *testing.T) {
+	database := testPollingServiceDB(t)
+	registry := adapter.NewRegistry()
+	sched := scheduler.New(database, registry, 45*time.Minute)
+	store := diagnostics.NewStore(t.TempDir(), 20, 24*time.Hour)
+	service := NewPollingService(sched, store)
+
+	if got := service.GetPollingIntervalMinutes(); got != 45 {
+		t.Fatalf("expected polling interval 45 minutes, got %d", got)
+	}
+
+	if err := service.SetPollingIntervalMinutes(120); err != nil {
+		t.Fatalf("setting polling interval minutes: %v", err)
+	}
+	if got := service.GetPollingIntervalMinutes(); got != 120 {
+		t.Fatalf("expected polling interval 120 minutes after update, got %d", got)
+	}
+
+	if err := service.SetPollingIntervalMinutes(minPollingIntervalMinutes - 1); err == nil {
+		t.Fatalf("expected validation error below %d minutes", minPollingIntervalMinutes)
+	}
+	if err := service.SetPollingIntervalMinutes(maxPollingIntervalMinutes + 1); err == nil {
+		t.Fatalf("expected validation error above %d minutes", maxPollingIntervalMinutes)
+	}
+}
+
 func TestSavePollReportWritesFile(t *testing.T) {
 	database := testPollingServiceDB(t)
 	registry := adapter.NewRegistry()

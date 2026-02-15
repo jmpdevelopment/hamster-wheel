@@ -4,12 +4,10 @@ import { describe, it, expect, vi } from "vitest";
 import { Header } from "./Header";
 
 const defaultProps = {
-  jobCount: 0,
   onPollNow: vi.fn(),
   isPolling: false,
   pollingPaused: false,
   nextPollAt: "",
-  onTogglePolling: vi.fn(),
   hasFilters: true,
   hasEnabledFilters: true,
   onOpenSettings: vi.fn(),
@@ -19,16 +17,6 @@ describe("Header", () => {
   it("renders the app title", () => {
     render(<Header {...defaultProps} />);
     expect(screen.getByText("Hamster Wheel")).toBeInTheDocument();
-  });
-
-  it("shows the job count", () => {
-    render(<Header {...defaultProps} jobCount={42} />);
-    expect(screen.getByText("42 jobs")).toBeInTheDocument();
-  });
-
-  it("shows singular 'job' for count of 1", () => {
-    render(<Header {...defaultProps} jobCount={1} />);
-    expect(screen.getByText("1 job")).toBeInTheDocument();
   });
 
   it("calls onPollNow when button is clicked", async () => {
@@ -52,23 +40,9 @@ describe("Header", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows Pause button when polling is active", () => {
-    render(<Header {...defaultProps} pollingPaused={false} />);
-    expect(
-      screen.getByRole("button", { name: /pause auto-polling/i })
-    ).toBeInTheDocument();
-  });
-
-  it("shows Resume button when polling is paused", () => {
+  it("shows auto-polling disabled status when paused", () => {
     render(<Header {...defaultProps} pollingPaused={true} />);
-    expect(
-      screen.getByRole("button", { name: /resume auto-polling/i })
-    ).toBeInTheDocument();
-  });
-
-  it("shows 'Auto-poll paused' when paused", () => {
-    render(<Header {...defaultProps} pollingPaused={true} />);
-    expect(screen.getByText("Auto-poll paused")).toBeInTheDocument();
+    expect(screen.getByText("Auto Polling is Disabled.")).toBeInTheDocument();
   });
 
   it("shows next poll time when not paused", () => {
@@ -99,22 +73,6 @@ describe("Header", () => {
   it("does not show polling status before polling starts", () => {
     render(<Header {...defaultProps} isPolling={false} nextPollAt="" pollingPaused={false} />);
     expect(screen.queryByText("Polling...")).not.toBeInTheDocument();
-  });
-
-  it("calls onTogglePolling when Pause is clicked", async () => {
-    const onTogglePolling = vi.fn();
-    render(
-      <Header
-        {...defaultProps}
-        pollingPaused={false}
-        onTogglePolling={onTogglePolling}
-      />
-    );
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /pause auto-polling/i })
-    );
-    expect(onTogglePolling).toHaveBeenCalledOnce();
   });
 
   it("keeps Poll Now enabled while auto-polling is enabled", () => {
@@ -150,13 +108,6 @@ describe("Header", () => {
       expect(screen.getByRole("button", { name: /poll now/i })).toBeDisabled();
     });
 
-    it("disables Pause/Resume button", () => {
-      render(<Header {...noFilterProps} />);
-      expect(
-        screen.getByRole("button", { name: /no filters configured/i })
-      ).toBeDisabled();
-    });
-
     it("shows guidance to add a filter", () => {
       render(<Header {...noFilterProps} />);
       expect(
@@ -184,13 +135,6 @@ describe("Header", () => {
     it("disables Poll Now button", () => {
       render(<Header {...noEnabledProps} />);
       expect(screen.getByRole("button", { name: /poll now/i })).toBeDisabled();
-    });
-
-    it("disables Pause/Resume button", () => {
-      render(<Header {...noEnabledProps} />);
-      expect(
-        screen.getByRole("button", { name: /no filters enabled/i })
-      ).toBeDisabled();
     });
 
     it("shows guidance to enable a filter", () => {

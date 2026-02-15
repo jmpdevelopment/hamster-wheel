@@ -18,26 +18,32 @@ import (
 )
 
 const (
-	settingReedAPIKey         = "reed_api_key"
-	settingAdzunaAppID        = "adzuna_app_id"
-	settingAdzunaAppKey       = "adzuna_app_key"
-	settingOpenAIAPIKey       = "openai_api_key"
-	settingTheme              = "theme"
-	settingKeyboardShortcuts  = "keyboard_shortcuts"
-	settingLLMMode            = "llm_mode"
-	settingLLMProvider        = "llm_provider"
-	settingLLMModel           = "llm_model"
-	settingLLMBaseURL         = "llm_base_url"
-	settingLocalRuntimeEngine = "local_runtime_engine"
-	settingLocalRuntimeModel  = "local_runtime_model"
-	settingAutoMatchEnabled   = "auto_match_enabled"
-	settingAutoMatchLimit     = "auto_match_limit"
-	settingCVPath             = "cv_path"
+	settingReedAPIKey          = "reed_api_key"
+	settingAdzunaAppID         = "adzuna_app_id"
+	settingAdzunaAppKey        = "adzuna_app_key"
+	settingOpenAIAPIKey        = "openai_api_key"
+	settingTheme               = "theme"
+	settingKeyboardShortcuts   = "keyboard_shortcuts"
+	settingLLMMode             = "llm_mode"
+	settingLLMProvider         = "llm_provider"
+	settingLLMModel            = "llm_model"
+	settingLLMBaseURL          = "llm_base_url"
+	settingLocalRuntimeEngine  = "local_runtime_engine"
+	settingLocalRuntimeModel   = "local_runtime_model"
+	settingAutoPollingEnabled  = "auto_poll_enabled"
+	settingPollIntervalMinutes = "poll_interval_minutes"
+	settingAutoMatchEnabled    = "auto_match_enabled"
+	settingAutoMatchLimit      = "auto_match_limit"
+	settingCVPath              = "cv_path"
 
 	defaultLLMProvider      = "openai"
 	defaultLLMModel         = "gpt-4o-mini"
 	defaultLLMMode          = "cloud"
 	defaultRuntimeModel     = "llama3.1:8b"
+	defaultAutoPolling      = false
+	defaultPollIntervalMin  = 30
+	minPollIntervalMinutes  = 30
+	maxPollIntervalMinutes  = 24 * 60
 	defaultAutoMatchLimit   = 0
 	defaultAutoMatchEnabled = true
 )
@@ -414,6 +420,81 @@ func (s *SettingsService) SetLocalRuntimeModel(model string) error {
 		return fmt.Errorf("setting local runtime model: %w", err)
 	}
 	slog.Info("local runtime model updated", "model", model)
+	return nil
+}
+
+// GetAutoPollingEnabled returns whether background auto-polling is enabled.
+func (s *SettingsService) GetAutoPollingEnabled() (bool, error) {
+	value, err := s.db.GetSetting(context.Background(), settingAutoPollingEnabled)
+	if err != nil {
+		return false, fmt.Errorf("getting auto polling enabled setting: %w", err)
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return defaultAutoPolling, nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		slog.Warn(
+			"invalid auto polling enabled setting value, using default",
+			"value",
+			value,
+		)
+		return defaultAutoPolling, nil
+	}
+}
+
+// SetAutoPollingEnabled saves whether background auto-polling should run.
+func (s *SettingsService) SetAutoPollingEnabled(enabled bool) error {
+	value := "false"
+	if enabled {
+		value = "true"
+	}
+	if err := s.db.SetSetting(context.Background(), settingAutoPollingEnabled, value); err != nil {
+		return fmt.Errorf("setting auto polling enabled: %w", err)
+	}
+	slog.Info("auto polling enabled updated", "enabled", enabled)
+	return nil
+}
+
+// GetPollIntervalMinutes returns the configured polling interval in minutes.
+func (s *SettingsService) GetPollIntervalMinutes() (int, error) {
+	value, err := s.db.GetSetting(context.Background(), settingPollIntervalMinutes)
+	if err != nil {
+		return 0, fmt.Errorf("getting poll interval minutes setting: %w", err)
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultPollIntervalMin, nil
+	}
+	minutes, parseErr := strconv.Atoi(value)
+	if parseErr != nil || minutes < minPollIntervalMinutes || minutes > maxPollIntervalMinutes {
+		slog.Warn(
+			"invalid poll interval minutes setting value, using default",
+			"value",
+			value,
+		)
+		return defaultPollIntervalMin, nil
+	}
+	return minutes, nil
+}
+
+// SetPollIntervalMinutes saves the polling interval in minutes.
+func (s *SettingsService) SetPollIntervalMinutes(minutes int) error {
+	if minutes < minPollIntervalMinutes || minutes > maxPollIntervalMinutes {
+		return fmt.Errorf(
+			"invalid poll interval minutes %d: must be between %d and %d",
+			minutes,
+			minPollIntervalMinutes,
+			maxPollIntervalMinutes,
+		)
+	}
+	if err := s.db.SetSetting(context.Background(), settingPollIntervalMinutes, strconv.Itoa(minutes)); err != nil {
+		return fmt.Errorf("setting poll interval minutes: %w", err)
+	}
+	slog.Info("poll interval minutes updated", "minutes", minutes)
 	return nil
 }
 

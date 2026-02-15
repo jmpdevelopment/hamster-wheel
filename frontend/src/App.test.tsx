@@ -30,6 +30,7 @@ const mockDeleteFilter = vi.fn();
 const mockPollNow = vi.fn();
 const mockGetPollingStatus = vi.fn();
 const mockSetPollingPaused = vi.fn();
+const mockSetPollingIntervalMinutes = vi.fn();
 const mockGetKeyboardShortcuts = vi.fn();
 const mockEventsOn = vi.fn();
 const noOpRun = {
@@ -67,6 +68,8 @@ vi.mock("../bindings/hamster-wheel/pollingservice", () => ({
   PollNow: (...args: unknown[]) => mockPollNow(...args),
   GetPollingStatus: (...args: unknown[]) => mockGetPollingStatus(...args),
   SetPollingPaused: (...args: unknown[]) => mockSetPollingPaused(...args),
+  SetPollingIntervalMinutes: (...args: unknown[]) =>
+    mockSetPollingIntervalMinutes(...args),
 }));
 
 vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
@@ -91,6 +94,10 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
   SetAutoMatchEnabled: vi.fn().mockResolvedValue(undefined),
   GetAutoMatchLimit: vi.fn().mockResolvedValue(0),
   SetAutoMatchLimit: vi.fn().mockResolvedValue(undefined),
+  GetAutoPollingEnabled: vi.fn().mockResolvedValue(false),
+  SetAutoPollingEnabled: vi.fn().mockResolvedValue(undefined),
+  GetPollIntervalMinutes: vi.fn().mockResolvedValue(30),
+  SetPollIntervalMinutes: vi.fn().mockResolvedValue(undefined),
   GetLocalRuntimeModel: vi.fn().mockResolvedValue("llama3.1:8b"),
   GetLocalRuntimeStatus: vi.fn().mockResolvedValue({
     status: "ready",
@@ -180,6 +187,7 @@ beforeEach(() => {
   mockPollNow.mockResolvedValue(noOpRun);
   mockGetPollingStatus.mockResolvedValue({ paused: false, nextPollAt: "" });
   mockSetPollingPaused.mockResolvedValue(undefined);
+  mockSetPollingIntervalMinutes.mockResolvedValue(undefined);
   mockGetKeyboardShortcuts.mockResolvedValue("");
   mockEventsOn.mockImplementation(() => vi.fn());
 });
@@ -193,7 +201,7 @@ describe("App", () => {
 
     // Wait for hooks to finish loading.
     await waitFor(() => {
-      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+      expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
   });
 
@@ -315,38 +323,6 @@ describe("App", () => {
     expect(mockGetPollingStatus).toHaveBeenCalledTimes(1);
   });
 
-  it("shows error when pause/resume toggle fails", async () => {
-    mockGetFilters.mockResolvedValue([
-      {
-        ID: "f1",
-        Name: "Backend",
-        Keywords: "go",
-        Location: "London",
-        Source: "reed_uk",
-        Enabled: true,
-        CreatedAt: "2026-02-08T10:00:00Z",
-        UpdatedAt: "2026-02-08T10:00:00Z",
-      },
-    ]);
-    mockSetPollingPaused.mockRejectedValue(new Error("toggle failed"));
-
-    render(<App />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /pause auto-polling/i })
-      ).toBeEnabled();
-    });
-
-    await userEvent.click(
-      screen.getByRole("button", { name: /pause auto-polling/i })
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("toggle failed")).toBeInTheDocument();
-    });
-  });
-
   it("dismisses hook errors from the banner", async () => {
     mockGetJobs.mockRejectedValue(new Error("network down"));
 
@@ -420,7 +396,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+      expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
 
     await userEvent.click(screen.getByRole("button", { name: "Poll Now" }));
@@ -451,7 +427,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+      expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
 
     await userEvent.click(screen.getByRole("button", { name: "Poll Now" }));
@@ -466,7 +442,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+      expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
 
     await userEvent.click(
@@ -482,7 +458,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+      expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
 
     await userEvent.click(
@@ -533,7 +509,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+      expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
 
     // Open settings via click.
@@ -560,7 +536,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+      expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
 
     act(() => {
@@ -620,7 +596,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("0 jobs")).toBeInTheDocument();
+      expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
 
     act(() => {

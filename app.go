@@ -32,7 +32,8 @@ func NewAppService(database *db.DB, sched *scheduler.Scheduler, matchWorker *mat
 }
 
 // ServiceStartup is called by Wails v3 when the application starts.
-// It starts the background polling scheduler.
+// It starts the scheduler loop and matcher worker.
+// Scheduler polling behavior depends on pause/interval settings.
 func (a *AppService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
 	a.scheduler.Start()
 	if a.matcher != nil {

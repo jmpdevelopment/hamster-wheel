@@ -61,6 +61,11 @@ func NewPollingService(sched *scheduler.Scheduler, store *diagnostics.Store) *Po
 // Reed API is slow or unresponsive.
 const pollNowTimeout = 5 * time.Minute
 const maxPollReportBytes = 512 * 1024 // Keep report exports bounded to avoid accidental large writes.
+const (
+	minPollingIntervalMinutes     = 30
+	maxPollingIntervalMinutes     = 24 * 60
+	defaultPollingIntervalMinutes = 30
+)
 
 // PollNow triggers an immediate poll cycle and returns structured run metadata.
 //
@@ -215,6 +220,31 @@ func (s *PollingService) GetPollingStatus() PollingStatus {
 // SetPollingPaused pauses or resumes auto-polling. Manual PollNow still works.
 func (s *PollingService) SetPollingPaused(paused bool) {
 	s.scheduler.SetPaused(paused)
+}
+
+// GetPollingIntervalMinutes returns the scheduler polling interval in minutes.
+func (s *PollingService) GetPollingIntervalMinutes() int {
+	minutes := int(s.scheduler.Interval() / time.Minute)
+	if minutes < minPollingIntervalMinutes || minutes > maxPollingIntervalMinutes {
+		return defaultPollingIntervalMinutes
+	}
+	return minutes
+}
+
+// SetPollingIntervalMinutes updates the scheduler polling interval.
+func (s *PollingService) SetPollingIntervalMinutes(minutes int) error {
+	if minutes < minPollingIntervalMinutes || minutes > maxPollingIntervalMinutes {
+		return fmt.Errorf(
+			"invalid poll interval minutes %d: must be between %d and %d",
+			minutes,
+			minPollingIntervalMinutes,
+			maxPollingIntervalMinutes,
+		)
+	}
+	if err := s.scheduler.SetInterval(time.Duration(minutes) * time.Minute); err != nil {
+		return fmt.Errorf("setting scheduler polling interval: %w", err)
+	}
+	return nil
 }
 
 func pollRunFromSchedulerSummary(summary scheduler.PollCycleSummary) PollRunResult {

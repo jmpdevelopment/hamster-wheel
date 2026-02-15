@@ -76,10 +76,6 @@ func main() {
 	openAIEnvBaseURL := strings.TrimSpace(os.Getenv("OPENAI_BASE_URL"))
 	ollamaBaseURL := strings.TrimSpace(os.Getenv("OLLAMA_BASE_URL"))
 
-	// Create the scheduler (default 30 minute interval).
-	// It starts polling when the app service receives ServiceStartup.
-	pollInterval := 30 * time.Minute
-	sched := scheduler.New(database, adapters, pollInterval)
 	providers := llm.NewRegistry()
 	if err := providers.Register(heuristic.New()); err != nil {
 		log.Fatalf("failed to register heuristic match provider: %v", err)
@@ -106,6 +102,28 @@ func main() {
 			slog.Warn("failed to stop managed local runtime during app shutdown", "error", err)
 		}
 	}()
+	settingsService := NewSettingsService(database, keychainStore, reedAdapter, localRuntimeManager)
+	settingsService.setAdzunaAdapter(adzunaAdapter)
+
+	// Configure scheduler startup behavior from persisted settings.
+	pollIntervalMinutes, err := settingsService.GetPollIntervalMinutes()
+	if err != nil {
+		slog.Warn("failed to load poll interval setting, using default", "error", err)
+		pollIntervalMinutes = defaultPollIntervalMin
+	}
+	pollInterval := time.Duration(pollIntervalMinutes) * time.Minute
+	sched := scheduler.New(database, adapters, pollInterval)
+
+	autoPollingEnabled, err := settingsService.GetAutoPollingEnabled()
+	if err != nil {
+		slog.Warn("failed to load auto polling setting, using default", "error", err)
+		autoPollingEnabled = defaultAutoPolling
+	}
+	if !autoPollingEnabled {
+		sched.SetPaused(true)
+		slog.Info("auto polling disabled at startup; waiting for manual poll or user enablement")
+	}
+
 	matchWorker := matcher.New(database, providers, matcher.WorkerConfig{
 		ProviderName: heuristic.ProviderName, // fallback when no setting is persisted yet
 		ProviderResolver: newMatcherProviderResolver(
@@ -136,8 +154,6 @@ func main() {
 	jobService := NewJobService(database, adapters)
 	filterService := NewFilterService(database)
 	pollingService := NewPollingService(sched, diagStore)
-	settingsService := NewSettingsService(database, keychainStore, reedAdapter, localRuntimeManager)
-	settingsService.setAdzunaAdapter(adzunaAdapter)
 
 	// Create the Wails v3 application.
 	// Strip the "frontend/dist" prefix from the embedded filesystem.

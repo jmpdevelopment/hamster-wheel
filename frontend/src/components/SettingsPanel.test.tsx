@@ -12,10 +12,16 @@ const mockClearAdzunaCredentials = vi.fn();
 const mockHasOpenAIAPIKey = vi.fn();
 const mockSetOpenAIAPIKey = vi.fn();
 const mockClearOpenAIAPIKey = vi.fn();
+const mockGetAutoPollingEnabled = vi.fn();
+const mockSetAutoPollingEnabled = vi.fn();
+const mockGetPollIntervalMinutes = vi.fn();
+const mockSetPollIntervalMinutes = vi.fn();
 const mockGetAutoMatchEnabled = vi.fn();
 const mockSetAutoMatchEnabled = vi.fn();
 const mockGetAutoMatchLimit = vi.fn();
 const mockSetAutoMatchLimit = vi.fn();
+const mockApplyPollingPaused = vi.fn();
+const mockApplyPollingIntervalMinutes = vi.fn();
 const mockGetLLMMode = vi.fn();
 const mockSetLLMMode = vi.fn();
 const mockGetLLMProvider = vi.fn();
@@ -52,6 +58,14 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   HasOpenAIAPIKey: (...args: unknown[]) => mockHasOpenAIAPIKey(...args),
   SetOpenAIAPIKey: (...args: unknown[]) => mockSetOpenAIAPIKey(...args),
   ClearOpenAIAPIKey: (...args: unknown[]) => mockClearOpenAIAPIKey(...args),
+  GetAutoPollingEnabled: (...args: unknown[]) =>
+    mockGetAutoPollingEnabled(...args),
+  SetAutoPollingEnabled: (...args: unknown[]) =>
+    mockSetAutoPollingEnabled(...args),
+  GetPollIntervalMinutes: (...args: unknown[]) =>
+    mockGetPollIntervalMinutes(...args),
+  SetPollIntervalMinutes: (...args: unknown[]) =>
+    mockSetPollIntervalMinutes(...args),
   GetAutoMatchEnabled: (...args: unknown[]) => mockGetAutoMatchEnabled(...args),
   SetAutoMatchEnabled: (...args: unknown[]) => mockSetAutoMatchEnabled(...args),
   GetAutoMatchLimit: (...args: unknown[]) => mockGetAutoMatchLimit(...args),
@@ -83,6 +97,12 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   SetCVPath: (...args: unknown[]) => mockSetCVPath(...args),
   SetKeyboardShortcuts: (...args: unknown[]) =>
     mockSetKeyboardShortcuts(...args),
+}));
+
+vi.mock("../../bindings/hamster-wheel/pollingservice", () => ({
+  SetPollingPaused: (...args: unknown[]) => mockApplyPollingPaused(...args),
+  SetPollingIntervalMinutes: (...args: unknown[]) =>
+    mockApplyPollingIntervalMinutes(...args),
 }));
 
 vi.mock("@wailsio/runtime", () => ({
@@ -117,10 +137,16 @@ beforeEach(() => {
   mockHasOpenAIAPIKey.mockResolvedValue(false);
   mockSetOpenAIAPIKey.mockResolvedValue(undefined);
   mockClearOpenAIAPIKey.mockResolvedValue(undefined);
+  mockGetAutoPollingEnabled.mockResolvedValue(false);
+  mockSetAutoPollingEnabled.mockResolvedValue(undefined);
+  mockGetPollIntervalMinutes.mockResolvedValue(30);
+  mockSetPollIntervalMinutes.mockResolvedValue(undefined);
   mockGetAutoMatchEnabled.mockResolvedValue(true);
   mockSetAutoMatchEnabled.mockResolvedValue(undefined);
   mockGetAutoMatchLimit.mockResolvedValue(0);
   mockSetAutoMatchLimit.mockResolvedValue(undefined);
+  mockApplyPollingPaused.mockResolvedValue(undefined);
+  mockApplyPollingIntervalMinutes.mockResolvedValue(undefined);
   mockGetLLMMode.mockResolvedValue("cloud");
   mockSetLLMMode.mockResolvedValue(undefined);
   mockGetLLMProvider.mockResolvedValue("openai");
@@ -360,6 +386,50 @@ describe("SettingsPanel", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Obtain Credentials" }));
     expect(mockOpenURL).toHaveBeenCalledWith("https://developer.adzuna.com");
+  });
+
+  it("loads and saves auto polling settings", async () => {
+    mockGetAutoPollingEnabled.mockResolvedValue(true);
+    mockGetPollIntervalMinutes.mockResolvedValue(90);
+
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("Jobs Providers");
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Enabled" })).toHaveAttribute(
+        "aria-pressed",
+        "true"
+      );
+      expect(screen.getByLabelText("Poll Interval Minutes")).toHaveValue(90);
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Disabled" }));
+    await userEvent.clear(screen.getByLabelText("Poll Interval Minutes"));
+    await userEvent.type(screen.getByLabelText("Poll Interval Minutes"), "60");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save polling settings" })
+    );
+
+    expect(mockSetAutoPollingEnabled).toHaveBeenCalledWith(false);
+    expect(mockSetPollIntervalMinutes).toHaveBeenCalledWith(60);
+    expect(mockApplyPollingIntervalMinutes).toHaveBeenCalledWith(60);
+    expect(mockApplyPollingPaused).toHaveBeenCalledWith(true);
+  });
+
+  it("reports validation errors for invalid poll interval", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("Jobs Providers");
+
+    await userEvent.clear(screen.getByLabelText("Poll Interval Minutes"));
+    await userEvent.type(screen.getByLabelText("Poll Interval Minutes"), "5");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save polling settings" })
+    );
+
+    expect(defaultProps.onError).toHaveBeenCalledWith(
+      "Polling interval must be a whole number between 30 and 1440 minutes."
+    );
+    expect(mockSetPollIntervalMinutes).not.toHaveBeenCalled();
   });
 
   it("loads cloud mode by default and hides advanced endpoint fields", async () => {

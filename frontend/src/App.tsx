@@ -184,12 +184,10 @@ function App() {
   return (
     <div className="flex flex-col h-screen bg-hw-bg text-hw-text">
       <Header
-        jobCount={jobs.jobCount}
         onPollNow={polling.pollNow}
         isPolling={polling.isPolling}
         pollingPaused={polling.pollingPaused}
         nextPollAt={polling.nextPollAt}
-        onTogglePolling={polling.togglePolling}
         hasFilters={filters.filters.length > 0}
         hasEnabledFilters={filters.filters.some((f) => f.Enabled)}
         onOpenSettings={() => setSettingsOpen(true)}

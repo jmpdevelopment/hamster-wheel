@@ -16,6 +16,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as $models from "./models.js";
 
 /**
+ * GetPollingIntervalMinutes returns the scheduler polling interval in minutes.
+ * @returns {$CancellablePromise<number>}
+ */
+export function GetPollingIntervalMinutes() {
+    return $Call.ByID(3495258769);
+}
+
+/**
  * GetPollingStatus returns whether auto-polling is paused and when the next poll is due.
  * @returns {$CancellablePromise<$models.PollingStatus>}
  */
@@ -46,6 +54,15 @@ export function PollNow() {
  */
 export function SavePollReport(path, content) {
     return $Call.ByID(2725635384, path, content);
+}
+
+/**
+ * SetPollingIntervalMinutes updates the scheduler polling interval.
+ * @param {number} minutes
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetPollingIntervalMinutes(minutes) {
+    return $Call.ByID(367355317, minutes);
 }
 
 /**
