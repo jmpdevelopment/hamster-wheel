@@ -462,13 +462,32 @@ func TestParseMatchContentBranches(t *testing.T) {
 	})
 
 	t.Run("truncates long summary", func(t *testing.T) {
-		longSummary := strings.Repeat("a", defaultMaxSummaryRunes+20)
+		longSummary := strings.Repeat(
+			"Strong alignment with backend API delivery and production ownership. ",
+			5,
+		)
 		parsed, err := parseMatchContent(fmt.Sprintf(`{"score":0.2,"summary":"%s"}`, longSummary))
 		if err != nil {
 			t.Fatalf("expected long summary to be truncated, got error: %v", err)
 		}
-		if len([]rune(parsed.Summary)) != defaultMaxSummaryRunes {
-			t.Fatalf("expected truncated summary length %d, got %d", defaultMaxSummaryRunes, len([]rune(parsed.Summary)))
+		if got := len([]rune(parsed.Summary)); got > defaultMaxSummaryRunes {
+			t.Fatalf("expected truncated summary length <= %d, got %d", defaultMaxSummaryRunes, got)
+		}
+		if !strings.HasSuffix(parsed.Summary, "...") {
+			t.Fatalf("expected normalized truncation with ellipsis, got %q", parsed.Summary)
+		}
+		if strings.Contains(parsed.Summary, "\n") {
+			t.Fatalf("expected normalized summary to remove newlines, got %q", parsed.Summary)
+		}
+	})
+
+	t.Run("normalizes summary whitespace", func(t *testing.T) {
+		parsed, err := parseMatchContent(`{"score":0.2,"summary":"  Strong fit\nwith backend API delivery.  "}`)
+		if err != nil {
+			t.Fatalf("expected summary normalization, got error: %v", err)
+		}
+		if parsed.Summary != "Strong fit with backend API delivery." {
+			t.Fatalf("unexpected normalized summary: %q", parsed.Summary)
 		}
 	})
 }
@@ -493,7 +512,10 @@ func TestExtractJSONObjectAndStripCodeFence(t *testing.T) {
 
 func TestPromptAndTokenHelpers(t *testing.T) {
 	systemPrompt := buildMatchSystemPrompt(defaultMaxSummaryRunes)
-	if !strings.Contains(systemPrompt, fmt.Sprintf("at most %d characters", defaultMaxSummaryRunes)) {
+	if !strings.Contains(systemPrompt, "one plain-text sentence") {
+		t.Fatalf("expected system prompt to require one sentence, got %q", systemPrompt)
+	}
+	if !strings.Contains(systemPrompt, fmt.Sprintf("never exceed %d characters", defaultMaxSummaryRunes)) {
 		t.Fatalf("expected system prompt to include summary limit, got %q", systemPrompt)
 	}
 
@@ -520,6 +542,16 @@ func TestPromptAndTokenHelpers(t *testing.T) {
 	}
 	if truncateRunes("abc", 0) != "abc" {
 		t.Fatalf("expected unchanged string for non-positive max")
+	}
+	if normalizeSummary("  concise\nsummary   text ", 80) != "concise summary text" {
+		t.Fatalf("expected normalized summary whitespace")
+	}
+	truncated := normalizeSummary(strings.Repeat("word ", 50), 40)
+	if len([]rune(truncated)) > 40 {
+		t.Fatalf("expected normalized summary length <= 40, got %d", len([]rune(truncated)))
+	}
+	if !strings.HasSuffix(truncated, "...") {
+		t.Fatalf("expected normalized truncation to end with ellipsis, got %q", truncated)
 	}
 }
 

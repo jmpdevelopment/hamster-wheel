@@ -25,7 +25,7 @@ const (
 	defaultRequestTimeout      = 20 * time.Second
 	defaultMaxDescriptionRunes = 1400
 	defaultMaxProfileRunes     = 2000
-	defaultMaxSummaryRunes     = 140
+	defaultMaxSummaryRunes     = 120
 	maxResponseBytes           = 1 << 20 // 1 MiB
 	localRetryDelay            = 250 * time.Millisecond
 )
@@ -42,7 +42,10 @@ var (
 const matchSystemPromptTemplate = "You score job relevance for one candidate query. " +
 	"Return JSON only with keys score and summary. " +
 	"score must be a number between 0 and 1 inclusive. " +
-	"summary must be concise, actionable, and at most %d characters."
+	"summary must be one plain-text sentence that helps a user understand why the score was assigned. " +
+	"Include the strongest fit or mismatch signal in concise wording. " +
+	"Aim for 90-120 characters and never exceed %d characters. " +
+	"No markdown, lists, or newlines."
 
 const validateSystemPrompt = "Return JSON only: {\"ok\": true}."
 
@@ -415,11 +418,10 @@ func parseMatchContent(content string) (parsedMatchContent, error) {
 		return parsedMatchContent{}, fmt.Errorf("%w: score %.4f is outside [0,1]", ErrMalformedResponse, score)
 	}
 
-	summary := strings.TrimSpace(raw.Summary)
+	summary := normalizeSummary(raw.Summary, defaultMaxSummaryRunes)
 	if summary == "" {
 		return parsedMatchContent{}, fmt.Errorf("%w: summary field is empty", ErrMalformedResponse)
 	}
-	summary = truncateRunes(summary, defaultMaxSummaryRunes)
 
 	return parsedMatchContent{
 		Score:   score,
@@ -495,6 +497,35 @@ func truncateRunes(value string, max int) string {
 		return value
 	}
 	return string(runes[:max])
+}
+
+func normalizeSummary(value string, maxRunes int) string {
+	trimmed := strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+	if trimmed == "" {
+		return ""
+	}
+	if maxRunes <= 0 {
+		return trimmed
+	}
+
+	runes := []rune(trimmed)
+	if len(runes) <= maxRunes {
+		return trimmed
+	}
+	if maxRunes <= 3 {
+		return string(runes[:maxRunes])
+	}
+
+	cutoff := maxRunes - 3
+	candidate := strings.TrimSpace(string(runes[:cutoff]))
+	// Prefer whole-word truncation so UI does not show cut-off partial words.
+	if lastSpace := strings.LastIndex(candidate, " "); lastSpace >= cutoff/2 {
+		candidate = strings.TrimSpace(candidate[:lastSpace])
+	}
+	if candidate == "" {
+		candidate = strings.TrimSpace(string(runes[:cutoff]))
+	}
+	return candidate + "..."
 }
 
 func estimatePromptTokens(content string) int {
