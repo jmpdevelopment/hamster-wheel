@@ -435,6 +435,7 @@ func (m *RuntimeManager) waitForReady(ctx context.Context) (Snapshot, error) {
 func (m *RuntimeManager) watchProcess(process Process, waitDone chan struct{}) {
 	err := process.Wait()
 
+	shouldClearManagedState := false
 	m.mu.Lock()
 	if m.process == process {
 		wasStopping := m.stopping
@@ -442,6 +443,7 @@ func (m *RuntimeManager) watchProcess(process Process, waitDone chan struct{}) {
 		m.waitDone = nil
 		m.startedByApp = false
 		m.stopping = false
+		shouldClearManagedState = true
 
 		if err != nil && !wasStopping {
 			m.lastProcessErr = fmt.Errorf("local runtime process exited: %w", err)
@@ -450,7 +452,9 @@ func (m *RuntimeManager) watchProcess(process Process, waitDone chan struct{}) {
 		}
 	}
 	m.mu.Unlock()
-	_ = m.clearManagedState()
+	if shouldClearManagedState {
+		_ = m.clearManagedState()
+	}
 
 	close(waitDone)
 }
