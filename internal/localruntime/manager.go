@@ -263,7 +263,7 @@ func (m *RuntimeManager) Status(ctx context.Context) (Snapshot, error) {
 	}
 	if !installed {
 		snapshot.Status = StatusNotInstalled
-		snapshot.Message = "Install Ollama, open it once, then return to run guided local model setup."
+		snapshot.Message = "Install Ollama, open it once, then return to local model setup."
 		return snapshot, nil
 	}
 

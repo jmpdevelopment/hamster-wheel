@@ -359,7 +359,7 @@ describe("SettingsPanel", () => {
     expect(mockSetLocalRuntimeModel).toHaveBeenCalledWith("llama3.1:8b");
   });
 
-  it("runs guided local setup by starting runtime and downloading llama", async () => {
+  it("starts local runtime from explicit control", async () => {
     mockGetLocalRuntimeStatus.mockResolvedValue({
       status: "stopped",
       message: "",
@@ -373,10 +373,31 @@ describe("SettingsPanel", () => {
     await openTab("LLM Providers");
     await userEvent.click(screen.getByRole("radio", { name: "Local" }));
 
-    await userEvent.click(screen.getByRole("button", { name: "Run guided setup" }));
+    await userEvent.click(screen.getByRole("button", { name: "Start runtime" }));
 
     expect(mockStartLocalRuntime).toHaveBeenCalled();
+    expect(mockPullLocalRuntimeModel).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Run guided setup" })).not.toBeInTheDocument();
+  });
+
+  it("downloads llama from explicit control", async () => {
+    mockGetLocalRuntimeStatus.mockResolvedValue({
+      status: "ready",
+      message: "",
+      startedByApp: true,
+    });
+    mockGetLocalRuntimeModels.mockResolvedValue({
+      installed: [],
+    });
+
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+    await userEvent.click(screen.getByRole("radio", { name: "Local" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Download Llama" }));
+
     expect(mockPullLocalRuntimeModel).toHaveBeenCalledWith("llama3.1:8b");
+    expect(screen.queryByRole("button", { name: "Run guided setup" })).not.toBeInTheDocument();
   });
 
   it("shows in-progress llama download state and disables duplicate download action", async () => {
@@ -414,7 +435,7 @@ describe("SettingsPanel", () => {
   it("shows install action when ollama is missing", async () => {
     mockGetLocalRuntimeStatus.mockResolvedValue({
       status: "not_installed",
-      message: "Install Ollama, open it once, then return to run guided local model setup.",
+      message: "Install Ollama, open it once, then return to local model setup.",
       startedByApp: false,
     });
 

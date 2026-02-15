@@ -48,10 +48,10 @@ Last updated: 2026-02-15
   - `SettingsService`/bindings now expose `llm_mode`, local runtime model settings, and local model catalog/pull operations for UI orchestration.
   - Settings UI now uses progressive disclosure (`Cloud`, `Local`, `Advanced`) so raw base-URL endpoint input is only visible in `Advanced`.
   - Cloud mode save flow resets manual base-URL overrides, preserving endpoint-free defaults for non-technical setup.
-- Phase 2 local guided setup hardening is in place (Llama-only path):
+- Phase 2 local setup hardening is in place (Llama-only path):
   - Local mode now guides users through runtime readiness (`status`/`start`/`stop`) and in-app model pull for `llama3.1:8b`.
   - Local setup shows estimated model download footprint and blocks Local-mode enablement until runtime + model readiness are confirmed.
-  - Local setup instructions now explicitly require opening Ollama once after install before running guided setup.
+  - Local setup instructions now explicitly require opening Ollama once after install before continuing local setup.
   - Local model pull now uses a dedicated long-running request path bounded by pull-timeout settings (avoids short generic health/request timeouts during first download).
   - Local model pull now exposes progress telemetry (`active`, status text, bytes, percent) via `GetLocalRuntimePullProgress`.
   - Settings local panel now restores in-flight download state on reopen, shows progress bar/details, and blocks duplicate Llama download triggers while a pull is active.

@@ -627,33 +627,6 @@ export function SettingsPanel({
     }
   };
 
-  const handleRunLocalSetup = async () => {
-    if (localRuntimeStatus === "not_installed") {
-      onError("Install Ollama, open it once, then run local setup.");
-      return;
-    }
-    if (localPullInFlight) {
-      onError(`Download for ${localModelName} is already in progress.`);
-      return;
-    }
-
-    setLocalRuntimeStarting(true);
-    setLocalModelPulling(true);
-    try {
-      await StartLocalRuntime();
-      await PullLocalRuntimeModel(localModelName);
-      await refreshLocalRuntime(false);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("Failed local setup flow:", message);
-      onError(message);
-    } finally {
-      setLocalRuntimeStarting(false);
-      setLocalModelPulling(false);
-      await refreshLocalPullProgress(false);
-    }
-  };
-
   const handleSaveAdvancedConfig = async () => {
     const trimmedModel = llmModel.trim();
     if (!trimmedModel) {
@@ -1066,10 +1039,13 @@ export function SettingsPanel({
                 Local Configuration
               </h3>
               <p className="text-xs text-hw-text-muted mb-2">
-                Guided local setup uses Ollama + {localModelName}.
+                Local setup uses Ollama + {localModelName}.
               </p>
               <p className="text-xs text-hw-text-muted mb-2">
                 After installing Ollama, open it once so the local runtime is available.
+              </p>
+              <p className="text-xs text-hw-text-muted mb-2">
+                Step 1: Start runtime. Step 2: Download Llama.
               </p>
               <div className="space-y-3">
                 <div>
@@ -1192,26 +1168,14 @@ export function SettingsPanel({
                   )}
                   {localRuntimeStatus === "ready" &&
                     (!localModelInstalled || localPullInFlight) && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={handlePullLocalModel}
-                      loading={localPullInFlight}
-                      disabled={localPullInFlight || localModelInstalled}
-                    >
-                      {localPullInFlight ? "Downloading Llama..." : "Download Llama"}
-                    </Button>
-                    )}
-                  {localRuntimeStatus !== "not_installed" &&
-                    (!localRuntimeReady || !localModelInstalled) && (
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={handleRunLocalSetup}
-                        loading={localRuntimeStarting || localPullInFlight}
-                        disabled={localPullInFlight}
+                        onClick={handlePullLocalModel}
+                        loading={localPullInFlight}
+                        disabled={localPullInFlight || localModelInstalled}
                       >
-                        Run guided setup
+                        {localPullInFlight ? "Downloading Llama..." : "Download Llama"}
                       </Button>
                     )}
                 </div>
