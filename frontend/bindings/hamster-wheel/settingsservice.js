@@ -112,14 +112,6 @@ export function GetKeyboardShortcuts() {
 }
 
 /**
- * GetLLMBaseURL returns the configured provider base URL for OpenAI-compatible endpoints.
- * @returns {$CancellablePromise<string>}
- */
-export function GetLLMBaseURL() {
-    return $Call.ByID(4001770595);
-}
-
-/**
  * GetLLMMode returns the configured LLM operation mode.
  * Empty string falls back to default mode.
  * @returns {$CancellablePromise<string>}
@@ -329,16 +321,6 @@ export function SetJobRetentionDays(days) {
  */
 export function SetKeyboardShortcuts(enabled) {
     return $Call.ByID(248813052, enabled);
-}
-
-/**
- * SetLLMBaseURL saves the provider base URL.
- * Empty value resets to provider default endpoint behavior.
- * @param {string} baseURL
- * @returns {$CancellablePromise<void>}
- */
-export function SetLLMBaseURL(baseURL) {
-    return $Call.ByID(3179678031, baseURL);
 }
 
 /**

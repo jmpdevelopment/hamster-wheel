@@ -833,7 +833,7 @@ func TestLLMModeDefaultsAndLifecycle(t *testing.T) {
 		t.Fatalf("expected default llm mode %q, got %q", defaultLLMMode, mode)
 	}
 
-	for _, valid := range []string{"cloud", "local", "advanced"} {
+	for _, valid := range []string{"cloud", "local"} {
 		if err := svc.SetLLMMode(valid); err != nil {
 			t.Fatalf("setting llm mode %q: %v", valid, err)
 		}
@@ -848,6 +848,17 @@ func TestLLMModeDefaultsAndLifecycle(t *testing.T) {
 
 	if err := svc.SetLLMMode("experimental"); err == nil {
 		t.Fatal("expected validation error for invalid llm mode")
+	}
+
+	if err := database.SetSetting(context.Background(), settingLLMMode, "advanced"); err != nil {
+		t.Fatalf("seeding invalid llm mode value: %v", err)
+	}
+	mode, err = svc.GetLLMMode()
+	if err != nil {
+		t.Fatalf("getting llm mode fallback: %v", err)
+	}
+	if mode != defaultLLMMode {
+		t.Fatalf("expected invalid llm mode to fallback to %q, got %q", defaultLLMMode, mode)
 	}
 }
 
@@ -1301,65 +1312,6 @@ func TestAutoMatchSettingsDatabaseErrors(t *testing.T) {
 	}
 	if err := svc.SetAutoMatchLimit(10); err == nil {
 		t.Fatal("expected SetAutoMatchLimit to fail on closed DB")
-	}
-}
-
-func TestLLMBaseURLLifecycleAndValidation(t *testing.T) {
-	database := openSettingsTestDB(t)
-	kc := keychain.NewMemoryStore()
-	reedAdapter := reed.New("")
-	svc := NewSettingsService(database, kc, reedAdapter)
-
-	baseURL, err := svc.GetLLMBaseURL()
-	if err != nil {
-		t.Fatalf("getting default llm base url: %v", err)
-	}
-	if baseURL != "" {
-		t.Fatalf("expected empty default base url, got %q", baseURL)
-	}
-
-	if err := svc.SetLLMBaseURL("https://api.openai.com/v1"); err != nil {
-		t.Fatalf("setting llm base url: %v", err)
-	}
-	baseURL, err = svc.GetLLMBaseURL()
-	if err != nil {
-		t.Fatalf("getting llm base url after set: %v", err)
-	}
-	if baseURL != "https://api.openai.com/v1" {
-		t.Fatalf("expected base url https://api.openai.com/v1, got %q", baseURL)
-	}
-
-	if err := svc.SetLLMBaseURL(""); err != nil {
-		t.Fatalf("clearing llm base url via empty value: %v", err)
-	}
-	baseURL, err = svc.GetLLMBaseURL()
-	if err != nil {
-		t.Fatalf("getting llm base url after clear: %v", err)
-	}
-	if baseURL != "" {
-		t.Fatalf("expected empty base url after clear, got %q", baseURL)
-	}
-
-	if err := svc.SetLLMBaseURL("not-a-url"); err == nil {
-		t.Fatal("expected validation error for invalid base url")
-	}
-}
-
-func TestLLMBaseURLDatabaseErrors(t *testing.T) {
-	database := openSettingsTestDB(t)
-	kc := keychain.NewMemoryStore()
-	reedAdapter := reed.New("")
-	svc := NewSettingsService(database, kc, reedAdapter)
-
-	if err := database.Close(); err != nil {
-		t.Fatalf("closing DB: %v", err)
-	}
-
-	if _, err := svc.GetLLMBaseURL(); err == nil {
-		t.Fatal("expected GetLLMBaseURL to fail on closed DB")
-	}
-	if err := svc.SetLLMBaseURL("https://example.com/v1"); err == nil {
-		t.Fatal("expected SetLLMBaseURL to fail on closed DB")
 	}
 }
 

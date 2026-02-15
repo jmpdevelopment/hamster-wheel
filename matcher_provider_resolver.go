@@ -118,15 +118,6 @@ func newMatcherProviderResolver(
 				model = envOpenAIModel
 			}
 
-			baseURL, err := database.GetSetting(ctx, settingLLMBaseURL)
-			if err != nil {
-				return providerName, nil, fmt.Errorf("loading llm base url setting: %w", err)
-			}
-			baseURL = strings.TrimSpace(baseURL)
-			if baseURL == "" {
-				baseURL = envOpenAIBaseURL
-			}
-
 			openAIKey, err := keychainStore.Get(settingOpenAIAPIKey)
 			if err != nil {
 				slog.Error("failed to load OpenAI API key from keychain", "error", err)
@@ -139,7 +130,7 @@ func newMatcherProviderResolver(
 			return providerName, openai.New(openai.Config{
 				APIKey:  openAIKey,
 				Model:   model,
-				BaseURL: baseURL,
+				BaseURL: envOpenAIBaseURL,
 			}), nil
 		default:
 			provider, ok := providers.Get(providerName)

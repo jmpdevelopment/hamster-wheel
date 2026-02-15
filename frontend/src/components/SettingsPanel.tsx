@@ -10,11 +10,9 @@ import {
   GetAutoPollingEnabled,
   GetCVPath,
   GetJobRetentionDays,
-  GetLLMBaseURL,
   GetLLMMode,
   GetLLMModel,
   GetPollIntervalMinutes,
-  GetLLMProvider,
   GetLocalRuntimeModels,
   GetLocalRuntimeModel,
   GetLocalRuntimePullProgress,
@@ -24,7 +22,6 @@ import {
   PullLocalRuntimeModel,
   SetCVPath,
   SetKeyboardShortcuts,
-  SetLLMBaseURL,
   SetLLMMode,
   SetLLMModel,
   SetPollIntervalMinutes,
@@ -76,11 +73,6 @@ const themeOptions: { value: ThemePreference; label: string }[] = [
   { value: "light", label: "Light" },
 ];
 
-const llmProviderOptions = [
-  { value: "openai", label: "OpenAI" },
-  { value: "heuristic_v1", label: "Heuristic (Local)" },
-];
-
 const cloudModelOptions = [
   { value: "gpt-4o-mini", label: "gpt-4o-mini" },
   { value: "gpt-4o", label: "gpt-4o" },
@@ -88,15 +80,7 @@ const cloudModelOptions = [
   { value: "gpt-4.1", label: "gpt-4.1" },
 ];
 
-const llmModelOptionsByProvider: Record<
-  string,
-  { value: string; label: string }[]
-> = {
-  openai: cloudModelOptions,
-  heuristic_v1: [{ value: "heuristic_v1", label: "heuristic_v1" }],
-};
-
-type LLMMode = "cloud" | "local" | "advanced";
+type LLMMode = "cloud" | "local";
 
 const localModelName = "llama3.1:8b";
 const localModelEstimatedBytes = 4_900_000_000;
@@ -174,9 +158,7 @@ export function SettingsPanel({
   const [hasOpenAIKey, setHasOpenAIKey] = useState(false);
 
   const [llmMode, setLLMModeState] = useState<LLMMode>("cloud");
-  const [llmProvider, setLLMProviderState] = useState("openai");
   const [llmModel, setLLMModelState] = useState("gpt-4o-mini");
-  const [llmBaseURL, setLLMBaseURLState] = useState("");
   const [localRuntimeModel, setLocalRuntimeModelState] = useState(localModelName);
   const [localRuntimeStatus, setLocalRuntimeStatus] = useState("unknown");
   const [localRuntimeMessage, setLocalRuntimeMessage] = useState("");
@@ -337,7 +319,7 @@ export function SettingsPanel({
       try {
         const mode = await GetLLMMode();
         if (!cancelled) {
-          if (mode === "cloud" || mode === "local" || mode === "advanced") {
+          if (mode === "cloud" || mode === "local") {
             setLLMModeState(mode);
           } else {
             setLLMModeState("cloud");
@@ -348,39 +330,12 @@ export function SettingsPanel({
       }
 
       try {
-        const provider = await GetLLMProvider();
-        if (!cancelled) {
-          if (
-            Object.prototype.hasOwnProperty.call(
-              llmModelOptionsByProvider,
-              provider
-            )
-          ) {
-            setLLMProviderState(provider);
-          } else {
-            setLLMProviderState("openai");
-          }
-        }
-      } catch (err: unknown) {
-        reportError("Failed to load LLM provider:", err);
-      }
-
-      try {
         const model = await GetLLMModel();
         if (!cancelled) {
           setLLMModelState(model || "gpt-4o-mini");
         }
       } catch (err: unknown) {
         reportError("Failed to load LLM model:", err);
-      }
-
-      try {
-        const baseURL = await GetLLMBaseURL();
-        if (!cancelled) {
-          setLLMBaseURLState(baseURL || "");
-        }
-      } catch (err: unknown) {
-        reportError("Failed to load LLM base URL:", err);
       }
 
       try {
@@ -704,11 +659,8 @@ export function SettingsPanel({
       await SetLLMMode("cloud");
       await SetLLMProvider("openai");
       await SetLLMModel(trimmedModel);
-      await SetLLMBaseURL("");
       setLLMModeState("cloud");
-      setLLMProviderState("openai");
       setLLMModelState(trimmedModel);
-      setLLMBaseURLState("");
       setTimedSavedState(setLLMConfigSaved, llmSavedTimeoutRef);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -796,35 +748,6 @@ export function SettingsPanel({
     } finally {
       setLocalModelPulling(false);
       await refreshLocalPullProgress(false);
-    }
-  };
-
-  const handleSaveAdvancedConfig = async () => {
-    const trimmedModel = llmModel.trim();
-    if (!trimmedModel) {
-      onError("LLM model is required");
-      return;
-    }
-
-    const trimmedBaseURL = llmBaseURL.trim();
-
-    setLLMConfigSaving(true);
-    setLLMConfigSaved(false);
-    try {
-      await SetLLMMode("advanced");
-      await SetLLMProvider(llmProvider);
-      await SetLLMModel(trimmedModel);
-      await SetLLMBaseURL(trimmedBaseURL);
-      setLLMModeState("advanced");
-      setLLMModelState(trimmedModel);
-      setLLMBaseURLState(trimmedBaseURL);
-      setTimedSavedState(setLLMConfigSaved, llmSavedTimeoutRef);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("Failed to save advanced LLM settings:", message);
-      onError(message);
-    } finally {
-      setLLMConfigSaving(false);
     }
   };
 
@@ -1527,8 +1450,7 @@ export function SettingsPanel({
               Matching Mode
             </h3>
             <p className="text-xs text-hw-text-muted mb-2">
-              Cloud and Local are guided modes. Advanced exposes manual endpoint
-              settings.
+              Cloud and Local are guided modes.
             </p>
             <p className="text-xs text-hw-text-muted mb-2">
               Configuring an LLM provider is optional, but highly recommended for
@@ -1537,12 +1459,11 @@ export function SettingsPanel({
             <div
               role="radiogroup"
               aria-label="LLM Mode"
-              className="grid grid-cols-3 gap-2"
+              className="grid grid-cols-2 gap-2"
             >
               {[
                 { value: "cloud", label: "Cloud" },
                 { value: "local", label: "Local" },
-                { value: "advanced", label: "Advanced" },
               ].map((modeOption) => (
                 <button
                   key={modeOption.value}
@@ -1811,105 +1732,7 @@ export function SettingsPanel({
             </section>
           )}
 
-          {llmMode === "advanced" && (
-            <section>
-              <h3 className="text-sm font-semibold text-hw-text mb-2">
-                Advanced Configuration
-              </h3>
-              <p className="text-xs text-hw-text-muted mb-2">
-                Manual OpenAI-compatible endpoint and model overrides.
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label
-                    htmlFor="advanced-llm-provider"
-                    className="block text-xs text-hw-text-muted mb-1"
-                  >
-                    Active provider
-                  </label>
-                  <select
-                    id="advanced-llm-provider"
-                    aria-label="LLM Provider"
-                    value={llmProvider}
-                    onChange={(e) => {
-                      const nextProvider = e.target.value;
-                      const nextModelOptions =
-                        llmModelOptionsByProvider[nextProvider] ??
-                        llmModelOptionsByProvider.openai;
-                      setLLMProviderState(nextProvider);
-                      if (!llmModel.trim()) {
-                        setLLMModelState(nextModelOptions[0].value);
-                      }
-                      setLLMConfigSaved(false);
-                    }}
-                    className={selectClasses}
-                  >
-                    {llmProviderOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="advanced-llm-model"
-                    className="block text-xs text-hw-text-muted mb-1"
-                  >
-                    Model
-                  </label>
-                  <Input
-                    id="advanced-llm-model"
-                    type="text"
-                    size="sm"
-                    value={llmModel}
-                    onChange={(e) => {
-                      setLLMModelState(e.target.value);
-                      setLLMConfigSaved(false);
-                    }}
-                    placeholder="gpt-4o-mini"
-                    aria-label="LLM Model"
-                  />
-                </div>
-
-                {llmProvider === "openai" && (
-                  <div>
-                    <label
-                      htmlFor="advanced-llm-base-url"
-                      className="block text-xs text-hw-text-muted mb-1"
-                    >
-                      Base URL (optional)
-                    </label>
-                    <Input
-                      id="advanced-llm-base-url"
-                      type="text"
-                      size="sm"
-                      value={llmBaseURL}
-                      onChange={(e) => {
-                        setLLMBaseURLState(e.target.value);
-                        setLLMConfigSaved(false);
-                      }}
-                      placeholder="https://api.openai.com"
-                      aria-label="LLM Base URL"
-                    />
-                  </div>
-                )}
-
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSaveAdvancedConfig}
-                  loading={llmConfigSaving}
-                >
-                  {llmConfigSaved ? "Saved" : "Save advanced settings"}
-                </Button>
-              </div>
-            </section>
-          )}
-
-          {(llmMode === "cloud" ||
-            (llmMode === "advanced" && llmProvider === "openai")) && (
+          {llmMode === "cloud" && (
             <section>
               <h3 className="text-sm font-semibold text-hw-text mb-2">
                 OpenAI API Key

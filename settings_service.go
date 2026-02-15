@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -30,7 +29,6 @@ const (
 	settingLLMMode             = "llm_mode"
 	settingLLMProvider         = "llm_provider"
 	settingLLMModel            = "llm_model"
-	settingLLMBaseURL          = "llm_base_url"
 	settingLocalRuntimeEngine  = "local_runtime_engine"
 	settingLocalRuntimeModel   = "local_runtime_model"
 	settingAutoPollingEnabled  = "auto_poll_enabled"
@@ -412,16 +410,22 @@ func (s *SettingsService) GetLLMMode() (string, error) {
 	if mode == "" {
 		return defaultLLMMode, nil
 	}
-	return mode, nil
+	switch mode {
+	case "cloud", "local":
+		return mode, nil
+	default:
+		slog.Warn("invalid llm mode setting value, using default", "value", mode)
+		return defaultLLMMode, nil
+	}
 }
 
 // SetLLMMode saves the configured LLM operation mode.
 func (s *SettingsService) SetLLMMode(mode string) error {
 	mode = strings.TrimSpace(mode)
 	switch mode {
-	case "cloud", "local", "advanced":
+	case "cloud", "local":
 	default:
-		return fmt.Errorf("invalid llm mode %q: must be cloud, local, or advanced", mode)
+		return fmt.Errorf("invalid llm mode %q: must be cloud or local", mode)
 	}
 	if err := s.db.SetSetting(context.Background(), settingLLMMode, mode); err != nil {
 		return fmt.Errorf("setting llm mode: %w", err)
@@ -484,33 +488,6 @@ func (s *SettingsService) SetLLMModel(model string) error {
 		return fmt.Errorf("setting llm model: %w", err)
 	}
 	slog.Info("llm model updated", "model", model)
-	return nil
-}
-
-// GetLLMBaseURL returns the configured provider base URL for OpenAI-compatible endpoints.
-func (s *SettingsService) GetLLMBaseURL() (string, error) {
-	baseURL, err := s.db.GetSetting(context.Background(), settingLLMBaseURL)
-	if err != nil {
-		return "", fmt.Errorf("getting llm base url setting: %w", err)
-	}
-	return strings.TrimSpace(baseURL), nil
-}
-
-// SetLLMBaseURL saves the provider base URL.
-// Empty value resets to provider default endpoint behavior.
-func (s *SettingsService) SetLLMBaseURL(baseURL string) error {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL != "" {
-		parsed, err := url.ParseRequestURI(baseURL)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			return fmt.Errorf("invalid llm base url %q", baseURL)
-		}
-	}
-
-	if err := s.db.SetSetting(context.Background(), settingLLMBaseURL, baseURL); err != nil {
-		return fmt.Errorf("setting llm base url: %w", err)
-	}
-	slog.Info("llm base url updated", "has_value", baseURL != "")
 	return nil
 }
 

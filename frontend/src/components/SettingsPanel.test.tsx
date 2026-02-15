@@ -26,12 +26,9 @@ const mockApplyPollingPaused = vi.fn();
 const mockApplyPollingIntervalMinutes = vi.fn();
 const mockGetLLMMode = vi.fn();
 const mockSetLLMMode = vi.fn();
-const mockGetLLMProvider = vi.fn();
 const mockSetLLMProvider = vi.fn();
 const mockGetLLMModel = vi.fn();
 const mockSetLLMModel = vi.fn();
-const mockGetLLMBaseURL = vi.fn();
-const mockSetLLMBaseURL = vi.fn();
 const mockGetLocalRuntimeStatus = vi.fn();
 const mockGetLocalRuntimeModels = vi.fn();
 const mockGetLocalRuntimeModel = vi.fn();
@@ -78,12 +75,9 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   SetAutoMatchLimit: (...args: unknown[]) => mockSetAutoMatchLimit(...args),
   GetLLMMode: (...args: unknown[]) => mockGetLLMMode(...args),
   SetLLMMode: (...args: unknown[]) => mockSetLLMMode(...args),
-  GetLLMProvider: (...args: unknown[]) => mockGetLLMProvider(...args),
   SetLLMProvider: (...args: unknown[]) => mockSetLLMProvider(...args),
   GetLLMModel: (...args: unknown[]) => mockGetLLMModel(...args),
   SetLLMModel: (...args: unknown[]) => mockSetLLMModel(...args),
-  GetLLMBaseURL: (...args: unknown[]) => mockGetLLMBaseURL(...args),
-  SetLLMBaseURL: (...args: unknown[]) => mockSetLLMBaseURL(...args),
   GetLocalRuntimeStatus: (...args: unknown[]) =>
     mockGetLocalRuntimeStatus(...args),
   GetLocalRuntimeModels: (...args: unknown[]) =>
@@ -157,12 +151,9 @@ beforeEach(() => {
   mockApplyPollingIntervalMinutes.mockResolvedValue(undefined);
   mockGetLLMMode.mockResolvedValue("cloud");
   mockSetLLMMode.mockResolvedValue(undefined);
-  mockGetLLMProvider.mockResolvedValue("openai");
   mockSetLLMProvider.mockResolvedValue(undefined);
   mockGetLLMModel.mockResolvedValue("gpt-4o-mini");
   mockSetLLMModel.mockResolvedValue(undefined);
-  mockGetLLMBaseURL.mockResolvedValue("");
-  mockSetLLMBaseURL.mockResolvedValue(undefined);
   mockGetLocalRuntimeStatus.mockResolvedValue({
     status: "ready",
     message: "",
@@ -513,7 +504,7 @@ describe("SettingsPanel", () => {
     expect(mockSetJobRetentionDays).not.toHaveBeenCalled();
   });
 
-  it("loads cloud mode by default and hides advanced endpoint fields", async () => {
+  it("loads cloud mode by default", async () => {
     mockHasOpenAIAPIKey.mockResolvedValue(true);
     render(<SettingsPanel {...defaultProps} />);
     await openTab("LLM Providers");
@@ -573,24 +564,17 @@ describe("SettingsPanel", () => {
     expect(mockSetAutoMatchLimit).not.toHaveBeenCalled();
   });
 
-  it("switches mode sections and gates base url to advanced only", async () => {
+  it("switches mode sections between cloud and local", async () => {
     render(<SettingsPanel {...defaultProps} />);
     await openTab("LLM Providers");
 
     await userEvent.click(screen.getByRole("radio", { name: "Local" }));
     expect(screen.getByLabelText("Local Runtime Model")).toBeInTheDocument();
     expect(screen.queryByLabelText("OpenAI API Key")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("LLM Base URL")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("radio", { name: "Advanced" }));
-    expect(screen.getByLabelText("LLM Provider")).toBeInTheDocument();
-    expect(screen.getByLabelText("LLM Model")).toBeInTheDocument();
-    expect(screen.getByLabelText("LLM Base URL")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Cloud" }));
+    expect(screen.getByLabelText("Cloud LLM Model")).toBeInTheDocument();
     expect(screen.getByLabelText("OpenAI API Key")).toBeInTheDocument();
-
-    await userEvent.selectOptions(screen.getByLabelText("LLM Provider"), "heuristic_v1");
-    expect(screen.queryByLabelText("LLM Base URL")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("OpenAI API Key")).not.toBeInTheDocument();
   });
 
   it("saves cloud mode settings", async () => {
@@ -605,7 +589,6 @@ describe("SettingsPanel", () => {
     expect(mockSetLLMMode).toHaveBeenCalledWith("cloud");
     expect(mockSetLLMProvider).toHaveBeenCalledWith("openai");
     expect(mockSetLLMModel).toHaveBeenCalledWith("gpt-4o");
-    expect(mockSetLLMBaseURL).toHaveBeenCalledWith("");
   });
 
   it("saves local mode settings", async () => {
@@ -750,28 +733,6 @@ describe("SettingsPanel", () => {
     expect(mockOpenURL).toHaveBeenCalledWith("https://ollama.com/download");
   });
 
-  it("saves advanced mode settings", async () => {
-    render(<SettingsPanel {...defaultProps} />);
-    await openTab("LLM Providers");
-
-    await userEvent.click(screen.getByRole("radio", { name: "Advanced" }));
-    await userEvent.selectOptions(screen.getByLabelText("LLM Provider"), "openai");
-    await userEvent.clear(screen.getByLabelText("LLM Model"));
-    await userEvent.type(screen.getByLabelText("LLM Model"), "custom-model");
-    await userEvent.type(
-      screen.getByLabelText("LLM Base URL"),
-      "https://gateway.example/v1"
-    );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Save advanced settings" })
-    );
-
-    expect(mockSetLLMMode).toHaveBeenCalledWith("advanced");
-    expect(mockSetLLMProvider).toHaveBeenCalledWith("openai");
-    expect(mockSetLLMModel).toHaveBeenCalledWith("custom-model");
-    expect(mockSetLLMBaseURL).toHaveBeenCalledWith("https://gateway.example/v1");
-  });
-
   it("loads, browses, saves, and clears CV path", async () => {
     mockGetCVPath.mockResolvedValue("/tmp/cv.txt");
     mockOpenFile.mockResolvedValue("/tmp/next-cv.txt");
@@ -827,12 +788,12 @@ describe("SettingsPanel", () => {
     expect(mockOpenURL).toHaveBeenCalledWith("https://platform.openai.com/api-keys");
   });
 
-  it("reports load errors from provider settings", async () => {
-    mockGetLLMProvider.mockRejectedValue(new Error("provider load failed"));
+  it("reports load errors from LLM mode settings", async () => {
+    mockGetLLMMode.mockRejectedValue(new Error("mode load failed"));
     render(<SettingsPanel {...defaultProps} />);
 
     await waitFor(() => {
-      expect(defaultProps.onError).toHaveBeenCalledWith("provider load failed");
+      expect(defaultProps.onError).toHaveBeenCalledWith("mode load failed");
     });
   });
 
