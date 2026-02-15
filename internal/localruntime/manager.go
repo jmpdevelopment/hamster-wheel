@@ -984,25 +984,6 @@ func (m *RuntimeManager) readManagedState() (managedProcessState, error) {
 	return state, nil
 }
 
-func processLooksLikeBinary(pid int, binary string) bool {
-	if pid <= 0 {
-		return false
-	}
-	output, err := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "command=").Output()
-	if err != nil {
-		return false
-	}
-	commandLine := strings.ToLower(strings.TrimSpace(string(output)))
-	if commandLine == "" {
-		return false
-	}
-	base := strings.ToLower(filepath.Base(strings.TrimSpace(binary)))
-	if base == "" {
-		base = defaultBinary
-	}
-	return strings.Contains(commandLine, base)
-}
-
 type noopManager struct{}
 
 func (noopManager) Status(context.Context) (Snapshot, error) {

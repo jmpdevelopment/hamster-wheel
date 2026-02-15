@@ -3,8 +3,12 @@
 package localruntime
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -39,4 +43,26 @@ func isProcessAlive(pid int) bool {
 	}
 	err := syscall.Kill(pid, 0)
 	return err == nil || err == syscall.EPERM
+}
+
+func processLooksLikeBinary(pid int, binary string) bool {
+	if pid <= 0 {
+		return false
+	}
+	output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
+	if err != nil {
+		return false
+	}
+	commandLine := strings.ToLower(strings.TrimSpace(string(output)))
+	if commandLine == "" {
+		return false
+	}
+	base := strings.ToLower(filepath.Base(strings.TrimSpace(binary)))
+	if base == "" {
+		base = defaultBinary
+	}
+	if strings.Contains(commandLine, base) {
+		return true
+	}
+	return strings.Contains(commandLine, fmt.Sprintf("/%s", base))
 }
