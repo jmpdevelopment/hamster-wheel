@@ -537,6 +537,81 @@ func TestKeyboardShortcutsDatabaseErrors(t *testing.T) {
 	}
 }
 
+func TestFirstRunCompleteLifecycleAndDefaults(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	current, err := svc.GetFirstRunComplete()
+	if err != nil {
+		t.Fatalf("reading default first run complete setting: %v", err)
+	}
+	if current {
+		t.Fatal("expected default first run complete=false")
+	}
+
+	if err := svc.SetFirstRunComplete(true); err != nil {
+		t.Fatalf("setting first run complete=true: %v", err)
+	}
+	current, err = svc.GetFirstRunComplete()
+	if err != nil {
+		t.Fatalf("reading first run complete after true: %v", err)
+	}
+	if !current {
+		t.Fatal("expected first run complete=true after set")
+	}
+
+	if err := svc.SetFirstRunComplete(false); err != nil {
+		t.Fatalf("setting first run complete=false: %v", err)
+	}
+	current, err = svc.GetFirstRunComplete()
+	if err != nil {
+		t.Fatalf("reading first run complete after false: %v", err)
+	}
+	if current {
+		t.Fatal("expected first run complete=false after reset")
+	}
+
+	if err := database.SetSetting(context.Background(), settingFirstRunComplete, "invalid"); err != nil {
+		t.Fatalf("injecting invalid first run complete setting: %v", err)
+	}
+	current, err = svc.GetFirstRunComplete()
+	if err != nil {
+		t.Fatalf("reading invalid first run complete setting: %v", err)
+	}
+	if current {
+		t.Fatal("expected invalid first run complete value to fall back to false")
+	}
+}
+
+func TestFirstRunCompleteDatabaseErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	_, err := svc.GetFirstRunComplete()
+	if err == nil {
+		t.Fatal("expected GetFirstRunComplete to fail on closed DB")
+	}
+	if !strings.Contains(err.Error(), "getting first run complete setting") {
+		t.Fatalf("expected get-setting context, got %v", err)
+	}
+
+	err = svc.SetFirstRunComplete(true)
+	if err == nil {
+		t.Fatal("expected SetFirstRunComplete to fail on closed DB")
+	}
+	if !strings.Contains(err.Error(), "setting first run complete") {
+		t.Fatalf("expected set-setting context, got %v", err)
+	}
+}
+
 func TestJobListPreferencesDefaultsAndLifecycle(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()

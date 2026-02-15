@@ -58,6 +58,8 @@ interface SettingsPanelProps {
   onError: (msg: string) => void;
   keyboardShortcuts: boolean;
   onSetKeyboardShortcuts: (enabled: boolean) => void;
+  mode?: "panel" | "wizard";
+  onCompleteSetup?: () => void;
 }
 
 type SettingsTab = "interface" | "jobs-providers" | "llm-providers";
@@ -146,7 +148,10 @@ export function SettingsPanel({
   onError,
   keyboardShortcuts,
   onSetKeyboardShortcuts,
+  mode = "panel",
+  onCompleteSetup,
 }: SettingsPanelProps) {
+  const isWizard = mode === "wizard";
   const [activeTab, setActiveTab] = useState<SettingsTab>("interface");
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false);
 
@@ -550,6 +555,9 @@ export function SettingsPanel({
     localPullProgress.totalBytes > 0
       ? `${formatBytes(localPullProgress.completedBytes)} / ${formatBytes(localPullProgress.totalBytes)}`
       : "";
+  const wizardSteps: SettingsTab[] = ["interface", "jobs-providers", "llm-providers"];
+  const wizardStepIndex = wizardSteps.indexOf(activeTab);
+  const isWizardFinalStep = activeTab === "llm-providers";
 
   const handleSetKeyboardShortcuts = async (enabled: boolean) => {
     try {
@@ -820,7 +828,7 @@ export function SettingsPanel({
     }
   };
 
-  const handleSaveAutoPollingSettings = async () => {
+  const handleSaveAutoPollingSettings = async (): Promise<boolean> => {
     const trimmedMinutes = pollIntervalMinutes.trim();
     const parsedMinutes = Number(trimmedMinutes);
     if (
@@ -832,7 +840,7 @@ export function SettingsPanel({
       onError(
         `Polling interval must be a whole number between ${minPollingIntervalMinutes} and ${maxPollingIntervalMinutes} minutes.`
       );
-      return;
+      return false;
     }
     const trimmedRetentionDays = jobRetentionDays.trim();
     const parsedRetentionDays = Number(trimmedRetentionDays);
@@ -845,7 +853,7 @@ export function SettingsPanel({
       onError(
         `Job retention days must be a whole number between ${minJobRetentionDays} and ${maxJobRetentionDays}.`
       );
-      return;
+      return false;
     }
 
     setAutoPollingSaving(true);
@@ -859,10 +867,12 @@ export function SettingsPanel({
       setPollIntervalMinutesState(String(parsedMinutes));
       setJobRetentionDaysState(String(parsedRetentionDays));
       setTimedSavedState(setAutoPollingSaved, autoPollingSavedTimeoutRef);
+      return true;
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       console.error("Failed to save auto polling settings:", message);
       onError(message);
+      return false;
     } finally {
       setAutoPollingSaving(false);
     }
@@ -956,6 +966,45 @@ export function SettingsPanel({
     }
   };
 
+  const handleWizardBack = () => {
+    if (!isWizard) {
+      return;
+    }
+    if (activeTab === "llm-providers") {
+      setActiveTab("jobs-providers");
+      return;
+    }
+    if (activeTab === "jobs-providers") {
+      setActiveTab("interface");
+    }
+  };
+
+  const handleWizardContinue = async () => {
+    if (!isWizard) {
+      return;
+    }
+
+    if (activeTab === "interface") {
+      setActiveTab("jobs-providers");
+      return;
+    }
+
+    if (activeTab === "jobs-providers") {
+      if (!hasReedKey && !hasAdzunaCredentials) {
+        onError("Configure at least one job provider before continuing.");
+        return;
+      }
+      const saved = await handleSaveAutoPollingSettings();
+      if (!saved) {
+        return;
+      }
+      setActiveTab("llm-providers");
+      return;
+    }
+
+    onCompleteSetup?.();
+  };
+
   const effectiveCloudModelOptions =
     cloudModelOptions.some((option) => option.value === llmModel) || !llmModel.trim()
       ? cloudModelOptions
@@ -963,45 +1012,84 @@ export function SettingsPanel({
 
   return (
     <div
-      className="absolute top-0 right-0 bottom-0 w-[400px] bg-hw-surface border-l border-hw-border shadow-lg z-10 flex flex-col overflow-hidden transition-opacity duration-200"
+      className={
+        isWizard
+          ? "relative w-full max-w-[900px] max-h-[90vh] bg-hw-surface border border-hw-border shadow-lg rounded-lg z-10 flex flex-col overflow-hidden"
+          : "absolute top-0 right-0 bottom-0 w-[400px] bg-hw-surface border-l border-hw-border shadow-lg z-10 flex flex-col overflow-hidden transition-opacity duration-200"
+      }
       role="dialog"
-      aria-label="Settings"
+      aria-label={isWizard ? "Initial setup wizard" : "Settings"}
     >
       <div className="flex items-center justify-between px-4 py-3 border-b border-hw-border shrink-0">
-        <h2 className="text-lg font-bold text-hw-text">Settings</h2>
-        <IconButton aria-label="Close settings" onClick={onClose}>
-          ✕
-        </IconButton>
+        <div>
+          <h2 className="text-lg font-bold text-hw-text">
+            {isWizard ? "Initial Setup" : "Settings"}
+          </h2>
+          {isWizard && (
+            <p className="text-xs text-hw-text-muted mt-1">
+              Complete the required setup to start polling jobs and matching.
+            </p>
+          )}
+        </div>
+        {!isWizard && (
+          <IconButton aria-label="Close settings" onClick={onClose}>
+            ✕
+          </IconButton>
+        )}
       </div>
 
       <div className="shrink-0 px-4 pt-3">
-        <div role="tablist" aria-label="Settings sections" className="flex gap-2">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              id={`settings-tab-${tab.id}`}
-              aria-controls={`settings-panel-${tab.id}`}
-              aria-selected={activeTab === tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded px-3 py-1.5 text-xs font-medium border transition-colors duration-150 ${
-                activeTab === tab.id
-                  ? "bg-hw-accent border-hw-accent text-white"
-                  : "bg-hw-bg border-hw-border text-hw-text hover:bg-hw-surface-hover"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        {isWizard ? (
+          <div className="space-y-2">
+            <p className="text-xs text-hw-text-muted">
+              Step {wizardStepIndex + 1} of {wizardSteps.length}
+            </p>
+            <div className="flex gap-2">
+              {tabs.map((tab, index) => (
+                <div
+                  key={tab.id}
+                  className={`rounded px-3 py-1.5 text-xs font-medium border ${
+                    activeTab === tab.id
+                      ? "bg-hw-accent border-hw-accent text-white"
+                      : index < wizardStepIndex
+                        ? "bg-hw-surface-hover border-hw-border text-hw-text"
+                        : "bg-hw-bg border-hw-border text-hw-text-muted"
+                  }`}
+                >
+                  {tab.label}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div role="tablist" aria-label="Settings sections" className="flex gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`settings-tab-${tab.id}`}
+                aria-controls={`settings-panel-${tab.id}`}
+                aria-selected={activeTab === tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`rounded px-3 py-1.5 text-xs font-medium border transition-colors duration-150 ${
+                  activeTab === tab.id
+                    ? "bg-hw-accent border-hw-accent text-white"
+                    : "bg-hw-bg border-hw-border text-hw-text hover:bg-hw-surface-hover"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
         <div
           role="tabpanel"
           id="settings-panel-interface"
-          aria-labelledby="settings-tab-interface"
+          aria-labelledby={isWizard ? undefined : "settings-tab-interface"}
           hidden={activeTab !== "interface"}
           className="space-y-6"
         >
@@ -1060,7 +1148,7 @@ export function SettingsPanel({
         <div
           role="tabpanel"
           id="settings-panel-jobs-providers"
-          aria-labelledby="settings-tab-jobs-providers"
+          aria-labelledby={isWizard ? undefined : "settings-tab-jobs-providers"}
           hidden={activeTab !== "jobs-providers"}
         >
           <section>
@@ -1305,7 +1393,7 @@ export function SettingsPanel({
         <div
           role="tabpanel"
           id="settings-panel-llm-providers"
-          aria-labelledby="settings-tab-llm-providers"
+          aria-labelledby={isWizard ? undefined : "settings-tab-llm-providers"}
           hidden={activeTab !== "llm-providers"}
           className="space-y-6"
         >
@@ -1442,6 +1530,10 @@ export function SettingsPanel({
               Cloud and Local are guided modes. Advanced exposes manual endpoint
               settings.
             </p>
+            <p className="text-xs text-hw-text-muted mb-2">
+              Configuring an LLM provider is optional, but highly recommended for
+              higher-quality match scoring.
+            </p>
             <div
               role="radiogroup"
               aria-label="LLM Mode"
@@ -1531,6 +1623,11 @@ export function SettingsPanel({
               </p>
               <p className="text-xs text-hw-text-muted mb-2">
                 Step 1: Start runtime. Step 2: Download Llama.
+              </p>
+              <p className="text-xs text-hw-text-muted mb-2">
+                Local Llama setup requires sufficient machine resources. Please
+                confirm your system meets requirements; performance, battery, and
+                hardware impact are your responsibility.
               </p>
               <div className="rounded border border-hw-border bg-hw-bg px-3 py-2">
                 <p className="text-xs font-semibold text-hw-text">
@@ -1817,6 +1914,13 @@ export function SettingsPanel({
               <h3 className="text-sm font-semibold text-hw-text mb-2">
                 OpenAI API Key
               </h3>
+              <div className="rounded border border-hw-border bg-hw-bg px-3 py-2 mb-2">
+                <p className="text-xs text-hw-text-muted">
+                  OpenAI usage is billed by OpenAI. Please ensure your OpenAI
+                  account has available billing credit/funds before enabling cloud
+                  matching. You are responsible for your own usage and costs.
+                </p>
+              </div>
               <div className="flex gap-2">
                 <Input
                   type="password"
@@ -1876,6 +1980,40 @@ export function SettingsPanel({
           )}
         </div>
       </div>
+
+      {isWizard && (
+        <div className="shrink-0 border-t border-hw-border px-4 py-3 flex items-center justify-between gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleWizardBack}
+            disabled={wizardStepIndex <= 0}
+          >
+            Back
+          </Button>
+          <div className="flex items-center gap-2">
+            {isWizardFinalStep && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onCompleteSetup?.()}
+              >
+                Skip LLM for now
+              </Button>
+            )}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                void handleWizardContinue();
+              }}
+              loading={activeTab === "jobs-providers" && autoPollingSaving}
+            >
+              {isWizardFinalStep ? "Finish setup" : "Continue"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {shortcutsHelpOpen && (
         <ShortcutsHelp onClose={() => setShortcutsHelpOpen(false)} />

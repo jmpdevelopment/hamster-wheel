@@ -77,6 +77,14 @@ export function GetCVPath() {
 }
 
 /**
+ * GetFirstRunComplete returns whether first-run onboarding has been completed.
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function GetFirstRunComplete() {
+    return $Call.ByID(1636631292);
+}
+
+/**
  * GetJobListPreferences returns persisted job-list control selections.
  * @returns {$CancellablePromise<$models.JobListPreferences>}
  */
@@ -285,6 +293,15 @@ export function SetAutoPollingEnabled(enabled) {
  */
 export function SetCVPath(cvPath) {
     return $Call.ByID(2451022818, cvPath);
+}
+
+/**
+ * SetFirstRunComplete saves whether first-run onboarding has been completed.
+ * @param {boolean} completed
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetFirstRunComplete(completed) {
+    return $Call.ByID(3852673496, completed);
 }
 
 /**

@@ -80,7 +80,7 @@ Authoritative goal for next slices: non-technical users can choose `Cloud` or `L
 
 ## Phase 4: UX and Workflow Expansion
 
-1. First-run setup wizard.
+1. First-run setup wizard (complete; shared with Settings configuration flow).
 2. Expanded dashboard with match/status views.
 3. Status pipeline and Kanban flow.
 4. Complete settings page (providers, prompts, custom instructions).

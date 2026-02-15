@@ -33,6 +33,10 @@ const mockGetPollingStatus = vi.fn();
 const mockSetPollingPaused = vi.fn();
 const mockSetPollingIntervalMinutes = vi.fn();
 const mockGetKeyboardShortcuts = vi.fn();
+const mockGetFirstRunComplete = vi.fn();
+const mockSetFirstRunComplete = vi.fn();
+const mockHasReedAPIKey = vi.fn();
+const mockHasAdzunaCredentials = vi.fn();
 const mockGetJobListPreferences = vi.fn();
 const mockSetJobListPreferences = vi.fn();
 const mockEventsOn = vi.fn();
@@ -78,10 +82,13 @@ vi.mock("../bindings/hamster-wheel/pollingservice", () => ({
 }));
 
 vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
-  HasReedAPIKey: vi.fn().mockResolvedValue(false),
+  GetFirstRunComplete: (...args: unknown[]) => mockGetFirstRunComplete(...args),
+  SetFirstRunComplete: (...args: unknown[]) => mockSetFirstRunComplete(...args),
+  HasReedAPIKey: (...args: unknown[]) => mockHasReedAPIKey(...args),
   SetReedAPIKey: vi.fn().mockResolvedValue(undefined),
   ClearReedAPIKey: vi.fn().mockResolvedValue(undefined),
-  HasAdzunaCredentials: vi.fn().mockResolvedValue(false),
+  HasAdzunaCredentials: (...args: unknown[]) =>
+    mockHasAdzunaCredentials(...args),
   SetAdzunaCredentials: vi.fn().mockResolvedValue(undefined),
   ClearAdzunaCredentials: vi.fn().mockResolvedValue(undefined),
   HasOpenAIAPIKey: vi.fn().mockResolvedValue(false),
@@ -201,6 +208,10 @@ beforeEach(() => {
   mockSetPollingPaused.mockResolvedValue(undefined);
   mockSetPollingIntervalMinutes.mockResolvedValue(undefined);
   mockGetKeyboardShortcuts.mockResolvedValue("");
+  mockGetFirstRunComplete.mockResolvedValue(true);
+  mockSetFirstRunComplete.mockResolvedValue(undefined);
+  mockHasReedAPIKey.mockResolvedValue(false);
+  mockHasAdzunaCredentials.mockResolvedValue(false);
   mockGetJobListPreferences.mockResolvedValue({
     filterByFilterId: "",
     sortMode: "posted-desc",
@@ -232,6 +243,35 @@ describe("App", () => {
       expect(screen.getByText("No filters")).toBeInTheDocument();
       expect(screen.getByText("No jobs yet")).toBeInTheDocument();
     });
+  });
+
+  it("shows initial setup wizard for first launch when no job provider is configured", async () => {
+    mockGetFirstRunComplete.mockResolvedValue(false);
+    mockHasReedAPIKey.mockResolvedValue(false);
+    mockHasAdzunaCredentials.mockResolvedValue(false);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Initial setup wizard" })
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("does not auto-complete onboarding from provider credentials", async () => {
+    mockGetFirstRunComplete.mockResolvedValue(false);
+    mockHasReedAPIKey.mockResolvedValue(true);
+    mockHasAdzunaCredentials.mockResolvedValue(false);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Initial setup wizard" })
+      ).toBeInTheDocument();
+    });
+    expect(mockSetFirstRunComplete).not.toHaveBeenCalled();
   });
 
   it("shows startup error when loading polling status fails", async () => {

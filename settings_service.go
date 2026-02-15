@@ -25,6 +25,7 @@ const (
 	settingOpenAIAPIKey        = "openai_api_key"
 	settingTheme               = "theme"
 	settingKeyboardShortcuts   = "keyboard_shortcuts"
+	settingFirstRunComplete    = "first_run_complete"
 	settingJobListPreferences  = "job_list_preferences"
 	settingLLMMode             = "llm_mode"
 	settingLLMProvider         = "llm_provider"
@@ -55,6 +56,7 @@ const (
 	maxJobRetentionDays     = 30
 	defaultAutoMatchLimit   = 0
 	defaultAutoMatchEnabled = true
+	defaultFirstRunComplete = false
 )
 
 // JobListPreferences stores persisted job-list controls.
@@ -314,6 +316,42 @@ func (s *SettingsService) SetKeyboardShortcuts(enabled string) error {
 		return fmt.Errorf("setting keyboard shortcuts: %w", err)
 	}
 	slog.Info("keyboard shortcuts preference updated", "enabled", enabled)
+	return nil
+}
+
+// GetFirstRunComplete returns whether first-run onboarding has been completed.
+func (s *SettingsService) GetFirstRunComplete() (bool, error) {
+	value, err := s.db.GetSetting(context.Background(), settingFirstRunComplete)
+	if err != nil {
+		return false, fmt.Errorf("getting first run complete setting: %w", err)
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return defaultFirstRunComplete, nil
+	case "true":
+		return true, nil
+	case "false":
+		return false, nil
+	default:
+		slog.Warn(
+			"invalid first run complete setting value, using default",
+			"value",
+			value,
+		)
+		return defaultFirstRunComplete, nil
+	}
+}
+
+// SetFirstRunComplete saves whether first-run onboarding has been completed.
+func (s *SettingsService) SetFirstRunComplete(completed bool) error {
+	value := "false"
+	if completed {
+		value = "true"
+	}
+	if err := s.db.SetSetting(context.Background(), settingFirstRunComplete, value); err != nil {
+		return fmt.Errorf("setting first run complete: %w", err)
+	}
+	slog.Info("first run complete updated", "completed", completed)
 	return nil
 }
 

@@ -254,6 +254,58 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("Theme")).toBeInTheDocument();
   });
 
+  it("renders wizard mode with step controls and no close button", async () => {
+    render(<SettingsPanel {...defaultProps} mode="wizard" />);
+
+    expect(
+      screen.getByRole("dialog", { name: "Initial setup wizard" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 3")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /close settings/i })
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByLabelText("Reed API Key")).toBeInTheDocument();
+  });
+
+  it("requires at least one job provider before leaving wizard jobs step", async () => {
+    render(<SettingsPanel {...defaultProps} mode="wizard" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    expect(defaultProps.onError).toHaveBeenCalledWith(
+      "Configure at least one job provider before continuing."
+    );
+    expect(screen.getByLabelText("Reed API Key")).toBeInTheDocument();
+  });
+
+  it("completes wizard after required jobs setup", async () => {
+    const onCompleteSetup = vi.fn();
+    mockHasReedAPIKey.mockResolvedValue(true);
+
+    render(
+      <SettingsPanel
+        {...defaultProps}
+        mode="wizard"
+        onCompleteSetup={onCompleteSetup}
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await userEvent.click(screen.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => {
+      expect(mockSetAutoPollingEnabled).toHaveBeenCalledWith(false);
+      expect(mockSetPollIntervalMinutes).toHaveBeenCalledWith(30);
+      expect(mockSetJobRetentionDays).toHaveBeenCalledWith(30);
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Finish setup" }));
+    expect(onCompleteSetup).toHaveBeenCalledOnce();
+  });
+
   it("calls onClose when close button is clicked", async () => {
     render(<SettingsPanel {...defaultProps} />);
     await userEvent.click(

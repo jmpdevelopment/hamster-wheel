@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { GetKeyboardShortcuts } from "../bindings/hamster-wheel/settingsservice";
+import {
+  GetFirstRunComplete,
+  GetKeyboardShortcuts,
+  SetFirstRunComplete,
+} from "../bindings/hamster-wheel/settingsservice";
 import { Events } from "@wailsio/runtime";
 import { useJobs } from "./hooks/useJobs";
 import { useFilters } from "./hooks/useFilters";
@@ -28,6 +32,7 @@ function App() {
   const [filteredJobIds, setFilteredJobIds] = useState<string[]>([]);
   const [keyboardShortcutsEnabled, setKeyboardShortcutsEnabled] =
     useState(true);
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const polling = usePollingController({
     refreshJobs: jobs.refresh,
@@ -56,6 +61,30 @@ function App() {
     };
 
     void loadKeyboardShortcuts();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadInitialSetupState = async () => {
+      try {
+        const firstRunComplete = await GetFirstRunComplete();
+        if (!cancelled) {
+          setSetupWizardOpen(!firstRunComplete);
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to load initial setup state:", message);
+        if (!cancelled) {
+          setAppError((prev) => prev ?? message);
+        }
+      }
+    };
+
+    void loadInitialSetupState();
     return () => {
       cancelled = true;
     };
@@ -172,16 +201,37 @@ function App() {
     []
   );
 
+  const handleCompleteInitialSetup = useCallback(() => {
+    void (async () => {
+      try {
+        await SetFirstRunComplete(true);
+        setSetupWizardOpen(false);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to persist setup completion:", message);
+        setAppError((prev) => prev ?? message);
+      }
+    })();
+  }, []);
+
   const { pendingDeleteId, clearPendingDelete, shortcutsHelpOpen, closeShortcutsHelp } = useKeyboardShortcuts({
-    enabled: keyboardShortcutsEnabled,
+    enabled: keyboardShortcutsEnabled && !setupWizardOpen,
     filteredJobIds,
     selectedJobId,
-    settingsOpen,
+    settingsOpen: settingsOpen || setupWizardOpen,
     jobDetailOpen: selectedJob !== null,
     onSelectJob: handleSelectJob,
     onCloseJobDetail: () => setSelectedJobId(null),
-    onCloseSettings: () => setSettingsOpen(false),
-    onOpenSettings: () => setSettingsOpen(true),
+    onCloseSettings: () => {
+      if (!setupWizardOpen) {
+        setSettingsOpen(false);
+      }
+    },
+    onOpenSettings: () => {
+      if (!setupWizardOpen) {
+        setSettingsOpen(true);
+      }
+    },
     onPollNow: polling.pollNow,
     onDeleteJob: handleDeleteJob,
     onFocusSearch: () => searchInputRef.current?.focus(),
@@ -192,7 +242,7 @@ function App() {
   });
 
   return (
-    <div className="flex flex-col h-screen bg-hw-bg text-hw-text">
+    <div className="relative flex flex-col h-screen bg-hw-bg text-hw-text">
       <Header
         onPollNow={polling.pollNow}
         isPolling={polling.isPolling}
@@ -200,7 +250,11 @@ function App() {
         nextPollAt={polling.nextPollAt}
         hasFilters={filters.filters.length > 0}
         hasEnabledFilters={filters.filters.some((f) => f.Enabled)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => {
+          if (!setupWizardOpen) {
+            setSettingsOpen(true);
+          }
+        }}
       />
 
       <ErrorBanner message={error} onDismiss={handleDismissError} />
@@ -264,7 +318,7 @@ function App() {
         )}
 
         {/* Settings Panel (overlays right side) */}
-        {settingsOpen && (
+        {settingsOpen && !setupWizardOpen && (
           <SettingsPanel
             onClose={() => setSettingsOpen(false)}
             theme={theme}
@@ -275,6 +329,21 @@ function App() {
           />
         )}
       </div>
+
+      {setupWizardOpen && (
+        <div className="absolute inset-0 z-20 bg-black/45 p-4 flex items-center justify-center">
+          <SettingsPanel
+            onClose={() => {}}
+            mode="wizard"
+            onCompleteSetup={handleCompleteInitialSetup}
+            theme={theme}
+            onSetTheme={setTheme}
+            onError={setAppError}
+            keyboardShortcuts={keyboardShortcutsEnabled}
+            onSetKeyboardShortcuts={setKeyboardShortcutsEnabled}
+          />
+        </div>
+      )}
 
       <PollResultToast
         run={polling.pollRun}

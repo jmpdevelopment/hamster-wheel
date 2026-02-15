@@ -30,6 +30,12 @@ Last updated: 2026-02-15
   - `Interface` includes theme + keyboard-shortcut controls.
   - `Jobs Providers` hosts Reed API key management.
   - `LLM Providers` hosts OpenAI key management and persisted provider/model/base-URL configuration.
+- First-run setup wizard flow is now in place:
+  - On first launch, app now prompts a guided setup wizard before normal workflow.
+  - Wizard completion is now persisted in SQLite settings (`first_run_complete`) via `SettingsService`.
+  - Wizard reuses the same settings configuration flow/components for `Interface`, `Jobs Providers`, and `LLM Providers`.
+  - Wizard enforces at least one configured job provider and persists polling/retention controls before completion.
+  - LLM setup remains optional but now includes explicit OpenAI billing/cost responsibility messaging and local-Llama system impact messaging.
 - Backend coverage floor hardening is complete:
   - Coverage gate defaults now enforce backend `>= 80%`.
   - Added branch-focused matcher/OpenAI/settings tests to keep sustained headroom above gate.
