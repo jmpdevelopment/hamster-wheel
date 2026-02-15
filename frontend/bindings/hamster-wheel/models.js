@@ -7,6 +7,65 @@
 import { Create as $Create } from "@wailsio/runtime";
 
 /**
+ * JobListPreferences stores persisted job-list controls.
+ */
+export class JobListPreferences {
+    /**
+     * Creates a new JobListPreferences instance.
+     * @param {Partial<JobListPreferences>} [$$source = {}] - The source object to create the JobListPreferences.
+     */
+    constructor($$source = {}) {
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["filterByFilterId"] = undefined;
+        }
+        if (!("sortMode" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["sortMode"] = "";
+        }
+        if (!("postedDateFilterMode" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["postedDateFilterMode"] = "";
+        }
+        if (!("matchScoreFilterMode" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["matchScoreFilterMode"] = "";
+        }
+        if (!("showFavoritesOnly" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["showFavoritesOnly"] = false;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new JobListPreferences instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {JobListPreferences}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new JobListPreferences(/** @type {Partial<JobListPreferences>} */($$parsedSource));
+    }
+}
+
+/**
  * PollFilterResult reports the outcome of polling one filter.
  */
 export class PollFilterResult {

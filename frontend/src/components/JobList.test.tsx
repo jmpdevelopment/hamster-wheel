@@ -1,7 +1,17 @@
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { JobList } from "./JobList";
+
+const mockGetJobListPreferences = vi.fn();
+const mockSetJobListPreferences = vi.fn();
+
+vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
+  GetJobListPreferences: (...args: unknown[]) =>
+    mockGetJobListPreferences(...args),
+  SetJobListPreferences: (...args: unknown[]) =>
+    mockSetJobListPreferences(...args),
+}));
 
 vi.mock("react-virtualized-auto-sizer", () => ({
   AutoSizer: ({
@@ -11,7 +21,16 @@ vi.mock("react-virtualized-auto-sizer", () => ({
   }) => renderProp({ height: 600, width: 400 }),
 }));
 
-const fakeJob = (id: string, title: string, filterId = "f1") => ({
+const fakeJob = (
+  id: string,
+  title: string,
+  filterId = "f1",
+  opts: Partial<{
+    postedAt: string | null;
+    matchScore: number;
+    matchStatus: string;
+  }> = {}
+) => ({
   ID: id,
   Source: "reed_uk",
   SourceID: `src-${id}`,
@@ -20,10 +39,13 @@ const fakeJob = (id: string, title: string, filterId = "f1") => ({
   Location: "London",
   Description: "Desc",
   URL: "https://example.com",
-  PostedAt: "2026-02-08T10:00:00Z",
+  PostedAt: opts.postedAt ?? "2026-02-08T10:00:00Z",
   DiscoveredAt: "2026-02-08T11:00:00Z",
   FilterID: filterId,
   IsFavorite: false,
+  MatchStatus: opts.matchStatus ?? "matched",
+  MatchScore: opts.matchScore ?? 0.5,
+  MatchSummary: "",
 });
 
 const fakeFilter = (id: string, name: string) => ({
@@ -54,6 +76,15 @@ const defaultProps = {
 describe("JobList", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-02-15T12:00:00Z"));
+    mockGetJobListPreferences.mockResolvedValue({
+      filterByFilterId: "",
+      sortMode: "posted-desc",
+      postedDateFilterMode: "any",
+      matchScoreFilterMode: "any",
+      showFavoritesOnly: false,
+    });
+    mockSetJobListPreferences.mockResolvedValue(undefined);
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -101,10 +132,155 @@ describe("JobList", () => {
     render(<JobList {...defaultProps} onFilterChange={onFilterChange} />);
 
     const dropdown = screen.getByRole("combobox", {
-      name: /filter jobs/i,
+      name: /filter jobs by search filter/i,
     });
     await userEvent.selectOptions(dropdown, "f1");
     expect(onFilterChange).toHaveBeenCalledWith("f1");
+  });
+
+  it("loads persisted job list preferences on mount", async () => {
+    mockGetJobListPreferences.mockResolvedValue({
+      filterByFilterId: "f2",
+      sortMode: "score-desc",
+      postedDateFilterMode: "last-7d",
+      matchScoreFilterMode: "score-80",
+      showFavoritesOnly: true,
+    });
+    const onFilterChange = vi.fn();
+
+    render(
+      <JobList
+        {...defaultProps}
+        jobs={[
+          fakeJob("j1", "Go Dev", "f1"),
+          { ...fakeJob("j2", "React Dev", "f2"), IsFavorite: true },
+        ]}
+        onFilterChange={onFilterChange}
+      />
+    );
+
+    await waitFor(() => {
+      expect(onFilterChange).toHaveBeenCalledWith("f2");
+    });
+    expect(screen.getByRole("combobox", { name: /sort jobs/i })).toHaveValue(
+      "score-desc"
+    );
+    expect(
+      screen.getByRole("combobox", { name: /filter jobs by posting date/i })
+    ).toHaveValue("last-7d");
+    expect(
+      screen.getByRole("combobox", { name: /filter jobs by match score/i })
+    ).toHaveValue("score-80");
+    expect(
+      screen.getByRole("button", { name: /show all jobs/i })
+    ).toBeInTheDocument();
+  });
+
+  it("persists selected job list preferences", async () => {
+    render(<JobList {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(mockSetJobListPreferences).toHaveBeenCalled();
+    });
+    mockSetJobListPreferences.mockClear();
+
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /sort jobs/i }),
+      "score-desc"
+    );
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /filter jobs by posting date/i }),
+      "last-30d"
+    );
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: /filter jobs by match score/i }),
+      "score-60"
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: /show only favorite jobs/i })
+    );
+
+    await waitFor(() => {
+      expect(mockSetJobListPreferences).toHaveBeenLastCalledWith({
+        filterByFilterId: "",
+        sortMode: "score-desc",
+        postedDateFilterMode: "last-30d",
+        matchScoreFilterMode: "score-60",
+        showFavoritesOnly: true,
+      });
+    });
+  });
+
+  it("filters jobs by posting date dropdown", async () => {
+    const onFilteredJobsChange = vi.fn();
+    render(
+      <JobList
+        {...defaultProps}
+        jobs={[
+          fakeJob("j1", "Recent", "f1", {
+            postedAt: "2026-02-14T10:00:00Z",
+          }),
+          fakeJob("j2", "Older", "f1", {
+            postedAt: "2026-01-10T10:00:00Z",
+          }),
+          fakeJob("j3", "No Date", "f1", {
+            postedAt: null,
+          }),
+        ]}
+        onFilteredJobsChange={onFilteredJobsChange}
+      />
+    );
+
+    const dropdown = screen.getByRole("combobox", {
+      name: /filter jobs by posting date/i,
+    });
+    await userEvent.selectOptions(dropdown, "last-7d");
+
+    expect(onFilteredJobsChange).toHaveBeenLastCalledWith(["j1"]);
+  });
+
+  it("filters jobs by match score dropdown", async () => {
+    const onFilteredJobsChange = vi.fn();
+    render(
+      <JobList
+        {...defaultProps}
+        jobs={[
+          fakeJob("j1", "Strong", "f1", { matchScore: 0.9 }),
+          fakeJob("j2", "Medium", "f1", { matchScore: 0.65 }),
+          fakeJob("j3", "Low", "f1", { matchScore: 0.3 }),
+        ]}
+        onFilteredJobsChange={onFilteredJobsChange}
+      />
+    );
+
+    const dropdown = screen.getByRole("combobox", {
+      name: /filter jobs by match score/i,
+    });
+    await userEvent.selectOptions(dropdown, "score-80");
+
+    expect(onFilteredJobsChange).toHaveBeenLastCalledWith(["j1"]);
+  });
+
+  it("sorts jobs by match score when sort option changes", async () => {
+    const onFilteredJobsChange = vi.fn();
+    render(
+      <JobList
+        {...defaultProps}
+        jobs={[
+          fakeJob("j1", "Medium", "f1", { matchScore: 0.65 }),
+          fakeJob("j2", "Strong", "f1", { matchScore: 0.9 }),
+          fakeJob("j3", "Low", "f1", { matchScore: 0.3 }),
+        ]}
+        onFilteredJobsChange={onFilteredJobsChange}
+      />
+    );
+
+    const dropdown = screen.getByRole("combobox", {
+      name: /sort jobs/i,
+    });
+    await userEvent.selectOptions(dropdown, "score-desc");
+
+    expect(onFilteredJobsChange).toHaveBeenLastCalledWith(["j2", "j1", "j3"]);
   });
 
   it("calls onSelectJob when a job card is clicked", async () => {

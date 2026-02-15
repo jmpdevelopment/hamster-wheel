@@ -15,6 +15,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 // @ts-ignore: Unused imports
 import * as localruntime$0 from "./internal/localruntime/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 /**
  * ClearAdzunaCredentials removes stored Adzuna credentials and clears active adapter credentials.
  * @returns {$CancellablePromise<void>}
@@ -70,6 +74,16 @@ export function GetAutoPollingEnabled() {
  */
 export function GetCVPath() {
     return $Call.ByID(4209720150);
+}
+
+/**
+ * GetJobListPreferences returns persisted job-list control selections.
+ * @returns {$CancellablePromise<$models.JobListPreferences>}
+ */
+export function GetJobListPreferences() {
+    return $Call.ByID(3497269279).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
 }
 
 /**
@@ -148,7 +162,7 @@ export function GetLocalRuntimeModel() {
  */
 export function GetLocalRuntimeModels() {
     return $Call.ByID(1610798443).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
+        return $$createType1($result);
     }));
 }
 
@@ -158,7 +172,7 @@ export function GetLocalRuntimeModels() {
  */
 export function GetLocalRuntimePullProgress() {
     return $Call.ByID(1631203121).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
+        return $$createType2($result);
     }));
 }
 
@@ -168,7 +182,7 @@ export function GetLocalRuntimePullProgress() {
  */
 export function GetLocalRuntimeStatus() {
     return $Call.ByID(1586804687).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
+        return $$createType3($result);
     }));
 }
 
@@ -221,7 +235,7 @@ export function HasReedAPIKey() {
  */
 export function PullLocalRuntimeModel(model) {
     return $Call.ByID(666476807, model).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType3($result);
+        return $$createType4($result);
     }));
 }
 
@@ -271,6 +285,15 @@ export function SetAutoPollingEnabled(enabled) {
  */
 export function SetCVPath(cvPath) {
     return $Call.ByID(2451022818, cvPath);
+}
+
+/**
+ * SetJobListPreferences saves job-list control selections.
+ * @param {$models.JobListPreferences} preferences
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetJobListPreferences(preferences) {
+    return $Call.ByID(1311529395, preferences);
 }
 
 /**
@@ -388,7 +411,7 @@ export function SetTheme(theme) {
  */
 export function StartLocalRuntime() {
     return $Call.ByID(3352722605).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
+        return $$createType3($result);
     }));
 }
 
@@ -398,12 +421,13 @@ export function StartLocalRuntime() {
  */
 export function StopLocalRuntime() {
     return $Call.ByID(2360813809).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
+        return $$createType3($result);
     }));
 }
 
 // Private type creation functions
-const $$createType0 = localruntime$0.ModelCatalog.createFrom;
-const $$createType1 = localruntime$0.PullProgress.createFrom;
-const $$createType2 = localruntime$0.Snapshot.createFrom;
-const $$createType3 = localruntime$0.PullResult.createFrom;
+const $$createType0 = $models.JobListPreferences.createFrom;
+const $$createType1 = localruntime$0.ModelCatalog.createFrom;
+const $$createType2 = localruntime$0.PullProgress.createFrom;
+const $$createType3 = localruntime$0.Snapshot.createFrom;
+const $$createType4 = localruntime$0.PullResult.createFrom;

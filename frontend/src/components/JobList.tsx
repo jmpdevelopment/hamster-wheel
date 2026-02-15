@@ -5,14 +5,63 @@ import {
   Job,
   SearchFilter,
 } from "../../bindings/hamster-wheel/internal/db/models";
+import {
+  GetJobListPreferences,
+  SetJobListPreferences,
+} from "../../bindings/hamster-wheel/settingsservice";
 import { JobCard } from "./JobCard";
 import { SearchInput } from "./SearchInput";
 import { EmptyState } from "./EmptyState";
-import { useJobSearch } from "../hooks/useJobSearch";
+import {
+  useJobSearch,
+  type JobSortMode,
+  type PostedDateFilterMode,
+  type MatchScoreFilterMode,
+} from "../hooks/useJobSearch";
 import { Button } from "./Button";
 import { ConfirmAction } from "./ConfirmAction";
 
 const ITEM_HEIGHT = 74;
+
+const sortOptions: Array<{ value: JobSortMode; label: string }> = [
+  { value: "posted-desc", label: "Posted date: newest first" },
+  { value: "posted-asc", label: "Posted date: oldest first" },
+  { value: "score-desc", label: "Match score: highest first" },
+  { value: "score-asc", label: "Match score: lowest first" },
+];
+
+const postedDateFilterOptions: Array<{
+  value: PostedDateFilterMode;
+  label: string;
+}> = [
+  { value: "any", label: "Any posting date" },
+  { value: "last-24h", label: "Posted in last 24 hours" },
+  { value: "last-7d", label: "Posted in last 7 days" },
+  { value: "last-30d", label: "Posted in last 30 days" },
+];
+
+const matchScoreFilterOptions: Array<{
+  value: MatchScoreFilterMode;
+  label: string;
+}> = [
+  { value: "any", label: "Any match score" },
+  { value: "scored", label: "Scored jobs only" },
+  { value: "score-80", label: "Match score 80%+" },
+  { value: "score-60", label: "Match score 60%+" },
+  { value: "score-40", label: "Match score 40%+" },
+];
+
+function isJobSortMode(value: string): value is JobSortMode {
+  return sortOptions.some((option) => option.value === value);
+}
+
+function isPostedDateFilterMode(value: string): value is PostedDateFilterMode {
+  return postedDateFilterOptions.some((option) => option.value === value);
+}
+
+function isMatchScoreFilterMode(value: string): value is MatchScoreFilterMode {
+  return matchScoreFilterOptions.some((option) => option.value === value);
+}
 
 interface JobListProps {
   jobs: Job[];
@@ -43,14 +92,22 @@ export function JobList({
   onToggleFavoriteJob,
   onDeleteJobs,
 }: JobListProps) {
-  const { searchTerm, setSearchTerm, filteredJobs } = useJobSearch(
-    jobs,
-    filterByFilterId
-  );
+  const {
+    searchTerm,
+    setSearchTerm,
+    sortMode,
+    setSortMode,
+    postedDateFilterMode,
+    setPostedDateFilterMode,
+    matchScoreFilterMode,
+    setMatchScoreFilterMode,
+    filteredJobs,
+  } = useJobSearch(jobs, filterByFilterId);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(
     () => new Set()
   );
+  const preferencesHydratedRef = useRef(false);
   const listRef = useRef<FixedSizeList>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const lastToggledJobIDRef = useRef<string | null>(null);
@@ -65,7 +122,10 @@ export function JobList({
   );
 
   const hasSearch = searchTerm.trim().length > 0;
-  const hasFilter = filterByFilterId !== null;
+  const hasFilter =
+    filterByFilterId !== null ||
+    postedDateFilterMode !== "any" ||
+    matchScoreFilterMode !== "any";
   const visibleJobIndexByID = useMemo(() => {
     const indexByID = new Map<string, number>();
     visibleJobs.forEach((job, index) => {
@@ -92,6 +152,71 @@ export function JobList({
       selectAllRef.current.indeterminate = hasVisibleSelection;
     }
   }, [hasVisibleSelection]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPreferences = async () => {
+      try {
+        const preferences = await GetJobListPreferences();
+        if (cancelled || !preferences) {
+          return;
+        }
+
+        const filterByFilterID = preferences.filterByFilterId ?? "";
+        onFilterChange(filterByFilterID || null);
+
+        if (isJobSortMode(preferences.sortMode)) {
+          setSortMode(preferences.sortMode);
+        }
+        if (isPostedDateFilterMode(preferences.postedDateFilterMode)) {
+          setPostedDateFilterMode(preferences.postedDateFilterMode);
+        }
+        if (isMatchScoreFilterMode(preferences.matchScoreFilterMode)) {
+          setMatchScoreFilterMode(preferences.matchScoreFilterMode);
+        }
+        setShowFavoritesOnly(preferences.showFavoritesOnly === true);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to load job list preferences:", message);
+      } finally {
+        preferencesHydratedRef.current = true;
+      }
+    };
+
+    void loadPreferences();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    onFilterChange,
+    setSortMode,
+    setPostedDateFilterMode,
+    setMatchScoreFilterMode,
+  ]);
+
+  useEffect(() => {
+    if (!preferencesHydratedRef.current) {
+      return;
+    }
+
+    void SetJobListPreferences({
+      filterByFilterId: filterByFilterId ?? "",
+      sortMode,
+      postedDateFilterMode,
+      matchScoreFilterMode,
+      showFavoritesOnly,
+    }).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save job list preferences:", message);
+    });
+  }, [
+    filterByFilterId,
+    sortMode,
+    postedDateFilterMode,
+    matchScoreFilterMode,
+    showFavoritesOnly,
+  ]);
 
   useEffect(() => {
     const handleKeyDown = (event: Event) => {
@@ -320,6 +445,54 @@ export function JobList({
             </option>
           ))}
         </select>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <select
+            value={sortMode}
+            onChange={(event) => setSortMode(event.target.value as JobSortMode)}
+            className="w-full px-2 py-1.5 text-sm rounded bg-hw-bg border border-hw-border text-hw-text focus:outline-none focus:border-hw-accent"
+            aria-label="Sort jobs"
+          >
+            {sortOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={postedDateFilterMode}
+            onChange={(event) =>
+              setPostedDateFilterMode(
+                event.target.value as PostedDateFilterMode
+              )
+            }
+            className="w-full px-2 py-1.5 text-sm rounded bg-hw-bg border border-hw-border text-hw-text focus:outline-none focus:border-hw-accent"
+            aria-label="Filter jobs by posting date"
+          >
+            {postedDateFilterOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={matchScoreFilterMode}
+            onChange={(event) =>
+              setMatchScoreFilterMode(
+                event.target.value as MatchScoreFilterMode
+              )
+            }
+            className="w-full px-2 py-1.5 text-sm rounded bg-hw-bg border border-hw-border text-hw-text focus:outline-none focus:border-hw-accent"
+            aria-label="Filter jobs by match score"
+          >
+            {matchScoreFilterOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {!loading && jobs.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 pt-1">

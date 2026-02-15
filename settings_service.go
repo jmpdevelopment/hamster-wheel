@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,6 +25,7 @@ const (
 	settingOpenAIAPIKey        = "openai_api_key"
 	settingTheme               = "theme"
 	settingKeyboardShortcuts   = "keyboard_shortcuts"
+	settingJobListPreferences  = "job_list_preferences"
 	settingLLMMode             = "llm_mode"
 	settingLLMProvider         = "llm_provider"
 	settingLLMModel            = "llm_model"
@@ -40,6 +42,9 @@ const (
 	defaultLLMProvider      = "openai"
 	defaultLLMModel         = "gpt-4o-mini"
 	defaultLLMMode          = "cloud"
+	defaultJobListSortMode  = "posted-desc"
+	defaultPostedDateFilter = "any"
+	defaultMatchScoreFilter = "any"
 	defaultRuntimeModel     = "llama3.1:8b"
 	defaultAutoPolling      = false
 	defaultPollIntervalMin  = 30
@@ -51,6 +56,61 @@ const (
 	defaultAutoMatchLimit   = 0
 	defaultAutoMatchEnabled = true
 )
+
+// JobListPreferences stores persisted job-list controls.
+type JobListPreferences struct {
+	FilterByFilterID     string `json:"filterByFilterId,omitempty"`
+	SortMode             string `json:"sortMode"`
+	PostedDateFilterMode string `json:"postedDateFilterMode"`
+	MatchScoreFilterMode string `json:"matchScoreFilterMode"`
+	ShowFavoritesOnly    bool   `json:"showFavoritesOnly"`
+}
+
+func defaultJobListPreferences() JobListPreferences {
+	return JobListPreferences{
+		SortMode:             defaultJobListSortMode,
+		PostedDateFilterMode: defaultPostedDateFilter,
+		MatchScoreFilterMode: defaultMatchScoreFilter,
+		ShowFavoritesOnly:    false,
+	}
+}
+
+func normalizeJobListPreferences(preferences JobListPreferences) JobListPreferences {
+	preferences.FilterByFilterID = strings.TrimSpace(preferences.FilterByFilterID)
+	preferences.SortMode = strings.TrimSpace(preferences.SortMode)
+	preferences.PostedDateFilterMode = strings.TrimSpace(preferences.PostedDateFilterMode)
+	preferences.MatchScoreFilterMode = strings.TrimSpace(preferences.MatchScoreFilterMode)
+
+	if preferences.SortMode == "" {
+		preferences.SortMode = defaultJobListSortMode
+	}
+	if preferences.PostedDateFilterMode == "" {
+		preferences.PostedDateFilterMode = defaultPostedDateFilter
+	}
+	if preferences.MatchScoreFilterMode == "" {
+		preferences.MatchScoreFilterMode = defaultMatchScoreFilter
+	}
+	return preferences
+}
+
+func validateJobListPreferences(preferences JobListPreferences) error {
+	switch preferences.SortMode {
+	case "posted-desc", "posted-asc", "score-desc", "score-asc":
+	default:
+		return fmt.Errorf("invalid job list sort mode %q", preferences.SortMode)
+	}
+	switch preferences.PostedDateFilterMode {
+	case "any", "last-24h", "last-7d", "last-30d":
+	default:
+		return fmt.Errorf("invalid job list posted date filter %q", preferences.PostedDateFilterMode)
+	}
+	switch preferences.MatchScoreFilterMode {
+	case "any", "scored", "score-80", "score-60", "score-40":
+	default:
+		return fmt.Errorf("invalid job list match score filter %q", preferences.MatchScoreFilterMode)
+	}
+	return nil
+}
 
 // SettingsService handles application settings operations exposed to the frontend.
 type SettingsService struct {
@@ -254,6 +314,52 @@ func (s *SettingsService) SetKeyboardShortcuts(enabled string) error {
 		return fmt.Errorf("setting keyboard shortcuts: %w", err)
 	}
 	slog.Info("keyboard shortcuts preference updated", "enabled", enabled)
+	return nil
+}
+
+// GetJobListPreferences returns persisted job-list control selections.
+func (s *SettingsService) GetJobListPreferences() (JobListPreferences, error) {
+	defaults := defaultJobListPreferences()
+	value, err := s.db.GetSetting(context.Background(), settingJobListPreferences)
+	if err != nil {
+		return JobListPreferences{}, fmt.Errorf("getting job list preferences: %w", err)
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaults, nil
+	}
+
+	var preferences JobListPreferences
+	if err := json.Unmarshal([]byte(value), &preferences); err != nil {
+		slog.Warn("invalid stored job list preferences JSON; using defaults", "error", err)
+		return defaults, nil
+	}
+	preferences = normalizeJobListPreferences(preferences)
+	if err := validateJobListPreferences(preferences); err != nil {
+		slog.Warn("invalid stored job list preferences; using defaults", "error", err)
+		return defaults, nil
+	}
+	return preferences, nil
+}
+
+// SetJobListPreferences saves job-list control selections.
+func (s *SettingsService) SetJobListPreferences(preferences JobListPreferences) error {
+	preferences = normalizeJobListPreferences(preferences)
+	if err := validateJobListPreferences(preferences); err != nil {
+		return err
+	}
+	raw, err := json.Marshal(preferences)
+	if err != nil {
+		return fmt.Errorf("marshalling job list preferences: %w", err)
+	}
+	if err := s.db.SetSetting(
+		context.Background(),
+		settingJobListPreferences,
+		string(raw),
+	); err != nil {
+		return fmt.Errorf("setting job list preferences: %w", err)
+	}
+	slog.Info("job list preferences updated")
 	return nil
 }
 

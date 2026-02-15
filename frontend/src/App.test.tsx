@@ -32,6 +32,8 @@ const mockGetPollingStatus = vi.fn();
 const mockSetPollingPaused = vi.fn();
 const mockSetPollingIntervalMinutes = vi.fn();
 const mockGetKeyboardShortcuts = vi.fn();
+const mockGetJobListPreferences = vi.fn();
+const mockSetJobListPreferences = vi.fn();
 const mockEventsOn = vi.fn();
 const noOpRun = {
   runID: "",
@@ -143,6 +145,10 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
   GetKeyboardShortcuts: (...args: unknown[]) =>
     mockGetKeyboardShortcuts(...args),
   SetKeyboardShortcuts: vi.fn().mockResolvedValue(undefined),
+  GetJobListPreferences: (...args: unknown[]) =>
+    mockGetJobListPreferences(...args),
+  SetJobListPreferences: (...args: unknown[]) =>
+    mockSetJobListPreferences(...args),
 }));
 
 vi.mock("@wailsio/runtime", () => ({
@@ -191,6 +197,14 @@ beforeEach(() => {
   mockSetPollingPaused.mockResolvedValue(undefined);
   mockSetPollingIntervalMinutes.mockResolvedValue(undefined);
   mockGetKeyboardShortcuts.mockResolvedValue("");
+  mockGetJobListPreferences.mockResolvedValue({
+    filterByFilterId: "",
+    sortMode: "posted-desc",
+    postedDateFilterMode: "any",
+    matchScoreFilterMode: "any",
+    showFavoritesOnly: false,
+  });
+  mockSetJobListPreferences.mockResolvedValue(undefined);
   mockEventsOn.mockImplementation(() => vi.fn());
 });
 

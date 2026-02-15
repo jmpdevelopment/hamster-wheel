@@ -10,6 +10,9 @@ const fakeJob = (
     location: string;
     description: string;
     filterId: string;
+    postedAt: string | null;
+    matchScore: number;
+    matchStatus: string;
   }> = {}
 ) => ({
   ID: id,
@@ -20,15 +23,19 @@ const fakeJob = (
   Location: opts.location ?? "London",
   Description: opts.description ?? "A job",
   URL: "https://example.com",
-  PostedAt: "2026-02-08T10:00:00Z",
+  PostedAt: opts.postedAt ?? "2026-02-08T10:00:00Z",
   DiscoveredAt: "2026-02-08T11:00:00Z",
   FilterID: opts.filterId ?? "f1",
   IsFavorite: false,
+  MatchStatus: opts.matchStatus ?? "matched",
+  MatchScore: opts.matchScore ?? 0.5,
+  MatchSummary: "",
 });
 
 describe("useJobSearch", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-15T12:00:00Z"));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -212,6 +219,101 @@ describe("useJobSearch", () => {
 
     expect(result.current.filteredJobs).toHaveLength(1);
     expect(result.current.filteredJobs[0].Title).toBe("Go Engineer");
+  });
+
+  it("filters by posting date window", () => {
+    const jobs = [
+      fakeJob("1", "Recent", { postedAt: "2026-02-14T09:00:00Z" }),
+      fakeJob("2", "Stale", { postedAt: "2026-01-10T09:00:00Z" }),
+      fakeJob("3", "Unknown date", { postedAt: null }),
+    ];
+    const { result } = renderHook(() => useJobSearch(jobs, null));
+
+    act(() => {
+      result.current.setPostedDateFilterMode("last-7d");
+    });
+
+    expect(result.current.filteredJobs.map((job) => job.ID)).toEqual(["1"]);
+  });
+
+  it("filters by match score threshold", () => {
+    const jobs = [
+      fakeJob("1", "Strong", { matchScore: 0.9 }),
+      fakeJob("2", "Medium", { matchScore: 0.65 }),
+      fakeJob("3", "Low", { matchScore: 0.3 }),
+    ];
+    const { result } = renderHook(() => useJobSearch(jobs, null));
+
+    act(() => {
+      result.current.setMatchScoreFilterMode("score-80");
+    });
+
+    expect(result.current.filteredJobs.map((job) => job.ID)).toEqual(["1"]);
+  });
+
+  it("treats only matched jobs as scored", () => {
+    const jobs = [
+      fakeJob("1", "Matched", { matchStatus: "matched", matchScore: 0.85 }),
+      fakeJob("2", "Pending default zero", {
+        matchStatus: "pending",
+        matchScore: 0,
+      }),
+      fakeJob("3", "Unknown default zero", {
+        matchStatus: "",
+        matchScore: 0,
+      }),
+    ];
+    const { result } = renderHook(() => useJobSearch(jobs, null));
+
+    act(() => {
+      result.current.setMatchScoreFilterMode("scored");
+    });
+
+    expect(result.current.filteredJobs.map((job) => job.ID)).toEqual(["1"]);
+  });
+
+  it("sorts jobs by posted date", () => {
+    const jobs = [
+      fakeJob("1", "Older", { postedAt: "2026-02-10T10:00:00Z" }),
+      fakeJob("2", "Newest", { postedAt: "2026-02-14T10:00:00Z" }),
+      fakeJob("3", "Oldest", { postedAt: "2026-02-01T10:00:00Z" }),
+    ];
+    const { result } = renderHook(() => useJobSearch(jobs, null));
+
+    expect(result.current.filteredJobs.map((job) => job.ID)).toEqual([
+      "2",
+      "1",
+      "3",
+    ]);
+
+    act(() => {
+      result.current.setSortMode("posted-asc");
+    });
+
+    expect(result.current.filteredJobs.map((job) => job.ID)).toEqual([
+      "3",
+      "1",
+      "2",
+    ]);
+  });
+
+  it("sorts jobs by match score", () => {
+    const jobs = [
+      fakeJob("1", "Medium", { matchScore: 0.65 }),
+      fakeJob("2", "Strong", { matchScore: 0.9 }),
+      fakeJob("3", "Low", { matchScore: 0.3 }),
+    ];
+    const { result } = renderHook(() => useJobSearch(jobs, null));
+
+    act(() => {
+      result.current.setSortMode("score-desc");
+    });
+
+    expect(result.current.filteredJobs.map((job) => job.ID)).toEqual([
+      "2",
+      "1",
+      "3",
+    ]);
   });
 
   it("clearing search restores filter-only results", () => {

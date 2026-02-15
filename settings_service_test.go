@@ -537,6 +537,143 @@ func TestKeyboardShortcutsDatabaseErrors(t *testing.T) {
 	}
 }
 
+func TestJobListPreferencesDefaultsAndLifecycle(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	preferences, err := svc.GetJobListPreferences()
+	if err != nil {
+		t.Fatalf("getting default job list preferences: %v", err)
+	}
+	if preferences.FilterByFilterID != "" {
+		t.Fatalf("expected default filter id empty, got %q", preferences.FilterByFilterID)
+	}
+	if preferences.SortMode != defaultJobListSortMode {
+		t.Fatalf("expected default sort mode %q, got %q", defaultJobListSortMode, preferences.SortMode)
+	}
+	if preferences.PostedDateFilterMode != defaultPostedDateFilter {
+		t.Fatalf(
+			"expected default posted date filter %q, got %q",
+			defaultPostedDateFilter,
+			preferences.PostedDateFilterMode,
+		)
+	}
+	if preferences.MatchScoreFilterMode != defaultMatchScoreFilter {
+		t.Fatalf(
+			"expected default match score filter %q, got %q",
+			defaultMatchScoreFilter,
+			preferences.MatchScoreFilterMode,
+		)
+	}
+	if preferences.ShowFavoritesOnly {
+		t.Fatal("expected default showFavoritesOnly=false")
+	}
+
+	next := JobListPreferences{
+		FilterByFilterID:     "f1",
+		SortMode:             "score-desc",
+		PostedDateFilterMode: "last-7d",
+		MatchScoreFilterMode: "score-80",
+		ShowFavoritesOnly:    true,
+	}
+	if err := svc.SetJobListPreferences(next); err != nil {
+		t.Fatalf("setting job list preferences: %v", err)
+	}
+
+	saved, err := svc.GetJobListPreferences()
+	if err != nil {
+		t.Fatalf("getting saved job list preferences: %v", err)
+	}
+	if saved != next {
+		t.Fatalf("expected saved preferences %+v, got %+v", next, saved)
+	}
+}
+
+func TestJobListPreferencesValidation(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	base := JobListPreferences{
+		SortMode:             defaultJobListSortMode,
+		PostedDateFilterMode: defaultPostedDateFilter,
+		MatchScoreFilterMode: defaultMatchScoreFilter,
+	}
+
+	invalidSort := base
+	invalidSort.SortMode = "newest"
+	if err := svc.SetJobListPreferences(invalidSort); err == nil {
+		t.Fatal("expected validation error for invalid sort mode")
+	}
+
+	invalidPosted := base
+	invalidPosted.PostedDateFilterMode = "yesterday"
+	if err := svc.SetJobListPreferences(invalidPosted); err == nil {
+		t.Fatal("expected validation error for invalid posted date filter")
+	}
+
+	invalidScore := base
+	invalidScore.MatchScoreFilterMode = "high"
+	if err := svc.SetJobListPreferences(invalidScore); err == nil {
+		t.Fatal("expected validation error for invalid match score filter")
+	}
+}
+
+func TestJobListPreferencesDatabaseErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	if _, err := svc.GetJobListPreferences(); err == nil {
+		t.Fatal("expected GetJobListPreferences to fail on closed DB")
+	}
+	if err := svc.SetJobListPreferences(JobListPreferences{
+		SortMode:             defaultJobListSortMode,
+		PostedDateFilterMode: defaultPostedDateFilter,
+		MatchScoreFilterMode: defaultMatchScoreFilter,
+	}); err == nil {
+		t.Fatal("expected SetJobListPreferences to fail on closed DB")
+	}
+}
+
+func TestJobListPreferencesInvalidStoredValueFallsBackToDefaults(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.SetSetting(context.Background(), settingJobListPreferences, "{not-json"); err != nil {
+		t.Fatalf("setting invalid json: %v", err)
+	}
+	preferences, err := svc.GetJobListPreferences()
+	if err != nil {
+		t.Fatalf("getting preferences after invalid json: %v", err)
+	}
+	if preferences.SortMode != defaultJobListSortMode {
+		t.Fatalf("expected default sort mode after invalid json, got %q", preferences.SortMode)
+	}
+
+	invalidStored := `{"sortMode":"bad","postedDateFilterMode":"any","matchScoreFilterMode":"any"}`
+	if err := database.SetSetting(context.Background(), settingJobListPreferences, invalidStored); err != nil {
+		t.Fatalf("setting invalid semantic prefs: %v", err)
+	}
+	preferences, err = svc.GetJobListPreferences()
+	if err != nil {
+		t.Fatalf("getting preferences after invalid semantic values: %v", err)
+	}
+	if preferences.SortMode != defaultJobListSortMode {
+		t.Fatalf("expected default sort mode after invalid semantic values, got %q", preferences.SortMode)
+	}
+}
+
 func TestOpenAIAPIKeyLifecycle(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()
