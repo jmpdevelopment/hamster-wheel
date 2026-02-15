@@ -68,6 +68,10 @@ Last updated: 2026-02-15
   - Auto polling is now disabled by default on startup until explicitly enabled by the user.
   - Jobs Providers settings now include auto-poll enable/disable and polling interval controls.
   - Polling interval is validated to `30`-`1440` minutes and applied live to the running scheduler.
+- Job-retention controls are now in place:
+  - Jobs Providers settings now include `job_retention_days` with validation to `1`-`30` calendar days.
+  - Scheduler now skips fetched jobs older than the configured retention window (based on `posted_at`).
+  - App startup now runs a retention cleanup pass against SQLite to prune stale persisted jobs.
 - Phase 2 Adzuna prompt-context enhancement is complete:
   - Matcher now forwards Adzuna job URLs into match requests (Adzuna-only) so LLM prompts can include the listing URL alongside snippet text.
   - Adzuna scope note now explicitly states snippet-only source scope and URL-in-prompt context.

@@ -9,6 +9,7 @@ import {
   GetAutoMatchLimit,
   GetAutoPollingEnabled,
   GetCVPath,
+  GetJobRetentionDays,
   GetLLMBaseURL,
   GetLLMMode,
   GetLLMModel,
@@ -34,6 +35,7 @@ import {
   SetAutoMatchEnabled,
   SetAutoPollingEnabled,
   SetAutoMatchLimit,
+  SetJobRetentionDays,
   SetAdzunaCredentials,
   SetReedAPIKey,
   StartLocalRuntime,
@@ -100,6 +102,9 @@ const llamaLicenseURL = "https://www.llama.com/llama3_1/license/";
 const llamaUsePolicyURL = "https://www.llama.com/llama3_1/use-policy/";
 const minPollingIntervalMinutes = 30;
 const maxPollingIntervalMinutes = 24 * 60;
+const defaultJobRetentionDays = 30;
+const minJobRetentionDays = 1;
+const maxJobRetentionDays = 30;
 
 function formatGiB(bytes: number): string {
   return `${(bytes / (1024 ** 3)).toFixed(1)} GiB`;
@@ -192,6 +197,9 @@ export function SettingsPanel({
   const [llmConfigSaved, setLLMConfigSaved] = useState(false);
   const [autoPollingEnabled, setAutoPollingEnabledState] = useState(false);
   const [pollIntervalMinutes, setPollIntervalMinutesState] = useState("30");
+  const [jobRetentionDays, setJobRetentionDaysState] = useState(
+    String(defaultJobRetentionDays)
+  );
   const [autoPollingSaving, setAutoPollingSaving] = useState(false);
   const [autoPollingSaved, setAutoPollingSaved] = useState(false);
   const [autoMatchEnabled, setAutoMatchEnabledState] = useState(true);
@@ -403,6 +411,21 @@ export function SettingsPanel({
         }
       } catch (err: unknown) {
         reportError("Failed to load poll interval setting:", err);
+      }
+
+      try {
+        const retentionDays = await GetJobRetentionDays();
+        if (!cancelled) {
+          const normalizedRetentionDays =
+            Number.isFinite(retentionDays) &&
+            Number(retentionDays) >= minJobRetentionDays &&
+            Number(retentionDays) <= maxJobRetentionDays
+              ? Math.floor(Number(retentionDays))
+              : defaultJobRetentionDays;
+          setJobRetentionDaysState(String(normalizedRetentionDays));
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load job retention setting:", err);
       }
 
       try {
@@ -811,15 +834,30 @@ export function SettingsPanel({
       );
       return;
     }
+    const trimmedRetentionDays = jobRetentionDays.trim();
+    const parsedRetentionDays = Number(trimmedRetentionDays);
+    if (
+      !Number.isFinite(parsedRetentionDays) ||
+      !Number.isInteger(parsedRetentionDays) ||
+      parsedRetentionDays < minJobRetentionDays ||
+      parsedRetentionDays > maxJobRetentionDays
+    ) {
+      onError(
+        `Job retention days must be a whole number between ${minJobRetentionDays} and ${maxJobRetentionDays}.`
+      );
+      return;
+    }
 
     setAutoPollingSaving(true);
     setAutoPollingSaved(false);
     try {
       await SetAutoPollingEnabled(autoPollingEnabled);
       await SetPollIntervalMinutes(parsedMinutes);
+      await SetJobRetentionDays(parsedRetentionDays);
       await ApplyPollingIntervalMinutes(parsedMinutes);
       await ApplyPollingPaused(!autoPollingEnabled);
       setPollIntervalMinutesState(String(parsedMinutes));
+      setJobRetentionDaysState(String(parsedRetentionDays));
       setTimedSavedState(setAutoPollingSaved, autoPollingSavedTimeoutRef);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -1215,6 +1253,41 @@ export function SettingsPanel({
                 />
                 <p className="mt-1 text-xs text-hw-text-muted">
                   Minimum {minPollingIntervalMinutes} minutes. Maximum {maxPollingIntervalMinutes} minutes.
+                </p>
+              </div>
+            </div>
+          </section>
+          <section className="mt-5">
+            <h3 className="text-sm font-semibold text-hw-text mb-2">
+              Job Ad Retention Policy
+            </h3>
+            <p className="text-xs text-hw-text-muted mb-2">
+              Automatically remove older jobs based on their posted date.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label
+                  htmlFor="job-retention-days"
+                  className="block text-xs text-hw-text-muted mb-1"
+                >
+                  Only keep jobs posted within last X days
+                </label>
+                <Input
+                  id="job-retention-days"
+                  aria-label="Job Retention Days"
+                  type="number"
+                  size="sm"
+                  min={minJobRetentionDays}
+                  max={maxJobRetentionDays}
+                  step={1}
+                  value={jobRetentionDays}
+                  onChange={(e) => {
+                    setJobRetentionDaysState(e.target.value);
+                    setAutoPollingSaved(false);
+                  }}
+                />
+                <p className="mt-1 text-xs text-hw-text-muted">
+                  Minimum {minJobRetentionDays} calendar day. Maximum {maxJobRetentionDays} calendar days.
                 </p>
               </div>
               <Button

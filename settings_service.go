@@ -32,6 +32,7 @@ const (
 	settingLocalRuntimeModel   = "local_runtime_model"
 	settingAutoPollingEnabled  = "auto_poll_enabled"
 	settingPollIntervalMinutes = "poll_interval_minutes"
+	settingJobRetentionDays    = "job_retention_days"
 	settingAutoMatchEnabled    = "auto_match_enabled"
 	settingAutoMatchLimit      = "auto_match_limit"
 	settingCVPath              = "cv_path"
@@ -44,6 +45,9 @@ const (
 	defaultPollIntervalMin  = 30
 	minPollIntervalMinutes  = 30
 	maxPollIntervalMinutes  = 24 * 60
+	defaultJobRetentionDays = 30
+	minJobRetentionDays     = 1
+	maxJobRetentionDays     = 30
 	defaultAutoMatchLimit   = 0
 	defaultAutoMatchEnabled = true
 )
@@ -495,6 +499,45 @@ func (s *SettingsService) SetPollIntervalMinutes(minutes int) error {
 		return fmt.Errorf("setting poll interval minutes: %w", err)
 	}
 	slog.Info("poll interval minutes updated", "minutes", minutes)
+	return nil
+}
+
+// GetJobRetentionDays returns how long jobs should be kept based on posted_at age.
+func (s *SettingsService) GetJobRetentionDays() (int, error) {
+	value, err := s.db.GetSetting(context.Background(), settingJobRetentionDays)
+	if err != nil {
+		return 0, fmt.Errorf("getting job retention days setting: %w", err)
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return defaultJobRetentionDays, nil
+	}
+	days, parseErr := strconv.Atoi(value)
+	if parseErr != nil || days < minJobRetentionDays || days > maxJobRetentionDays {
+		slog.Warn(
+			"invalid job retention days setting value, using default",
+			"value",
+			value,
+		)
+		return defaultJobRetentionDays, nil
+	}
+	return days, nil
+}
+
+// SetJobRetentionDays saves the retention window for jobs based on posted_at age.
+func (s *SettingsService) SetJobRetentionDays(days int) error {
+	if days < minJobRetentionDays || days > maxJobRetentionDays {
+		return fmt.Errorf(
+			"invalid job retention days %d: must be between %d and %d",
+			days,
+			minJobRetentionDays,
+			maxJobRetentionDays,
+		)
+	}
+	if err := s.db.SetSetting(context.Background(), settingJobRetentionDays, strconv.Itoa(days)); err != nil {
+		return fmt.Errorf("setting job retention days: %w", err)
+	}
+	slog.Info("job retention days updated", "days", days)
 	return nil
 }
 

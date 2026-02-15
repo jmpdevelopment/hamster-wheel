@@ -445,6 +445,58 @@ func TestCountJobs(t *testing.T) {
 	}
 }
 
+func TestDeleteJobsPostedBeforeRemovesOnlyOlderRows(t *testing.T) {
+	db := testDB(t)
+	now := time.Now().UTC()
+
+	oldPostedAt := now.AddDate(0, 0, -40)
+	oldJob := makeTestJob("old-job")
+	oldJob.PostedAt = &oldPostedAt
+	oldID, err := db.InsertJob(context.Background(), oldJob)
+	if err != nil {
+		t.Fatalf("inserting old job: %v", err)
+	}
+
+	recentPostedAt := now.AddDate(0, 0, -5)
+	recentJob := makeTestJob("recent-job")
+	recentJob.PostedAt = &recentPostedAt
+	recentID, err := db.InsertJob(context.Background(), recentJob)
+	if err != nil {
+		t.Fatalf("inserting recent job: %v", err)
+	}
+
+	unknownAgeJob := makeTestJob("unknown-age-job")
+	unknownAgeJob.PostedAt = nil
+	unknownID, err := db.InsertJob(context.Background(), unknownAgeJob)
+	if err != nil {
+		t.Fatalf("inserting unknown-age job: %v", err)
+	}
+
+	deleted, err := db.DeleteJobsPostedBefore(context.Background(), now.AddDate(0, 0, -30))
+	if err != nil {
+		t.Fatalf("deleting old jobs: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("expected 1 deleted job, got %d", deleted)
+	}
+
+	if got, err := db.GetJob(context.Background(), oldID); err != nil {
+		t.Fatalf("getting old job: %v", err)
+	} else if got != nil {
+		t.Fatal("expected old job to be deleted")
+	}
+	if got, err := db.GetJob(context.Background(), recentID); err != nil {
+		t.Fatalf("getting recent job: %v", err)
+	} else if got == nil {
+		t.Fatal("expected recent job to remain")
+	}
+	if got, err := db.GetJob(context.Background(), unknownID); err != nil {
+		t.Fatalf("getting unknown-age job: %v", err)
+	} else if got == nil {
+		t.Fatal("expected unknown-age job to remain")
+	}
+}
+
 func TestUpdateJobDescriptionSuccess(t *testing.T) {
 	db := testDB(t)
 

@@ -924,6 +924,68 @@ func TestAutoPollingSettingsDatabaseErrors(t *testing.T) {
 	}
 }
 
+func TestJobRetentionSettingsLifecycleAndValidation(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	days, err := svc.GetJobRetentionDays()
+	if err != nil {
+		t.Fatalf("getting default job retention days: %v", err)
+	}
+	if days != defaultJobRetentionDays {
+		t.Fatalf("expected default job retention days %d, got %d", defaultJobRetentionDays, days)
+	}
+
+	if err := svc.SetJobRetentionDays(14); err != nil {
+		t.Fatalf("setting job retention days: %v", err)
+	}
+	days, err = svc.GetJobRetentionDays()
+	if err != nil {
+		t.Fatalf("getting job retention days after set: %v", err)
+	}
+	if days != 14 {
+		t.Fatalf("expected job retention days 14, got %d", days)
+	}
+
+	if err := svc.SetJobRetentionDays(minJobRetentionDays - 1); err == nil {
+		t.Fatalf("expected validation error below min retention days %d", minJobRetentionDays)
+	}
+	if err := svc.SetJobRetentionDays(maxJobRetentionDays + 1); err == nil {
+		t.Fatalf("expected validation error above max retention days %d", maxJobRetentionDays)
+	}
+
+	if err := database.SetSetting(context.Background(), settingJobRetentionDays, "not-a-number"); err != nil {
+		t.Fatalf("seeding invalid retention days value: %v", err)
+	}
+	days, err = svc.GetJobRetentionDays()
+	if err != nil {
+		t.Fatalf("getting retention days fallback: %v", err)
+	}
+	if days != defaultJobRetentionDays {
+		t.Fatalf("expected invalid retention days to fallback to %d, got %d", defaultJobRetentionDays, days)
+	}
+}
+
+func TestJobRetentionSettingsDatabaseErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	if _, err := svc.GetJobRetentionDays(); err == nil {
+		t.Fatal("expected GetJobRetentionDays to fail on closed DB")
+	}
+	if err := svc.SetJobRetentionDays(7); err == nil {
+		t.Fatal("expected SetJobRetentionDays to fail on closed DB")
+	}
+}
+
 func TestAutoMatchSettingsLifecycleAndValidation(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()

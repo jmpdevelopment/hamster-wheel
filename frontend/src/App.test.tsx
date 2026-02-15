@@ -98,6 +98,8 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
   SetAutoPollingEnabled: vi.fn().mockResolvedValue(undefined),
   GetPollIntervalMinutes: vi.fn().mockResolvedValue(30),
   SetPollIntervalMinutes: vi.fn().mockResolvedValue(undefined),
+  GetJobRetentionDays: vi.fn().mockResolvedValue(30),
+  SetJobRetentionDays: vi.fn().mockResolvedValue(undefined),
   GetLocalRuntimeModel: vi.fn().mockResolvedValue("llama3.1:8b"),
   GetLocalRuntimeStatus: vi.fn().mockResolvedValue({
     status: "ready",

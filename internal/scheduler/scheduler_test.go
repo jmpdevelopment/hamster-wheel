@@ -276,6 +276,118 @@ func TestPollOnceHonorsAutoMatchLimitPerCycle(t *testing.T) {
 	}
 }
 
+func TestPollOnceSkipsJobsOutsideRetentionWindow(t *testing.T) {
+	database, registry := testSetup(t)
+
+	now := time.Now().UTC()
+	oldPostedAt := now.AddDate(0, 0, -10)
+	recentPostedAt := now.AddDate(0, 0, -2)
+
+	mock := &mockAdapter{
+		name:        "retention_source",
+		displayName: "Retention Source",
+		jobs: []adapter.JobSummary{
+			{
+				SourceID: "old-job",
+				Title:    "Old Job",
+				URL:      "https://example.com/old",
+				PostedAt: oldPostedAt,
+			},
+			{
+				SourceID: "recent-job",
+				Title:    "Recent Job",
+				URL:      "https://example.com/recent",
+				PostedAt: recentPostedAt,
+			},
+		},
+	}
+	registry.Register(mock)
+
+	if err := database.SetSetting(context.Background(), settingJobRetentionDays, "7"); err != nil {
+		t.Fatalf("setting job retention days: %v", err)
+	}
+	if _, err := database.CreateFilter(context.Background(), "Retention Filter", "go", "Remote", "retention_source"); err != nil {
+		t.Fatalf("creating filter: %v", err)
+	}
+
+	s := New(database, registry, time.Minute)
+	results, err := s.PollOnce(context.Background())
+	if err != nil {
+		t.Fatalf("poll once failed: %v", err)
+	}
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].NewJobs != 1 {
+		t.Fatalf("expected 1 new job, got %d", results[0].NewJobs)
+	}
+	if results[0].Skipped != 1 {
+		t.Fatalf("expected 1 skipped job, got %d", results[0].Skipped)
+	}
+
+	jobs, err := database.ListJobs(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("listing jobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected exactly 1 persisted job, got %d", len(jobs))
+	}
+	if jobs[0].SourceID != "recent-job" {
+		t.Fatalf("expected recent job to be persisted, got %q", jobs[0].SourceID)
+	}
+}
+
+func TestCleanupExpiredJobsRemovesPersistedStaleRows(t *testing.T) {
+	database, registry := testSetup(t)
+	s := New(database, registry, time.Minute)
+
+	now := time.Now().UTC()
+	oldPostedAt := now.AddDate(0, 0, -12)
+	recentPostedAt := now.AddDate(0, 0, -3)
+
+	if _, err := database.InsertJob(context.Background(), &db.Job{
+		Source:   "retention_source",
+		SourceID: "old-job",
+		Title:    "Old Job",
+		URL:      "https://example.com/old",
+		PostedAt: &oldPostedAt,
+	}); err != nil {
+		t.Fatalf("inserting old job: %v", err)
+	}
+	if _, err := database.InsertJob(context.Background(), &db.Job{
+		Source:   "retention_source",
+		SourceID: "recent-job",
+		Title:    "Recent Job",
+		URL:      "https://example.com/recent",
+		PostedAt: &recentPostedAt,
+	}); err != nil {
+		t.Fatalf("inserting recent job: %v", err)
+	}
+
+	if err := database.SetSetting(context.Background(), settingJobRetentionDays, "7"); err != nil {
+		t.Fatalf("setting retention days: %v", err)
+	}
+
+	deleted, err := s.CleanupExpiredJobs(context.Background())
+	if err != nil {
+		t.Fatalf("running cleanup: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("expected 1 deleted job, got %d", deleted)
+	}
+
+	jobs, err := database.ListJobs(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("listing jobs after cleanup: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected 1 remaining job after cleanup, got %d", len(jobs))
+	}
+	if jobs[0].SourceID != "recent-job" {
+		t.Fatalf("expected recent job to remain after cleanup, got %q", jobs[0].SourceID)
+	}
+}
+
 func TestPollOnceDeduplicatesExistingJobs(t *testing.T) {
 	database, registry := testSetup(t)
 

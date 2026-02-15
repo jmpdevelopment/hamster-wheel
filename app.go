@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
@@ -10,6 +11,8 @@ import (
 	"hamster-wheel/internal/matcher"
 	"hamster-wheel/internal/scheduler"
 )
+
+const startupCleanupTimeout = 15 * time.Second
 
 // AppService handles application lifecycle. It no longer exposes business logic methods
 // to the frontend - those are now split into focused services (JobService, FilterService, etc.).
@@ -35,6 +38,12 @@ func NewAppService(database *db.DB, sched *scheduler.Scheduler, matchWorker *mat
 // It starts the scheduler loop and matcher worker.
 // Scheduler polling behavior depends on pause/interval settings.
 func (a *AppService) ServiceStartup(ctx context.Context, options application.ServiceOptions) error {
+	cleanupCtx, cancel := context.WithTimeout(ctx, startupCleanupTimeout)
+	defer cancel()
+	if _, err := a.scheduler.CleanupExpiredJobs(cleanupCtx); err != nil {
+		slog.Warn("job retention cleanup failed", "error", err)
+	}
+
 	a.scheduler.Start()
 	if a.matcher != nil {
 		a.matcher.Start()

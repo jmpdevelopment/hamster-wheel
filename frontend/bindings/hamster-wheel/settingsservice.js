@@ -73,6 +73,14 @@ export function GetCVPath() {
 }
 
 /**
+ * GetJobRetentionDays returns how long jobs should be kept based on posted_at age.
+ * @returns {$CancellablePromise<number>}
+ */
+export function GetJobRetentionDays() {
+    return $Call.ByID(3023383860);
+}
+
+/**
  * GetKeyboardShortcuts returns whether keyboard shortcuts are enabled ("true", "false", or "" if unset).
  * Empty string means default (enabled).
  * @returns {$CancellablePromise<string>}
@@ -263,6 +271,15 @@ export function SetAutoPollingEnabled(enabled) {
  */
 export function SetCVPath(cvPath) {
     return $Call.ByID(2451022818, cvPath);
+}
+
+/**
+ * SetJobRetentionDays saves the retention window for jobs based on posted_at age.
+ * @param {number} days
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetJobRetentionDays(days) {
+    return $Call.ByID(2953808808, days);
 }
 
 /**

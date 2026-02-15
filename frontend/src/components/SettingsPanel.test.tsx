@@ -16,6 +16,8 @@ const mockGetAutoPollingEnabled = vi.fn();
 const mockSetAutoPollingEnabled = vi.fn();
 const mockGetPollIntervalMinutes = vi.fn();
 const mockSetPollIntervalMinutes = vi.fn();
+const mockGetJobRetentionDays = vi.fn();
+const mockSetJobRetentionDays = vi.fn();
 const mockGetAutoMatchEnabled = vi.fn();
 const mockSetAutoMatchEnabled = vi.fn();
 const mockGetAutoMatchLimit = vi.fn();
@@ -66,6 +68,10 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
     mockGetPollIntervalMinutes(...args),
   SetPollIntervalMinutes: (...args: unknown[]) =>
     mockSetPollIntervalMinutes(...args),
+  GetJobRetentionDays: (...args: unknown[]) =>
+    mockGetJobRetentionDays(...args),
+  SetJobRetentionDays: (...args: unknown[]) =>
+    mockSetJobRetentionDays(...args),
   GetAutoMatchEnabled: (...args: unknown[]) => mockGetAutoMatchEnabled(...args),
   SetAutoMatchEnabled: (...args: unknown[]) => mockSetAutoMatchEnabled(...args),
   GetAutoMatchLimit: (...args: unknown[]) => mockGetAutoMatchLimit(...args),
@@ -141,6 +147,8 @@ beforeEach(() => {
   mockSetAutoPollingEnabled.mockResolvedValue(undefined);
   mockGetPollIntervalMinutes.mockResolvedValue(30);
   mockSetPollIntervalMinutes.mockResolvedValue(undefined);
+  mockGetJobRetentionDays.mockResolvedValue(30);
+  mockSetJobRetentionDays.mockResolvedValue(undefined);
   mockGetAutoMatchEnabled.mockResolvedValue(true);
   mockSetAutoMatchEnabled.mockResolvedValue(undefined);
   mockGetAutoMatchLimit.mockResolvedValue(0);
@@ -391,6 +399,7 @@ describe("SettingsPanel", () => {
   it("loads and saves auto polling settings", async () => {
     mockGetAutoPollingEnabled.mockResolvedValue(true);
     mockGetPollIntervalMinutes.mockResolvedValue(90);
+    mockGetJobRetentionDays.mockResolvedValue(21);
 
     render(<SettingsPanel {...defaultProps} />);
     await openTab("Jobs Providers");
@@ -401,17 +410,21 @@ describe("SettingsPanel", () => {
         "true"
       );
       expect(screen.getByLabelText("Poll Interval Minutes")).toHaveValue(90);
+      expect(screen.getByLabelText("Job Retention Days")).toHaveValue(21);
     });
 
     await userEvent.click(screen.getByRole("button", { name: "Disabled" }));
     await userEvent.clear(screen.getByLabelText("Poll Interval Minutes"));
     await userEvent.type(screen.getByLabelText("Poll Interval Minutes"), "60");
+    await userEvent.clear(screen.getByLabelText("Job Retention Days"));
+    await userEvent.type(screen.getByLabelText("Job Retention Days"), "14");
     await userEvent.click(
       screen.getByRole("button", { name: "Save polling settings" })
     );
 
     expect(mockSetAutoPollingEnabled).toHaveBeenCalledWith(false);
     expect(mockSetPollIntervalMinutes).toHaveBeenCalledWith(60);
+    expect(mockSetJobRetentionDays).toHaveBeenCalledWith(14);
     expect(mockApplyPollingIntervalMinutes).toHaveBeenCalledWith(60);
     expect(mockApplyPollingPaused).toHaveBeenCalledWith(true);
   });
@@ -430,6 +443,22 @@ describe("SettingsPanel", () => {
       "Polling interval must be a whole number between 30 and 1440 minutes."
     );
     expect(mockSetPollIntervalMinutes).not.toHaveBeenCalled();
+  });
+
+  it("reports validation errors for invalid job retention days", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("Jobs Providers");
+
+    await userEvent.clear(screen.getByLabelText("Job Retention Days"));
+    await userEvent.type(screen.getByLabelText("Job Retention Days"), "31");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save polling settings" })
+    );
+
+    expect(defaultProps.onError).toHaveBeenCalledWith(
+      "Job retention days must be a whole number between 1 and 30."
+    );
+    expect(mockSetJobRetentionDays).not.toHaveBeenCalled();
   });
 
   it("loads cloud mode by default and hides advanced endpoint fields", async () => {

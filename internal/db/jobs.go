@@ -292,6 +292,39 @@ func (db *DB) CountJobs(ctx context.Context) (int, error) {
 	return count, nil
 }
 
+// DeleteJobsPostedBefore removes jobs with a posted_at timestamp older than cutoff.
+// Jobs without posted_at are preserved because their posting age is unknown.
+// Returns the number of deleted rows.
+func (db *DB) DeleteJobsPostedBefore(ctx context.Context, cutoff time.Time) (int, error) {
+	cutoff = cutoff.UTC()
+	cutoffStr := cutoff.Format("2006-01-02 15:04:05")
+
+	var (
+		result sql.Result
+		err    error
+	)
+	retryErr := withSQLiteBusyRetryCtx(ctx, func() error {
+		result, err = db.conn.ExecContext(ctx,
+			"DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < ?",
+			cutoffStr,
+		)
+		return err
+	})
+	if retryErr != nil {
+		err = retryErr
+	}
+	if err != nil {
+		return 0, fmt.Errorf("deleting jobs posted before %s: %w", cutoffStr, err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("reading deleted jobs count: %w", err)
+	}
+
+	return int(rows), nil
+}
+
 // scanJob scans a single row into a Job.
 // Returns nil (not an error) if no row was found.
 func scanJob(row *sql.Row) (*Job, error) {

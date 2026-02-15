@@ -33,6 +33,7 @@ type JobStore interface {
 	InsertJob(ctx context.Context, job *db.Job) (string, error)
 	EnsureJobMatchPending(ctx context.Context, jobID string) error
 	GetSetting(ctx context.Context, key string) (string, error)
+	DeleteJobsPostedBefore(ctx context.Context, cutoff time.Time) (int, error)
 }
 
 // Scheduler manages periodic polling of job sources.
@@ -68,11 +69,21 @@ const (
 	settingAutoMatchLimit   = "auto_match_limit"
 	defaultAutoMatchLimit   = 0
 	defaultAutoMatchEnabled = true
+
+	settingJobRetentionDays = "job_retention_days"
+	defaultJobRetentionDays = 30
+	minJobRetentionDays     = 1
+	maxJobRetentionDays     = 30
 )
 
 type autoMatchPolicy struct {
 	enabled bool
 	limit   int
+}
+
+type retentionPolicy struct {
+	days   int
+	cutoff time.Time
 }
 
 func derivePollTimeout(interval time.Duration) time.Duration {
@@ -527,6 +538,32 @@ func buildPollCycleSummary(results []PollResult, cycleErr error, completedAt tim
 	return summary
 }
 
+// CleanupExpiredJobs removes persisted jobs older than the configured retention window.
+// It runs at startup to keep local storage bounded between sessions.
+func (s *Scheduler) CleanupExpiredJobs(ctx context.Context) (int, error) {
+	retention := s.resolveRetentionPolicy(ctx)
+	deleted, err := s.store.DeleteJobsPostedBefore(ctx, retention.cutoff)
+	if err != nil {
+		return 0, fmt.Errorf(
+			"cleaning up jobs older than %d days (cutoff=%s): %w",
+			retention.days,
+			retention.cutoff.Format(time.RFC3339),
+			err,
+		)
+	}
+
+	slog.Info(
+		"job retention cleanup complete",
+		"retention_days",
+		retention.days,
+		"cutoff",
+		retention.cutoff.Format(time.RFC3339),
+		"deleted_jobs",
+		deleted,
+	)
+	return deleted, nil
+}
+
 // fetchedJob is a job ready to be written to the database.
 // Produced by fetch goroutines, consumed by the single writer in PollOnce.
 type fetchedJob struct {
@@ -575,6 +612,7 @@ func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 
 	slog.Info("poll cycle starting", "filters", len(filters))
 	autoMatch := s.resolveAutoMatchPolicy(ctx)
+	retention := s.resolveRetentionPolicy(ctx)
 	autoMatchQueued := 0
 	autoMatchSuppressed := 0
 
@@ -610,7 +648,7 @@ func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 				}
 			}()
 
-			fr := s.fetchFilter(ctx, filter)
+			fr := s.fetchFilter(ctx, filter, retention)
 
 			mu.Lock()
 			fetchResults = append(fetchResults, fr)
@@ -708,6 +746,7 @@ func (s *Scheduler) PollOnce(ctx context.Context) ([]PollResult, error) {
 		"filters", len(filters),
 		"new_jobs", totalNew,
 		"skipped", totalSkipped,
+		"job_retention_days", retention.days,
 		"auto_match_enabled", autoMatch.enabled,
 		"auto_match_limit", autoMatch.limit,
 		"auto_match_queued", autoMatchQueued,
@@ -764,12 +803,51 @@ func (s *Scheduler) resolveAutoMatchPolicy(ctx context.Context) autoMatchPolicy 
 	return policy
 }
 
+func (s *Scheduler) resolveRetentionPolicy(ctx context.Context) retentionPolicy {
+	retention := retentionPolicy{
+		days:   defaultJobRetentionDays,
+		cutoff: time.Now().UTC().AddDate(0, 0, -defaultJobRetentionDays),
+	}
+
+	raw, err := s.store.GetSetting(ctx, settingJobRetentionDays)
+	if err != nil {
+		slog.Warn("failed to load job retention setting, using default", "error", err)
+		return retention
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return retention
+	}
+
+	days, parseErr := strconv.Atoi(raw)
+	if parseErr != nil || days < minJobRetentionDays || days > maxJobRetentionDays {
+		slog.Warn(
+			"invalid job retention days setting value, using default",
+			"value",
+			raw,
+		)
+		return retention
+	}
+
+	retention.days = days
+	retention.cutoff = time.Now().UTC().AddDate(0, 0, -days)
+	return retention
+}
+
+func isWithinRetentionWindow(postedAt time.Time, cutoff time.Time) bool {
+	if postedAt.IsZero() {
+		// Some sources do not provide posted date consistently; keep these jobs.
+		return true
+	}
+	return !postedAt.UTC().Before(cutoff.UTC())
+}
+
 // fetchFilter does the I/O-heavy work for a single filter: looks up the
 // adapter, fetches job summaries via HTTP, checks the DB for duplicates
 // (reads only), and fetches full details for new jobs via HTTP.
 //
 // It does NOT write to the database — that's PollOnce's job (single writer).
-func (s *Scheduler) fetchFilter(ctx context.Context, filter db.SearchFilter) filterFetchResult {
+func (s *Scheduler) fetchFilter(ctx context.Context, filter db.SearchFilter, retention retentionPolicy) filterFetchResult {
 	fr := filterFetchResult{
 		FilterID:   filter.ID,
 		FilterName: filter.Name,
@@ -812,6 +890,11 @@ func (s *Scheduler) fetchFilter(ctx context.Context, filter db.SearchFilter) fil
 			return fr
 		}
 
+		if !isWithinRetentionWindow(summary.PostedAt, retention.cutoff) {
+			fr.Skipped++
+			continue
+		}
+
 		// Dedup check — this is a read, safe to do concurrently.
 		exists, err := s.store.JobExistsBySourceID(ctx, a.Name(), summary.SourceID)
 		if err != nil {
@@ -834,6 +917,11 @@ func (s *Scheduler) fetchFilter(ctx context.Context, filter db.SearchFilter) fil
 			details = &adapter.JobDetails{
 				JobSummary: summary,
 			}
+		}
+
+		if !isWithinRetentionWindow(details.PostedAt, retention.cutoff) {
+			fr.Skipped++
+			continue
 		}
 
 		// Build the DB job struct (but don't insert yet).
