@@ -14,6 +14,7 @@ import {
 } from "../lib/matchStatus";
 import { sourceDescriptionNotice, sourceDisplayLabel } from "../lib/jobSource";
 import { containsHTML, sanitizeHTML } from "../lib/sanitize";
+import { toSafeExternalURL } from "../lib/url";
 import { Browser } from "@wailsio/runtime";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
@@ -46,6 +47,7 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
         ? "Heuristic (Local)"
         : matchProvider;
   const sourceNotice = sourceDescriptionNotice(job.Source);
+  const safeJobURL = toSafeExternalURL(job.URL);
 
   const handleDelete = () => {
     if (confirming) {
@@ -59,8 +61,8 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
   };
 
   const handleOpenInBrowser = () => {
-    if (job.URL) {
-      Browser.OpenURL(job.URL);
+    if (safeJobURL) {
+      Browser.OpenURL(safeJobURL);
     }
   };
 
@@ -156,7 +158,7 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
         </div>
 
         <div className="flex gap-2 mt-3">
-          {job.URL && (
+          {safeJobURL && (
             <Button
               variant="primary"
               size="sm"

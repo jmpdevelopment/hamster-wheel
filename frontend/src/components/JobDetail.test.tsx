@@ -156,6 +156,20 @@ describe("JobDetail", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("hides Open in Browser when URL uses a non-web scheme", () => {
+    render(
+      <JobDetail
+        job={fakeJob({ URL: "javascript:alert(1)" })}
+        onDelete={noop}
+        onClose={() => {}}
+        onRefresh={noop}
+      />
+    );
+    expect(
+      screen.queryByRole("button", { name: /open in browser/i })
+    ).not.toBeInTheDocument();
+  });
+
   it("shows confirm buttons when delete is clicked", async () => {
     render(<JobDetail job={fakeJob()} onDelete={noop} onClose={() => {}} onRefresh={noop} />);
 
