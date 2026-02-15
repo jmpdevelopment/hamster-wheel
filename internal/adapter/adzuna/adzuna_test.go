@@ -308,6 +308,44 @@ func TestFetchJobDetailsFallsBackToSummarySnippet(t *testing.T) {
 	}
 }
 
+func TestStoreJobCacheReplacesPreviousEntries(t *testing.T) {
+	a := New(testAppID, testAppKey)
+	a.storeJobCache(map[string]cachedDetails{
+		"old-1": {fullDescription: "old details 1"},
+		"old-2": {fullDescription: "old details 2"},
+	})
+
+	a.storeJobCache(map[string]cachedDetails{
+		"new-1": {fullDescription: "new details 1"},
+	})
+
+	if len(a.jobCache) != 1 {
+		t.Fatalf("expected cache size 1 after replacement, got %d", len(a.jobCache))
+	}
+	if _, ok := a.cachedJobDetails("old-1"); ok {
+		t.Fatal("expected old cache entry old-1 to be evicted")
+	}
+	if _, ok := a.cachedJobDetails("old-2"); ok {
+		t.Fatal("expected old cache entry old-2 to be evicted")
+	}
+	if got, ok := a.cachedJobDetails("new-1"); !ok || got.fullDescription != "new details 1" {
+		t.Fatalf("expected new cache entry to be present, got %v (found=%v)", got, ok)
+	}
+}
+
+func TestStoreJobCacheClearsOnEmptyEntries(t *testing.T) {
+	a := New(testAppID, testAppKey)
+	a.storeJobCache(map[string]cachedDetails{
+		"existing": {fullDescription: "details"},
+	})
+
+	a.storeJobCache(nil)
+
+	if len(a.jobCache) != 0 {
+		t.Fatalf("expected cache to be empty after storing empty entries, got %d", len(a.jobCache))
+	}
+}
+
 func TestValidate(t *testing.T) {
 	a := setupMockAdapter(t)
 	if err := a.Validate(context.Background()); err != nil {

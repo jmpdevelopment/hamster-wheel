@@ -312,14 +312,13 @@ func (a *Adapter) acquireRequestSlot(ctx context.Context) error {
 }
 
 func (a *Adapter) storeJobCache(entries map[string]cachedDetails) {
-	if len(entries) == 0 {
-		return
-	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for sourceID, details := range entries {
-		a.jobCache[sourceID] = details
+	if len(entries) == 0 {
+		a.jobCache = make(map[string]cachedDetails)
+		return
 	}
+	a.jobCache = entries
 }
 
 func (a *Adapter) cachedJobDetails(sourceID string) (cachedDetails, bool) {
