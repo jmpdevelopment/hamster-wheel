@@ -6,12 +6,18 @@ import (
 )
 
 type stubKeychainStore struct {
-	value string
-	err   error
+	values map[string]string
+	err    error
 }
 
-func (s stubKeychainStore) Get(string) (string, error) {
-	return s.value, s.err
+func (s stubKeychainStore) Get(key string) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
+	if s.values == nil {
+		return "", nil
+	}
+	return s.values[key], nil
 }
 
 func (s stubKeychainStore) Set(string, string) error {
@@ -23,7 +29,9 @@ func (s stubKeychainStore) Delete(string) error {
 }
 
 func TestLoadReedAPIKeyPrefersKeychainValue(t *testing.T) {
-	store := stubKeychainStore{value: " keychain-secret "}
+	store := stubKeychainStore{values: map[string]string{
+		settingReedAPIKey: " keychain-secret ",
+	}}
 	key := loadReedAPIKey(store, func(string) string {
 		return "env-secret"
 	})
@@ -33,7 +41,7 @@ func TestLoadReedAPIKeyPrefersKeychainValue(t *testing.T) {
 }
 
 func TestLoadReedAPIKeyFallsBackToEnvWhenKeychainEmpty(t *testing.T) {
-	store := stubKeychainStore{}
+	store := stubKeychainStore{values: map[string]string{}}
 	key := loadReedAPIKey(store, func(string) string {
 		return " env-secret "
 	})
@@ -49,5 +57,61 @@ func TestLoadReedAPIKeyFallsBackToEnvWhenKeychainErrors(t *testing.T) {
 	})
 	if key != "env-secret" {
 		t.Fatalf("expected env fallback on keychain error, got %q", key)
+	}
+}
+
+func TestLoadAdzunaCredentialsPrefersKeychainValues(t *testing.T) {
+	store := stubKeychainStore{values: map[string]string{
+		settingAdzunaAppID:  " id-keychain ",
+		settingAdzunaAppKey: " key-keychain ",
+	}}
+	appID, appKey := loadAdzunaCredentials(store, func(string) string {
+		return ""
+	})
+	if appID != "id-keychain" {
+		t.Fatalf("expected keychain app id, got %q", appID)
+	}
+	if appKey != "key-keychain" {
+		t.Fatalf("expected keychain app key, got %q", appKey)
+	}
+}
+
+func TestLoadAdzunaCredentialsFallsBackToEnv(t *testing.T) {
+	store := stubKeychainStore{values: map[string]string{}}
+	appID, appKey := loadAdzunaCredentials(store, func(name string) string {
+		switch name {
+		case "ADZUNA_APP_ID":
+			return " env-id "
+		case "ADZUNA_APP_KEY":
+			return " env-key "
+		default:
+			return ""
+		}
+	})
+	if appID != "env-id" {
+		t.Fatalf("expected env app id, got %q", appID)
+	}
+	if appKey != "env-key" {
+		t.Fatalf("expected env app key, got %q", appKey)
+	}
+}
+
+func TestLoadAdzunaCredentialsUsesEnvWhenKeychainErrors(t *testing.T) {
+	store := stubKeychainStore{err: errors.New("keychain unavailable")}
+	appID, appKey := loadAdzunaCredentials(store, func(name string) string {
+		switch name {
+		case "ADZUNA_APP_ID":
+			return "env-id"
+		case "ADZUNA_APP_KEY":
+			return "env-key"
+		default:
+			return ""
+		}
+	})
+	if appID != "env-id" {
+		t.Fatalf("expected env app id, got %q", appID)
+	}
+	if appKey != "env-key" {
+		t.Fatalf("expected env app key, got %q", appKey)
 	}
 }

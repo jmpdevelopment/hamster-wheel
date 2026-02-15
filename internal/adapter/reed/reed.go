@@ -21,6 +21,7 @@ const (
 	defaultBaseURL = "https://www.reed.co.uk/api/1.0"
 	userAgent      = "HamsterWheel/1.0 (Job Search Assistant)"
 	minRequestGap  = 2 * time.Second // Rate limit: minimum gap between HTTP requests
+	maxResults     = 100
 )
 
 // Adapter implements adapter.Adapter for Reed UK via their REST API.
@@ -84,7 +85,7 @@ func (a *Adapter) FetchNewJobs(ctx context.Context, params adapter.SearchParams)
 	if params.Location != "" {
 		q.Set("locationName", params.Location)
 	}
-	q.Set("resultsToTake", "100")
+	q.Set("resultsToTake", strconv.Itoa(maxResults))
 
 	searchURL := a.baseURL + "/search?" + q.Encode()
 

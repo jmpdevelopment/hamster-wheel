@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { Browser, Dialogs } from "@wailsio/runtime";
 import {
+  ClearAdzunaCredentials,
   ClearOpenAIAPIKey,
   ClearReedAPIKey,
+  HasAdzunaCredentials,
   GetAutoMatchEnabled,
   GetAutoMatchLimit,
   GetCVPath,
@@ -28,6 +30,7 @@ import {
   SetOpenAIAPIKey,
   SetAutoMatchEnabled,
   SetAutoMatchLimit,
+  SetAdzunaCredentials,
   SetReedAPIKey,
   StartLocalRuntime,
   StopLocalRuntime,
@@ -137,6 +140,12 @@ export function SettingsPanel({
   const [reedSaving, setReedSaving] = useState(false);
   const [reedClearing, setReedClearing] = useState(false);
   const [hasReedKey, setHasReedKey] = useState(false);
+  const [adzunaAppID, setAdzunaAppID] = useState("");
+  const [adzunaAppKey, setAdzunaAppKey] = useState("");
+  const [adzunaSaved, setAdzunaSaved] = useState(false);
+  const [adzunaSaving, setAdzunaSaving] = useState(false);
+  const [adzunaClearing, setAdzunaClearing] = useState(false);
+  const [hasAdzunaCredentials, setHasAdzunaCredentials] = useState(false);
 
   const [openAIAPIKey, setOpenAIAPIKey] = useState("");
   const [openAISaved, setOpenAISaved] = useState(false);
@@ -180,6 +189,7 @@ export function SettingsPanel({
   const [cvPathSaved, setCVPathSaved] = useState(false);
 
   const reedSavedTimeoutRef = useRef<number | null>(null);
+  const adzunaSavedTimeoutRef = useRef<number | null>(null);
   const openAISavedTimeoutRef = useRef<number | null>(null);
   const llmSavedTimeoutRef = useRef<number | null>(null);
   const autoMatchSavedTimeoutRef = useRef<number | null>(null);
@@ -276,6 +286,15 @@ export function SettingsPanel({
         }
       } catch (err: unknown) {
         reportError("Failed to load Reed API key:", err);
+      }
+
+      try {
+        const present = await HasAdzunaCredentials();
+        if (!cancelled) {
+          setHasAdzunaCredentials(Boolean(present));
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load Adzuna credentials:", err);
       }
 
       try {
@@ -393,6 +412,9 @@ export function SettingsPanel({
     return () => {
       if (reedSavedTimeoutRef.current !== null) {
         clearTimeout(reedSavedTimeoutRef.current);
+      }
+      if (adzunaSavedTimeoutRef.current !== null) {
+        clearTimeout(adzunaSavedTimeoutRef.current);
       }
       if (openAISavedTimeoutRef.current !== null) {
         clearTimeout(openAISavedTimeoutRef.current);
@@ -518,6 +540,45 @@ export function SettingsPanel({
       onError(message);
     } finally {
       setReedClearing(false);
+    }
+  };
+
+  const handleSaveAdzunaCredentials = async () => {
+    const trimmedAppID = adzunaAppID.trim();
+    const trimmedAppKey = adzunaAppKey.trim();
+    if (!trimmedAppID || !trimmedAppKey) return;
+
+    setAdzunaSaving(true);
+    setAdzunaSaved(false);
+    try {
+      await SetAdzunaCredentials(trimmedAppID, trimmedAppKey);
+      setHasAdzunaCredentials(true);
+      setAdzunaAppID("");
+      setAdzunaAppKey("");
+      setTimedSavedState(setAdzunaSaved, adzunaSavedTimeoutRef);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save Adzuna credentials:", message);
+      onError(message);
+    } finally {
+      setAdzunaSaving(false);
+    }
+  };
+
+  const handleClearAdzunaCredentials = async () => {
+    setAdzunaClearing(true);
+    setAdzunaSaved(false);
+    try {
+      await ClearAdzunaCredentials();
+      setAdzunaAppID("");
+      setAdzunaAppKey("");
+      setHasAdzunaCredentials(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to clear Adzuna credentials:", message);
+      onError(message);
+    } finally {
+      setAdzunaClearing(false);
     }
   };
 
@@ -946,6 +1007,81 @@ export function SettingsPanel({
                 }
               >
                 Obtain a Key
+              </Button>
+            )}
+          </section>
+          <section className="mt-5">
+            <h3 className="text-sm font-semibold text-hw-text mb-2">
+              Adzuna Credentials
+            </h3>
+            <div className="space-y-2">
+              <Input
+                type="text"
+                size="sm"
+                value={adzunaAppID}
+                onChange={(e) => {
+                  setAdzunaAppID(e.target.value);
+                  setAdzunaSaved(false);
+                }}
+                placeholder={
+                  hasAdzunaCredentials
+                    ? "Enter new App ID to replace existing credentials"
+                    : "Enter App ID"
+                }
+                aria-label="Adzuna App ID"
+              />
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  size="sm"
+                  value={adzunaAppKey}
+                  onChange={(e) => {
+                    setAdzunaAppKey(e.target.value);
+                    setAdzunaSaved(false);
+                  }}
+                  placeholder={
+                    hasAdzunaCredentials
+                      ? "Enter new App Key to replace existing credentials"
+                      : "Enter App Key"
+                  }
+                  className="flex-1 min-w-0"
+                  aria-label="Adzuna App Key"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSaveAdzunaCredentials}
+                  disabled={!adzunaAppID.trim() || !adzunaAppKey.trim()}
+                  loading={adzunaSaving}
+                  className="shrink-0"
+                >
+                  {adzunaSaved ? "Saved" : "Save Credentials"}
+                </Button>
+                {hasAdzunaCredentials && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={handleClearAdzunaCredentials}
+                    loading={adzunaClearing}
+                    className="shrink-0"
+                  >
+                    Clear Credentials
+                  </Button>
+                )}
+              </div>
+            </div>
+            {hasAdzunaCredentials ? (
+              <p className="mt-1 text-xs text-hw-text-muted">
+                Credentials are stored securely in your OS keychain.
+              </p>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-1"
+                onClick={() => Browser.OpenURL("https://developer.adzuna.com")}
+              >
+                Obtain Credentials
               </Button>
             )}
           </section>

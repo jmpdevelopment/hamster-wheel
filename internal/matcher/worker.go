@@ -24,6 +24,7 @@ const (
 	defaultMatchTimeout    = 20 * time.Second
 	defaultStaleProcessing = 2 * time.Minute
 	settingCVPath          = "cv_path"
+	adzunaSourceName       = "adzuna_gb"
 )
 
 // Store is the DB contract required by the matcher worker.
@@ -314,6 +315,7 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 		JobCompany:          job.Company,
 		JobLocation:         job.Location,
 		JobDescription:      job.Description,
+		JobDescriptionNote:  sourceDescriptionNote(job.Source),
 		MaxDescriptionRunes: w.descriptionRunes,
 	})
 	if err != nil {
@@ -358,6 +360,15 @@ func (w *Worker) queryForJob(ctx context.Context, job *db.Job) string {
 
 	// Fallback keeps scoring deterministic even when filter data is unavailable.
 	return strings.TrimSpace(job.Title + " " + job.Location)
+}
+
+func sourceDescriptionNote(source string) string {
+	switch strings.ToLower(strings.TrimSpace(source)) {
+	case adzunaSourceName:
+		return "The description from this source is a snippet preview, not the full job advert."
+	default:
+		return ""
+	}
 }
 
 func (w *Worker) cvProfileForJob(ctx context.Context) string {

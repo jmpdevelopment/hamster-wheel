@@ -16,6 +16,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Cr
 import * as localruntime$0 from "./internal/localruntime/models.js";
 
 /**
+ * ClearAdzunaCredentials removes stored Adzuna credentials and clears active adapter credentials.
+ * @returns {$CancellablePromise<void>}
+ */
+export function ClearAdzunaCredentials() {
+    return $Call.ByID(1664244342);
+}
+
+/**
  * ClearOpenAIAPIKey removes the stored OpenAI API key.
  * @returns {$CancellablePromise<void>}
  */
@@ -157,6 +165,14 @@ export function GetTheme() {
 }
 
 /**
+ * HasAdzunaCredentials reports whether both Adzuna credentials are currently stored.
+ * @returns {$CancellablePromise<boolean>}
+ */
+export function HasAdzunaCredentials() {
+    return $Call.ByID(2247156057);
+}
+
+/**
  * HasOpenAIAPIKey reports whether an OpenAI API key is currently stored.
  * It never returns the secret to the frontend.
  * @returns {$CancellablePromise<boolean>}
@@ -183,6 +199,16 @@ export function PullLocalRuntimeModel(model) {
     return $Call.ByID(666476807, model).then(/** @type {($result: any) => any} */(($result) => {
         return $$createType3($result);
     }));
+}
+
+/**
+ * SetAdzunaCredentials saves Adzuna app credentials and updates the adapter immediately.
+ * @param {string} appID
+ * @param {string} appKey
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetAdzunaCredentials(appID, appKey) {
+    return $Call.ByID(2320651825, appID, appKey);
 }
 
 /**

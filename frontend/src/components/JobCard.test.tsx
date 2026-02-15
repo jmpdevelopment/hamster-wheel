@@ -2,6 +2,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { JobCard } from "./JobCard";
+import { Browser } from "@wailsio/runtime";
+
+vi.mock("@wailsio/runtime", () => ({
+  Browser: { OpenURL: vi.fn() },
+}));
 
 const fakeJob = (overrides = {}) => ({
   ID: "j1",
@@ -44,6 +49,27 @@ describe("JobCard", () => {
   it("renders source", () => {
     render(<JobCard {...defaultProps} />);
     expect(screen.getByText("reed_uk")).toBeInTheDocument();
+  });
+
+  it("renders Adzuna attribution source link", () => {
+    render(<JobCard {...defaultProps} job={fakeJob({ Source: "adzuna_gb" })} />);
+    const link = screen.getByRole("link", { name: "Jobs by Adzuna" });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "https://www.adzuna.co.uk");
+  });
+
+  it("opens Adzuna attribution in browser runtime on click", async () => {
+    render(<JobCard {...defaultProps} job={fakeJob({ Source: "adzuna_gb" })} />);
+
+    await userEvent.click(screen.getByRole("link", { name: "Jobs by Adzuna" }));
+
+    expect(Browser.OpenURL).toHaveBeenCalledWith("https://www.adzuna.co.uk");
+  });
+
+  it("renders non-Adzuna source as plain text", () => {
+    render(<JobCard {...defaultProps} />);
+    expect(screen.getByText("reed_uk")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "reed_uk" })).not.toBeInTheDocument();
   });
 
   it("handles missing company", () => {

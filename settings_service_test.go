@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"hamster-wheel/internal/adapter/adzuna"
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/keychain"
@@ -125,7 +126,9 @@ func TestSettingsServiceAPIKeyLifecycle(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()
 	reedAdapter := reed.New("")
+	adzunaAdapter := adzuna.New("", "")
 	svc := NewSettingsService(database, kc, reedAdapter)
+	svc.setAdzunaAdapter(adzunaAdapter)
 
 	has, err := svc.HasReedAPIKey()
 	if err != nil {
@@ -174,6 +177,61 @@ func TestSettingsServiceAPIKeyLifecycle(t *testing.T) {
 	}
 	if reedAdapter.HasAPIKey() {
 		t.Fatal("expected adapter key to be cleared")
+	}
+
+	hasAdzuna, err := svc.HasAdzunaCredentials()
+	if err != nil {
+		t.Fatalf("checking initial adzuna credentials presence: %v", err)
+	}
+	if hasAdzuna {
+		t.Fatal("expected HasAdzunaCredentials=false initially")
+	}
+	if adzunaAdapter.HasCredentials() {
+		t.Fatal("expected adzuna adapter to start without credentials")
+	}
+
+	if err := svc.SetAdzunaCredentials("  app-id-123  ", "  app-key-123  "); err != nil {
+		t.Fatalf("setting adzuna credentials: %v", err)
+	}
+
+	hasAdzuna, err = svc.HasAdzunaCredentials()
+	if err != nil {
+		t.Fatalf("checking adzuna credentials after set: %v", err)
+	}
+	if !hasAdzuna {
+		t.Fatal("expected HasAdzunaCredentials=true after set")
+	}
+	if !adzunaAdapter.HasCredentials() {
+		t.Fatal("expected adzuna adapter to have credentials after set")
+	}
+
+	storedID, err := kc.Get(settingAdzunaAppID)
+	if err != nil {
+		t.Fatalf("reading adzuna app id key: %v", err)
+	}
+	storedKey, err := kc.Get(settingAdzunaAppKey)
+	if err != nil {
+		t.Fatalf("reading adzuna app key key: %v", err)
+	}
+	if storedID != "app-id-123" {
+		t.Fatalf("expected trimmed adzuna app id to be stored, got %q", storedID)
+	}
+	if storedKey != "app-key-123" {
+		t.Fatalf("expected trimmed adzuna app key to be stored, got %q", storedKey)
+	}
+
+	if err := svc.ClearAdzunaCredentials(); err != nil {
+		t.Fatalf("clearing adzuna credentials: %v", err)
+	}
+	hasAdzuna, err = svc.HasAdzunaCredentials()
+	if err != nil {
+		t.Fatalf("checking adzuna credentials after clear: %v", err)
+	}
+	if hasAdzuna {
+		t.Fatal("expected HasAdzunaCredentials=false after clear")
+	}
+	if adzunaAdapter.HasCredentials() {
+		t.Fatal("expected adzuna adapter credentials to be cleared")
 	}
 }
 
@@ -362,16 +420,24 @@ func TestSetReedAPIKeyRejectsEmpty(t *testing.T) {
 	if err := svc.SetReedAPIKey("   "); err == nil {
 		t.Fatal("expected error for empty API key")
 	}
+	if err := svc.SetAdzunaCredentials("   ", "app-key"); err == nil {
+		t.Fatal("expected error for empty adzuna app id")
+	}
+	if err := svc.SetAdzunaCredentials("app-id", "   "); err == nil {
+		t.Fatal("expected error for empty adzuna app key")
+	}
 }
 
 func TestSettingsServiceAPIKeyErrorsPropagate(t *testing.T) {
 	database := openSettingsTestDB(t)
 	reedAdapter := reed.New("")
+	adzunaAdapter := adzuna.New("", "")
 	svc := NewSettingsService(database, failingKeychainStore{
 		getErr:    errors.New("get failed"),
 		setErr:    errors.New("set failed"),
 		deleteErr: errors.New("delete failed"),
 	}, reedAdapter)
+	svc.setAdzunaAdapter(adzunaAdapter)
 
 	if _, err := svc.HasReedAPIKey(); err == nil {
 		t.Fatal("expected error from HasReedAPIKey")
@@ -382,8 +448,20 @@ func TestSettingsServiceAPIKeyErrorsPropagate(t *testing.T) {
 	if err := svc.ClearReedAPIKey(); err == nil {
 		t.Fatal("expected error from ClearReedAPIKey")
 	}
+	if _, err := svc.HasAdzunaCredentials(); err == nil {
+		t.Fatal("expected error from HasAdzunaCredentials")
+	}
+	if err := svc.SetAdzunaCredentials("app-id", "app-key"); err == nil {
+		t.Fatal("expected error from SetAdzunaCredentials")
+	}
+	if err := svc.ClearAdzunaCredentials(); err == nil {
+		t.Fatal("expected error from ClearAdzunaCredentials")
+	}
 	if reedAdapter.HasAPIKey() {
 		t.Fatal("expected adapter key to remain unchanged on failures")
+	}
+	if adzunaAdapter.HasCredentials() {
+		t.Fatal("expected adzuna adapter credentials to remain unchanged on failures")
 	}
 }
 

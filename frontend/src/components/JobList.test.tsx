@@ -65,6 +65,18 @@ describe("JobList", () => {
     expect(screen.getByText("React Dev")).toBeInTheDocument();
   });
 
+  it("shows Adzuna attribution link when Adzuna jobs are visible", () => {
+    render(
+      <JobList
+        {...defaultProps}
+        jobs={[{ ...fakeJob("j1", "Go Dev"), Source: "adzuna_gb" }]}
+      />
+    );
+
+    const link = screen.getByRole("link", { name: "Jobs by Adzuna" });
+    expect(link).toHaveAttribute("href", "https://www.adzuna.co.uk");
+  });
+
   it("shows loading state", () => {
     render(<JobList {...defaultProps} jobs={[]} loading={true} />);
     expect(screen.getByText("Loading...")).toBeInTheDocument();

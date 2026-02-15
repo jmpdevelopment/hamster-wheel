@@ -6,6 +6,9 @@ import { SettingsPanel } from "./SettingsPanel";
 const mockHasReedAPIKey = vi.fn();
 const mockSetReedAPIKey = vi.fn();
 const mockClearReedAPIKey = vi.fn();
+const mockHasAdzunaCredentials = vi.fn();
+const mockSetAdzunaCredentials = vi.fn();
+const mockClearAdzunaCredentials = vi.fn();
 const mockHasOpenAIAPIKey = vi.fn();
 const mockSetOpenAIAPIKey = vi.fn();
 const mockClearOpenAIAPIKey = vi.fn();
@@ -40,6 +43,12 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   HasReedAPIKey: (...args: unknown[]) => mockHasReedAPIKey(...args),
   SetReedAPIKey: (...args: unknown[]) => mockSetReedAPIKey(...args),
   ClearReedAPIKey: (...args: unknown[]) => mockClearReedAPIKey(...args),
+  HasAdzunaCredentials: (...args: unknown[]) =>
+    mockHasAdzunaCredentials(...args),
+  SetAdzunaCredentials: (...args: unknown[]) =>
+    mockSetAdzunaCredentials(...args),
+  ClearAdzunaCredentials: (...args: unknown[]) =>
+    mockClearAdzunaCredentials(...args),
   HasOpenAIAPIKey: (...args: unknown[]) => mockHasOpenAIAPIKey(...args),
   SetOpenAIAPIKey: (...args: unknown[]) => mockSetOpenAIAPIKey(...args),
   ClearOpenAIAPIKey: (...args: unknown[]) => mockClearOpenAIAPIKey(...args),
@@ -102,6 +111,9 @@ beforeEach(() => {
   mockHasReedAPIKey.mockResolvedValue(false);
   mockSetReedAPIKey.mockResolvedValue(undefined);
   mockClearReedAPIKey.mockResolvedValue(undefined);
+  mockHasAdzunaCredentials.mockResolvedValue(false);
+  mockSetAdzunaCredentials.mockResolvedValue(undefined);
+  mockClearAdzunaCredentials.mockResolvedValue(undefined);
   mockHasOpenAIAPIKey.mockResolvedValue(false);
   mockSetOpenAIAPIKey.mockResolvedValue(undefined);
   mockClearOpenAIAPIKey.mockResolvedValue(undefined);
@@ -302,6 +314,52 @@ describe("SettingsPanel", () => {
     expect(mockOpenURL).toHaveBeenCalledWith(
       "https://www.reed.co.uk/developers/Jobseeker"
     );
+  });
+
+  it("shows Adzuna obtain button when credentials are missing", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("Jobs Providers");
+
+    expect(
+      await screen.findByRole("button", { name: "Obtain Credentials" })
+    ).toBeInTheDocument();
+  });
+
+  it("shows Adzuna clear controls when credentials exist", async () => {
+    mockHasAdzunaCredentials.mockResolvedValue(true);
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("Jobs Providers");
+
+    expect(
+      await screen.findByRole("button", { name: "Clear Credentials" })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Credentials are stored securely in your OS keychain.")
+    ).toBeInTheDocument();
+  });
+
+  it("saves and clears Adzuna credentials", async () => {
+    mockHasAdzunaCredentials.mockResolvedValue(true);
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("Jobs Providers");
+
+    await userEvent.type(screen.getByLabelText("Adzuna App ID"), "adzuna-id");
+    await userEvent.type(screen.getByLabelText("Adzuna App Key"), "adzuna-key");
+    await userEvent.click(screen.getByRole("button", { name: "Save Credentials" }));
+    expect(mockSetAdzunaCredentials).toHaveBeenCalledWith("adzuna-id", "adzuna-key");
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Clear Credentials" })
+    );
+    expect(mockClearAdzunaCredentials).toHaveBeenCalledOnce();
+  });
+
+  it("opens Adzuna developer URL", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("Jobs Providers");
+
+    await userEvent.click(screen.getByRole("button", { name: "Obtain Credentials" }));
+    expect(mockOpenURL).toHaveBeenCalledWith("https://developer.adzuna.com");
   });
 
   it("loads cloud mode by default and hides advanced endpoint fields", async () => {

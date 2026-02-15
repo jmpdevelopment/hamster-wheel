@@ -210,6 +210,24 @@ describe("JobDetail", () => {
     expect(screen.getByText(/reed_uk/)).toBeInTheDocument();
     expect(screen.getByText(/Posted:/)).toBeInTheDocument();
     expect(screen.getByText(/Found:/)).toBeInTheDocument();
+    expect(
+      screen.queryByText("Adzuna provides a description snippet, not the full job ad.")
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows Adzuna attribution source label", () => {
+    render(
+      <JobDetail
+        job={fakeJob({ Source: "adzuna_gb" })}
+        onDelete={noop}
+        onClose={() => {}}
+        onRefresh={noop}
+      />
+    );
+    expect(screen.getByText("Jobs by Adzuna")).toBeInTheDocument();
+    expect(
+      screen.getByText("Adzuna provides a description snippet, not the full job ad.")
+    ).toBeInTheDocument();
   });
 
   it("shows match score headline when status is matched", () => {

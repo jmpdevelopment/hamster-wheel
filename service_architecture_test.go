@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"hamster-wheel/internal/adapter"
+	"hamster-wheel/internal/adapter/adzuna"
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/diagnostics"
@@ -46,9 +47,13 @@ func testServices(t *testing.T) (
 
 	database := testDB(t)
 	reedAdapter := reed.New("test-key")
+	adzunaAdapter := adzuna.New("test-app-id", "test-app-key")
 	adapters := adapter.NewRegistry()
 	if err := adapters.Register(reedAdapter); err != nil {
 		t.Fatalf("registering adapter: %v", err)
+	}
+	if err := adapters.Register(adzunaAdapter); err != nil {
+		t.Fatalf("registering adzuna adapter: %v", err)
 	}
 
 	sched := scheduler.New(database, adapters, 1*time.Hour)
@@ -69,6 +74,7 @@ func testServices(t *testing.T) (
 	filterSvc := NewFilterService(database)
 	pollSvc := NewPollingService(sched, diagStore)
 	settingsSvc := NewSettingsService(database, kc, reedAdapter)
+	settingsSvc.setAdzunaAdapter(adzunaAdapter)
 
 	return appSvc, jobSvc, filterSvc, pollSvc, settingsSvc, database, sched, reedAdapter
 }
@@ -350,10 +356,11 @@ func TestServiceDependencies(t *testing.T) {
 			name:        "SettingsService",
 			serviceType: reflect.TypeOf(SettingsService{}),
 			expectedFields: map[string]string{
-				"db":           "*db.DB",
-				"keychain":     "keychain.Store",
-				"reedAdapter":  "*reed.Adapter",
-				"localRuntime": "localruntime.Manager",
+				"db":            "*db.DB",
+				"keychain":      "keychain.Store",
+				"reedAdapter":   "*reed.Adapter",
+				"adzunaAdapter": "*adzuna.Adapter",
+				"localRuntime":  "localruntime.Manager",
 			},
 		},
 		{

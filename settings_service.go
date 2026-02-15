@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"hamster-wheel/internal/adapter/adzuna"
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/cv"
 	"hamster-wheel/internal/db"
@@ -18,6 +19,8 @@ import (
 
 const (
 	settingReedAPIKey         = "reed_api_key"
+	settingAdzunaAppID        = "adzuna_app_id"
+	settingAdzunaAppKey       = "adzuna_app_key"
 	settingOpenAIAPIKey       = "openai_api_key"
 	settingTheme              = "theme"
 	settingKeyboardShortcuts  = "keyboard_shortcuts"
@@ -41,10 +44,11 @@ const (
 
 // SettingsService handles application settings operations exposed to the frontend.
 type SettingsService struct {
-	db           *db.DB
-	keychain     keychain.Store
-	reedAdapter  *reed.Adapter // Direct reference for API key updates
-	localRuntime localruntime.Manager
+	db            *db.DB
+	keychain      keychain.Store
+	reedAdapter   *reed.Adapter // Direct reference for API key updates
+	adzunaAdapter *adzuna.Adapter
+	localRuntime  localruntime.Manager
 }
 
 // NewSettingsService creates a new SettingsService.
@@ -60,11 +64,17 @@ func NewSettingsService(
 	}
 
 	return &SettingsService{
-		db:           database,
-		keychain:     kc,
-		reedAdapter:  reedAdapter,
-		localRuntime: localRuntimeManager,
+		db:            database,
+		keychain:      kc,
+		reedAdapter:   reedAdapter,
+		adzunaAdapter: nil,
+		localRuntime:  localRuntimeManager,
 	}
+}
+
+// setAdzunaAdapter wires the runtime Adzuna adapter so credential updates apply immediately.
+func (s *SettingsService) setAdzunaAdapter(a *adzuna.Adapter) {
+	s.adzunaAdapter = a
 }
 
 // HasReedAPIKey reports whether a Reed API key is currently stored.
@@ -99,6 +109,61 @@ func (s *SettingsService) ClearReedAPIKey() error {
 	}
 	s.reedAdapter.SetAPIKey("")
 	slog.Info("Reed API key cleared")
+	return nil
+}
+
+// HasAdzunaCredentials reports whether both Adzuna credentials are currently stored.
+func (s *SettingsService) HasAdzunaCredentials() (bool, error) {
+	appID, err := s.keychain.Get(settingAdzunaAppID)
+	if err != nil {
+		return false, err
+	}
+	appKey, err := s.keychain.Get(settingAdzunaAppKey)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(appID) != "" && strings.TrimSpace(appKey) != "", nil
+}
+
+// SetAdzunaCredentials saves Adzuna app credentials and updates the adapter immediately.
+func (s *SettingsService) SetAdzunaCredentials(appID, appKey string) error {
+	appID = strings.TrimSpace(appID)
+	appKey = strings.TrimSpace(appKey)
+	if appID == "" {
+		return errors.New("adzuna app ID is required")
+	}
+	if appKey == "" {
+		return errors.New("adzuna app key is required")
+	}
+
+	if err := s.keychain.Set(settingAdzunaAppID, appID); err != nil {
+		return err
+	}
+	if err := s.keychain.Set(settingAdzunaAppKey, appKey); err != nil {
+		// Best-effort cleanup if second write fails.
+		_ = s.keychain.Delete(settingAdzunaAppID)
+		return err
+	}
+
+	if s.adzunaAdapter != nil {
+		s.adzunaAdapter.SetCredentials(appID, appKey)
+	}
+	slog.Info("Adzuna credentials updated")
+	return nil
+}
+
+// ClearAdzunaCredentials removes stored Adzuna credentials and clears active adapter credentials.
+func (s *SettingsService) ClearAdzunaCredentials() error {
+	errID := s.keychain.Delete(settingAdzunaAppID)
+	errKey := s.keychain.Delete(settingAdzunaAppKey)
+	if errID != nil || errKey != nil {
+		return errors.Join(errID, errKey)
+	}
+
+	if s.adzunaAdapter != nil {
+		s.adzunaAdapter.SetCredentials("", "")
+	}
+	slog.Info("Adzuna credentials cleared")
 	return nil
 }
 

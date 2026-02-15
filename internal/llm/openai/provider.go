@@ -469,14 +469,21 @@ func buildMatchSystemPrompt(maxSummaryRunes int) string {
 }
 
 func buildMatchUserPrompt(req llm.MatchRequest, truncatedDescription string, truncatedProfile string) string {
+	descriptionNote := strings.TrimSpace(req.JobDescriptionNote)
+	descriptionNoteSection := ""
+	if descriptionNote != "" {
+		descriptionNoteSection = fmt.Sprintf("\n\nDescription scope note:\n%s", descriptionNote)
+	}
+
 	return fmt.Sprintf(
-		"Candidate query:\n%s\n\nCandidate CV profile:\n%s\n\nJob title: %s\nCompany: %s\nLocation: %s\nJob description:\n%s\n\nReturn only JSON with keys score and summary.",
+		"Candidate query:\n%s\n\nCandidate CV profile:\n%s\n\nJob title: %s\nCompany: %s\nLocation: %s\nJob description:\n%s%s\n\nReturn only JSON with keys score and summary.",
 		nonEmpty(req.Query),
 		nonEmpty(truncatedProfile),
 		nonEmpty(req.JobTitle),
 		nonEmpty(req.JobCompany),
 		nonEmpty(req.JobLocation),
 		nonEmpty(truncatedDescription),
+		descriptionNoteSection,
 	)
 }
 

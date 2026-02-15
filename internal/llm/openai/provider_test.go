@@ -533,6 +533,17 @@ func TestPromptAndTokenHelpers(t *testing.T) {
 	if !strings.Contains(prompt, "Candidate CV profile:\n(empty)") {
 		t.Fatalf("expected prompt to include empty CV profile section, got %q", prompt)
 	}
+	if strings.Contains(prompt, "Description scope note:") {
+		t.Fatalf("expected empty-note prompt to omit description scope note section, got %q", prompt)
+	}
+
+	promptWithNote := buildMatchUserPrompt(llm.MatchRequest{
+		Query:              "go",
+		JobDescriptionNote: "This description is only a snippet.",
+	}, "snippet", "")
+	if !strings.Contains(promptWithNote, "Description scope note:\nThis description is only a snippet.") {
+		t.Fatalf("expected prompt to include description scope note, got %q", promptWithNote)
+	}
 
 	if estimatePromptTokens("") != 0 {
 		t.Fatalf("expected 0 tokens for empty content")

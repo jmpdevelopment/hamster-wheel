@@ -435,6 +435,38 @@ func TestRunOnceFallsBackWhenCVProfileCannotBeParsed(t *testing.T) {
 	}
 }
 
+func TestSourceDescriptionNote(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		want   string
+	}{
+		{
+			name:   "adzuna source",
+			source: "adzuna_gb",
+			want:   "The description from this source is a snippet preview, not the full job advert.",
+		},
+		{
+			name:   "adzuna source with spacing and case",
+			source: "  ADZUNA_GB ",
+			want:   "The description from this source is a snippet preview, not the full job advert.",
+		},
+		{
+			name:   "non snippet source",
+			source: "reed_uk",
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sourceDescriptionNote(tt.source); got != tt.want {
+				t.Fatalf("sourceDescriptionNote(%q) = %q, want %q", tt.source, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestWorkerStartStopIdempotent(t *testing.T) {
 	database := testDB(t)
 	worker := testWorker(t, database)

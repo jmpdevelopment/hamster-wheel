@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
+import {
+  REED_SOURCE,
+  listSourceOptions,
+  sourceDescriptionNotice,
+} from "../lib/jobSource";
 
 interface CreateFilterFormProps {
   onSubmit: (
@@ -16,8 +21,9 @@ export function CreateFilterForm({ onSubmit, onCancel }: CreateFilterFormProps) 
   const [name, setName] = useState("");
   const [keywords, setKeywords] = useState("");
   const [location, setLocation] = useState("");
-  const [source] = useState("reed_uk");
+  const [source, setSource] = useState(REED_SOURCE);
   const [submitting, setSubmitting] = useState(false);
+  const sourceNotice = sourceDescriptionNotice(source);
 
   const canSubmit = name.trim() !== "" && keywords.trim() !== "" && !submitting;
 
@@ -65,9 +71,29 @@ export function CreateFilterForm({ onSubmit, onCancel }: CreateFilterFormProps) 
         onChange={(e) => setLocation(e.target.value)}
         aria-label="Location"
       />
+      <label className="block text-xs text-hw-text-muted">
+        Source
+        <select
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+          className="mt-1 w-full rounded bg-hw-bg border border-hw-border text-hw-text text-sm px-2 py-1.5 focus:outline-none focus:border-hw-accent"
+          aria-label="Source"
+        >
+          {listSourceOptions().map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className="text-xs text-hw-text-muted">
         Source: {source}
       </div>
+      {sourceNotice && (
+        <div className="text-xs text-hw-text-muted">
+          {sourceNotice}
+        </div>
+      )}
       <div className="flex gap-2">
         <Button
           variant="primary"

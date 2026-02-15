@@ -1,6 +1,8 @@
 import { memo } from "react";
 import { Job } from "../../bindings/hamster-wheel/internal/db/models";
+import { Browser } from "@wailsio/runtime";
 import { relativeTime } from "../lib/format";
+import { sourceAttributionURL, sourceDisplayLabel } from "../lib/jobSource";
 import {
   buildMatchStatusMeta,
   readMatchScore,
@@ -31,6 +33,15 @@ export const JobCard = memo(function JobCard({
   const matchStatus = readMatchStatus(job);
   const matchScore = readMatchScore(job);
   const matchMeta = buildMatchStatusMeta(matchStatus, matchScore);
+  const sourceLabel = sourceDisplayLabel(job.Source);
+  const sourceLink = sourceAttributionURL(job.Source);
+  const handleSourceLinkClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (sourceLink !== "") {
+      Browser.OpenURL(sourceLink);
+    }
+  };
 
   return (
     <div
@@ -53,51 +64,65 @@ export const JobCard = memo(function JobCard({
           aria-label={`Select job ${job.Title}`}
         />
 
-        <button
-          onClick={(event) => {
-            onClick(event.shiftKey);
-          }}
-          aria-selected={isSelected}
-          className="flex-1 min-w-0 text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hw-accent focus-visible:ring-offset-1 focus-visible:ring-offset-hw-bg"
-        >
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold text-hw-text truncate leading-tight min-w-0">
-              {job.Title}
-            </p>
-            {matchStatus !== "unknown" && (
-              <span
-                aria-label={matchMeta.badgeAriaLabel}
-                className={`hw-match-badge hw-match-badge--compact shrink-0 ${matchMeta.badgeVariantClass}`}
-                title={matchMeta.badgeLabel}
-              >
-                {matchMeta.badgeLabel}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2 mt-0.5">
-            {job.Company && (
-              <span className="text-xs text-hw-text-muted truncate">
-                {job.Company}
-              </span>
-            )}
-            {job.Company && job.Location && (
-              <span className="text-xs text-hw-text-muted">&middot;</span>
-            )}
-            {job.Location && (
-              <span className="text-xs text-hw-text-muted truncate">
-                {job.Location}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center justify-between mt-0.5">
+        <div className="flex-1 min-w-0">
+          <button
+            onClick={(event) => {
+              onClick(event.shiftKey);
+            }}
+            aria-selected={isSelected}
+            className="w-full text-left rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-hw-accent focus-visible:ring-offset-1 focus-visible:ring-offset-hw-bg"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold text-hw-text truncate leading-tight min-w-0">
+                {job.Title}
+              </p>
+              {matchStatus !== "unknown" && (
+                <span
+                  aria-label={matchMeta.badgeAriaLabel}
+                  className={`hw-match-badge hw-match-badge--compact shrink-0 ${matchMeta.badgeVariantClass}`}
+                  title={matchMeta.badgeLabel}
+                >
+                  {matchMeta.badgeLabel}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              {job.Company && (
+                <span className="text-xs text-hw-text-muted truncate">
+                  {job.Company}
+                </span>
+              )}
+              {job.Company && job.Location && (
+                <span className="text-xs text-hw-text-muted">&middot;</span>
+              )}
+              {job.Location && (
+                <span className="text-xs text-hw-text-muted truncate">
+                  {job.Location}
+                </span>
+              )}
+            </div>
+          </button>
+          <div className="mt-0.5 flex items-center justify-between gap-2">
             <span className="text-xs text-hw-text-muted shrink-0">
               {relativeTime(job.DiscoveredAt)}
             </span>
-            <span className="text-xs text-hw-text-muted/60 truncate max-w-[120px]">
-              {job.Source}
-            </span>
+            {sourceLink !== "" ? (
+              <a
+                href={sourceLink}
+                target="_blank"
+                rel="noreferrer"
+                onClick={handleSourceLinkClick}
+                className="text-xs text-hw-text-muted/60 truncate max-w-[140px] underline underline-offset-2 hover:text-hw-text"
+              >
+                {sourceLabel}
+              </a>
+            ) : (
+              <span className="text-xs text-hw-text-muted/60 truncate max-w-[140px]">
+                {sourceLabel}
+              </span>
+            )}
           </div>
-        </button>
+        </div>
 
         <button
           onClick={onToggleFavorite}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -251,6 +252,14 @@ func TestFetchNewJobsNoLocation(t *testing.T) {
 	}
 	if strings.Contains(receivedQuery, "locationName") {
 		t.Errorf("URL should not contain locationName when empty, got: %s", receivedQuery)
+	}
+
+	parsed, err := url.ParseQuery(receivedQuery)
+	if err != nil {
+		t.Fatalf("parsing query: %v", err)
+	}
+	if got := parsed.Get("resultsToTake"); got != "100" {
+		t.Fatalf("expected resultsToTake=100, got %q", got)
 	}
 }
 

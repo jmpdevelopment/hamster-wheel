@@ -16,6 +16,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"hamster-wheel/internal/adapter"
+	"hamster-wheel/internal/adapter/adzuna"
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/diagnostics"
@@ -55,12 +56,20 @@ func main() {
 	if reedAPIKey == "" {
 		slog.Warn("Reed API key not set — configure it in the app or set REED_API_KEY")
 	}
+	adzunaAppID, adzunaAppKey := loadAdzunaCredentials(keychainStore, os.Getenv)
+	if adzunaAppID == "" || adzunaAppKey == "" {
+		slog.Warn("Adzuna credentials not set — set ADZUNA_APP_ID and ADZUNA_APP_KEY to enable Adzuna polling")
+	}
 
 	// Set up adapter registry and register available job sources.
 	reedAdapter := reed.New(reedAPIKey)
+	adzunaAdapter := adzuna.New(adzunaAppID, adzunaAppKey)
 	adapters := adapter.NewRegistry()
 	if err := adapters.Register(reedAdapter); err != nil {
 		log.Fatalf("failed to register Reed adapter: %v", err)
+	}
+	if err := adapters.Register(adzunaAdapter); err != nil {
+		log.Fatalf("failed to register Adzuna adapter: %v", err)
 	}
 	openAIEnvKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	openAIEnvModel := strings.TrimSpace(os.Getenv("OPENAI_MODEL"))
@@ -128,6 +137,7 @@ func main() {
 	filterService := NewFilterService(database)
 	pollingService := NewPollingService(sched, diagStore)
 	settingsService := NewSettingsService(database, keychainStore, reedAdapter, localRuntimeManager)
+	settingsService.setAdzunaAdapter(adzunaAdapter)
 
 	// Create the Wails v3 application.
 	// Strip the "frontend/dist" prefix from the embedded filesystem.
@@ -213,6 +223,27 @@ func loadReedAPIKey(store keychain.Store, getenv func(string) string) string {
 		reedAPIKey = strings.TrimSpace(getenv("REED_API_KEY"))
 	}
 	return reedAPIKey
+}
+
+func loadAdzunaCredentials(store keychain.Store, getenv func(string) string) (string, string) {
+	adzunaAppID, err := store.Get(settingAdzunaAppID)
+	if err != nil {
+		slog.Error("failed to load Adzuna app ID from keychain", "error", err)
+	}
+	adzunaAppKey, err := store.Get(settingAdzunaAppKey)
+	if err != nil {
+		slog.Error("failed to load Adzuna app key from keychain", "error", err)
+	}
+
+	adzunaAppID = strings.TrimSpace(adzunaAppID)
+	adzunaAppKey = strings.TrimSpace(adzunaAppKey)
+	if adzunaAppID == "" {
+		adzunaAppID = strings.TrimSpace(getenv("ADZUNA_APP_ID"))
+	}
+	if adzunaAppKey == "" {
+		adzunaAppKey = strings.TrimSpace(getenv("ADZUNA_APP_KEY"))
+	}
+	return adzunaAppID, adzunaAppKey
 }
 
 // setupSystemTray creates the system tray icon with menu for background operation.

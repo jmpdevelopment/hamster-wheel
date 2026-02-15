@@ -12,6 +12,7 @@ import {
   readMatchStatus,
   readMatchSummary,
 } from "../lib/matchStatus";
+import { sourceDescriptionNotice, sourceDisplayLabel } from "../lib/jobSource";
 import { containsHTML, sanitizeHTML } from "../lib/sanitize";
 import { Browser } from "@wailsio/runtime";
 import { Button } from "./Button";
@@ -44,6 +45,7 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
       : matchProvider === "heuristic_v1"
         ? "Heuristic (Local)"
         : matchProvider;
+  const sourceNotice = sourceDescriptionNotice(job.Source);
 
   const handleDelete = () => {
     if (confirming) {
@@ -117,7 +119,7 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
         <div className="flex items-center gap-4 mt-2 text-xs text-hw-text-muted">
           <span>Posted: {formatDate(job.PostedAt)}</span>
           <span>Found: {relativeTime(job.DiscoveredAt)}</span>
-          <span>{job.Source}</span>
+          <span>{sourceDisplayLabel(job.Source)}</span>
         </div>
 
         <div className="mt-3 rounded-md border border-hw-border bg-hw-surface/40 px-3 py-2">
@@ -211,6 +213,11 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
 
       {/* Description */}
       <div className="flex-1 overflow-y-auto px-4 py-3">
+        {sourceNotice && (
+          <p className="mb-3 rounded border border-hw-border bg-hw-surface/50 px-3 py-2 text-xs text-hw-text-muted leading-relaxed">
+            {sourceNotice}
+          </p>
+        )}
         {job.Description ? (
           containsHTML(job.Description) ? (
             <div
