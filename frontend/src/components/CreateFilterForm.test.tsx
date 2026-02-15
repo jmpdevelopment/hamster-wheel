@@ -79,7 +79,7 @@ describe("CreateFilterForm", () => {
     expect(screen.getByText(/^Source:\s*reed_uk$/)).toBeInTheDocument();
     expect(
       screen.queryByText(
-        "Adzuna provides a description snippet, not the full job ad."
+        "Adzuna provides a description snippet, not the full job ad. For AI matching, we include the snippet and job URL in the prompt when available."
       )
     ).not.toBeInTheDocument();
   });
@@ -107,7 +107,9 @@ describe("CreateFilterForm", () => {
     await userEvent.selectOptions(screen.getByLabelText("Source"), "adzuna_gb");
 
     expect(
-      screen.getByText("Adzuna provides a description snippet, not the full job ad.")
+      screen.getByText(
+        "Adzuna provides a description snippet, not the full job ad. For AI matching, we include the snippet and job URL in the prompt when available."
+      )
     ).toBeInTheDocument();
   });
 });

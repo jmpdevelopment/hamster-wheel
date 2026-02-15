@@ -1,7 +1,9 @@
 package matcher
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -284,6 +286,73 @@ func TestRunOnceUsesProviderResolver(t *testing.T) {
 	}
 }
 
+func TestRunOnceLogsResolvedProviderAtStart(t *testing.T) {
+	database := testDB(t)
+	worker := New(database, llm.NewRegistry(), WorkerConfig{
+		ProviderResolver: func(context.Context) (string, llm.Provider, error) {
+			return openai.ProviderName, &stubProvider{
+				name: openai.ProviderName,
+				result: llm.MatchResult{
+					Score:   0.65,
+					Summary: "Resolver selected provider result.",
+				},
+			}, nil
+		},
+		BatchSize: 1,
+	})
+
+	var logBuffer bytes.Buffer
+	worker.SetLogger(slog.New(slog.NewJSONHandler(&logBuffer, nil)))
+
+	jobID, err := database.InsertJob(context.Background(), &db.Job{
+		Source:      "reed_uk",
+		SourceID:    "matcher-provider-log-1",
+		Title:       "Go Backend Engineer",
+		Description: "Build APIs.",
+		URL:         "https://example.com/jobs/provider-log",
+	})
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending row: %v", err)
+	}
+
+	processed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("running matcher once: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected processed row count 1, got %d", processed)
+	}
+
+	var found bool
+	lines := strings.Split(strings.TrimSpace(logBuffer.String()), "\n")
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("decoding log line %q: %v", line, err)
+		}
+		if entry["msg"] != "match calculation started" {
+			continue
+		}
+		if entry["job_id"] != jobID {
+			continue
+		}
+		if entry["provider"] != openai.ProviderName {
+			t.Fatalf("expected started log provider %q, got %v", openai.ProviderName, entry["provider"])
+		}
+		found = true
+	}
+
+	if !found {
+		t.Fatalf("expected match calculation started log with provider %q for job %q", openai.ProviderName, jobID)
+	}
+}
+
 func TestRunOnceUsesProviderSpecificTimeoutOverride(t *testing.T) {
 	database := testDB(t)
 	probe := &deadlineProbeProvider{
@@ -439,29 +508,69 @@ func TestSourceDescriptionNote(t *testing.T) {
 	tests := []struct {
 		name   string
 		source string
+		jobURL string
 		want   string
 	}{
 		{
 			name:   "adzuna source",
 			source: "adzuna_gb",
-			want:   "The description from this source is a snippet preview, not the full job advert.",
+			jobURL: "https://www.adzuna.co.uk/jobs/details/1002",
+			want:   "Adzuna provides a description snippet, not the full job ad. The prompt also includes the job URL for additional context when URL access is available.",
 		},
 		{
 			name:   "adzuna source with spacing and case",
 			source: "  ADZUNA_GB ",
-			want:   "The description from this source is a snippet preview, not the full job advert.",
+			jobURL: " https://www.adzuna.co.uk/jobs/details/1003 ",
+			want:   "Adzuna provides a description snippet, not the full job ad. The prompt also includes the job URL for additional context when URL access is available.",
+		},
+		{
+			name:   "adzuna source without url",
+			source: "adzuna_gb",
+			jobURL: "   ",
+			want:   "Adzuna provides a description snippet, not the full job ad.",
 		},
 		{
 			name:   "non snippet source",
 			source: "reed_uk",
+			jobURL: "https://example.com/jobs/1",
 			want:   "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := sourceDescriptionNote(tt.source); got != tt.want {
-				t.Fatalf("sourceDescriptionNote(%q) = %q, want %q", tt.source, got, tt.want)
+			if got := sourceDescriptionNote(tt.source, tt.jobURL); got != tt.want {
+				t.Fatalf("sourceDescriptionNote(%q, %q) = %q, want %q", tt.source, tt.jobURL, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSourceJobURL(t *testing.T) {
+	tests := []struct {
+		name   string
+		source string
+		jobURL string
+		want   string
+	}{
+		{
+			name:   "adzuna source uses url",
+			source: "adzuna_gb",
+			jobURL: " https://www.adzuna.co.uk/jobs/details/1004 ",
+			want:   "https://www.adzuna.co.uk/jobs/details/1004",
+		},
+		{
+			name:   "non adzuna source omits url",
+			source: "reed_uk",
+			jobURL: "https://example.com/jobs/1",
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sourceJobURL(tt.source, tt.jobURL); got != tt.want {
+				t.Fatalf("sourceJobURL(%q, %q) = %q, want %q", tt.source, tt.jobURL, got, tt.want)
 			}
 		})
 	}

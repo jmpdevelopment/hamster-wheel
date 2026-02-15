@@ -156,7 +156,7 @@ func (w *Worker) Start() {
 	pollInterval := w.pollInterval
 	w.stateMu.Unlock()
 	w.log().Info("matcher worker starting",
-		"configured_provider", w.providerName,
+		"default_provider", w.providerName,
 		"poll_interval", pollInterval,
 		"batch_size", w.batchSize,
 		"match_timeout", w.matchTimeout,
@@ -255,15 +255,11 @@ func (w *Worker) processBatch(ctx context.Context) int {
 			break
 		}
 
-		w.log().Info("match calculation started",
-			"job_id", claimed.JobID,
-			"configured_provider", w.providerName,
-		)
 		w.emitStatusChanged(claimed.JobID, db.JobMatchStatusProcessing)
 		if err := w.processOne(ctx, claimed.JobID); err != nil {
 			w.log().Error("matcher failed to process claimed row",
 				"job_id", claimed.JobID,
-				"configured_provider", w.providerName,
+				"default_provider", w.providerName,
 				"error", err,
 			)
 		}
@@ -272,7 +268,7 @@ func (w *Worker) processBatch(ctx context.Context) int {
 	if processed > 0 {
 		w.log().Info("match batch processed",
 			"count", processed,
-			"configured_provider", w.providerName,
+			"default_provider", w.providerName,
 		)
 	}
 	return processed
@@ -298,6 +294,10 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 	if provider == nil {
 		return w.failMatch(ctx, jobID, providerName, "Provider resolution returned no provider.")
 	}
+	w.log().Info("match calculation started",
+		"job_id", jobID,
+		"provider", providerName,
+	)
 
 	query := w.queryForJob(ctx, job)
 	matchTimeout := w.matchTimeout
@@ -314,8 +314,9 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 		JobTitle:            job.Title,
 		JobCompany:          job.Company,
 		JobLocation:         job.Location,
+		JobURL:              sourceJobURL(job.Source, job.URL),
 		JobDescription:      job.Description,
-		JobDescriptionNote:  sourceDescriptionNote(job.Source),
+		JobDescriptionNote:  sourceDescriptionNote(job.Source, job.URL),
 		MaxDescriptionRunes: w.descriptionRunes,
 	})
 	if err != nil {
@@ -362,10 +363,21 @@ func (w *Worker) queryForJob(ctx context.Context, job *db.Job) string {
 	return strings.TrimSpace(job.Title + " " + job.Location)
 }
 
-func sourceDescriptionNote(source string) string {
+func sourceJobURL(source, jobURL string) string {
+	if strings.ToLower(strings.TrimSpace(source)) != adzunaSourceName {
+		return ""
+	}
+	return strings.TrimSpace(jobURL)
+}
+
+func sourceDescriptionNote(source, jobURL string) string {
 	switch strings.ToLower(strings.TrimSpace(source)) {
 	case adzunaSourceName:
-		return "The description from this source is a snippet preview, not the full job advert."
+		url := strings.TrimSpace(jobURL)
+		if url == "" {
+			return "Adzuna provides a description snippet, not the full job ad."
+		}
+		return "Adzuna provides a description snippet, not the full job ad. The prompt also includes the job URL for additional context when URL access is available."
 	default:
 		return ""
 	}

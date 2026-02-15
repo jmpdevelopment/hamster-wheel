@@ -10,6 +10,7 @@ type MatchRequest struct {
 	JobTitle            string
 	JobCompany          string
 	JobLocation         string
+	JobURL              string
 	JobDescription      string
 	JobDescriptionNote  string
 	MaxDescriptionRunes int

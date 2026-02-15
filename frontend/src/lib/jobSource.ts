@@ -4,7 +4,7 @@ export const ADZUNA_SOURCE = "adzuna_gb";
 export const ADZUNA_ATTRIBUTION_LABEL = "Jobs by Adzuna";
 export const ADZUNA_ATTRIBUTION_URL = "https://www.adzuna.co.uk";
 export const ADZUNA_SNIPPET_NOTICE =
-  "Adzuna provides a description snippet, not the full job ad.";
+  "Adzuna provides a description snippet, not the full job ad. For AI matching, we include the snippet and job URL in the prompt when available.";
 
 export interface SourceOption {
   value: string;

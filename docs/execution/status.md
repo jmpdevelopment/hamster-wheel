@@ -64,6 +64,10 @@ Last updated: 2026-02-15
 - Phase 2 matching cost/control guardrails are now in place:
   - Users can now control auto-match queueing in Settings (`enabled/disabled` + per-poll-cycle limit with `0 = unlimited`).
   - When auto-match is disabled or capped, new jobs are still ingested while manual per-job recalculation remains available.
+- Phase 2 Adzuna prompt-context enhancement is complete:
+  - Matcher now forwards Adzuna job URLs into match requests (Adzuna-only) so LLM prompts can include the listing URL alongside snippet text.
+  - Adzuna scope note now explicitly states snippet-only source scope and URL-in-prompt context.
+  - UI Adzuna notice now states that matching prompts include snippet + job URL when available.
 
 ## Current Runtime Posture (Preserve)
 

@@ -536,11 +536,18 @@ func TestPromptAndTokenHelpers(t *testing.T) {
 	if strings.Contains(prompt, "Description scope note:") {
 		t.Fatalf("expected empty-note prompt to omit description scope note section, got %q", prompt)
 	}
+	if strings.Contains(prompt, "Job URL:") {
+		t.Fatalf("expected empty-url prompt to omit job URL section, got %q", prompt)
+	}
 
 	promptWithNote := buildMatchUserPrompt(llm.MatchRequest{
 		Query:              "go",
+		JobURL:             "https://www.adzuna.co.uk/jobs/details/1002",
 		JobDescriptionNote: "This description is only a snippet.",
 	}, "snippet", "")
+	if !strings.Contains(promptWithNote, "Job URL:\nhttps://www.adzuna.co.uk/jobs/details/1002") {
+		t.Fatalf("expected prompt to include job URL section, got %q", promptWithNote)
+	}
 	if !strings.Contains(promptWithNote, "Description scope note:\nThis description is only a snippet.") {
 		t.Fatalf("expected prompt to include description scope note, got %q", promptWithNote)
 	}

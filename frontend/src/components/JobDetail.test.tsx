@@ -211,7 +211,9 @@ describe("JobDetail", () => {
     expect(screen.getByText(/Posted:/)).toBeInTheDocument();
     expect(screen.getByText(/Found:/)).toBeInTheDocument();
     expect(
-      screen.queryByText("Adzuna provides a description snippet, not the full job ad.")
+      screen.queryByText(
+        "Adzuna provides a description snippet, not the full job ad. For AI matching, we include the snippet and job URL in the prompt when available."
+      )
     ).not.toBeInTheDocument();
   });
 
@@ -226,7 +228,9 @@ describe("JobDetail", () => {
     );
     expect(screen.getByText("Jobs by Adzuna")).toBeInTheDocument();
     expect(
-      screen.getByText("Adzuna provides a description snippet, not the full job ad.")
+      screen.getByText(
+        "Adzuna provides a description snippet, not the full job ad. For AI matching, we include the snippet and job URL in the prompt when available."
+      )
     ).toBeInTheDocument();
   });
 
