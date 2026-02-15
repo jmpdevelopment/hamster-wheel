@@ -218,7 +218,8 @@ export function usePollingController({
         applyPollingStatus(status);
         consumeSchedulerRun(status.lastRun);
         if (wasPolling && !status.isPolling) {
-          void refreshPollingStatus(false);
+          syncNow();
+          return;
         }
         if (!status.paused && !status.nextPollAt) {
           syncNow();

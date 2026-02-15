@@ -164,6 +164,51 @@ describe("usePollingController", () => {
     expect(mockGetPollingStatus).toHaveBeenCalledTimes(1);
   });
 
+  it("refreshes jobs when scheduler transitions from polling to idle", async () => {
+    mockGetPollingStatus
+      .mockResolvedValueOnce({
+        paused: false,
+        isPolling: false,
+        nextPollAt: "2026-02-14T14:30:00Z",
+      })
+      .mockResolvedValue({
+        paused: false,
+        isPolling: false,
+        nextPollAt: "2026-02-14T15:00:00Z",
+      });
+
+    const { refreshJobs } = renderPollingController();
+
+    await waitFor(() => {
+      expect(mockGetPollingStatus).toHaveBeenCalledTimes(1);
+    });
+
+    const onStatusChanged = mockEventsOn.mock.calls.find(
+      (call) => call[0] === "polling:status-changed"
+    )?.[1] as ((event: unknown) => void) | undefined;
+
+    expect(onStatusChanged).toBeTypeOf("function");
+
+    act(() => {
+      onStatusChanged?.({
+        name: "polling:status-changed",
+        data: { paused: false, isPolling: true, nextPollAt: "2026-02-14T15:00:00Z" },
+      });
+    });
+
+    act(() => {
+      onStatusChanged?.({
+        name: "polling:status-changed",
+        data: { paused: false, isPolling: false, nextPollAt: "2026-02-14T15:00:00Z" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(refreshJobs).toHaveBeenCalledTimes(1);
+      expect(mockGetPollingStatus).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("seeds a fallback next poll after manual poll when backend status is empty", async () => {
     const { result, refreshFilters, refreshJobs } = renderPollingController();
 
