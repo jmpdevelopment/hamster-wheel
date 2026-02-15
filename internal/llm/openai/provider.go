@@ -25,7 +25,7 @@ const (
 	defaultRequestTimeout      = 20 * time.Second
 	defaultMaxDescriptionRunes = 1400
 	defaultMaxProfileRunes     = 2000
-	defaultMaxSummaryRunes     = 220
+	defaultMaxSummaryRunes     = 140
 	maxResponseBytes           = 1 << 20 // 1 MiB
 	localRetryDelay            = 250 * time.Millisecond
 )
@@ -39,10 +39,10 @@ var (
 	ErrUpstreamFailure   = errors.New("llm endpoint upstream failure")
 )
 
-const matchSystemPrompt = "You score job relevance for one candidate query. " +
+const matchSystemPromptTemplate = "You score job relevance for one candidate query. " +
 	"Return JSON only with keys score and summary. " +
 	"score must be a number between 0 and 1 inclusive. " +
-	"summary must be concise and actionable."
+	"summary must be concise, actionable, and at most %d characters."
 
 const validateSystemPrompt = "Return JSON only: {\"ok\": true}."
 
@@ -139,6 +139,7 @@ func (p *Provider) Match(ctx context.Context, req llm.MatchRequest) (llm.MatchRe
 
 	description := truncateRunes(strings.TrimSpace(req.JobDescription), maxDescriptionRunes)
 	profile := truncateRunes(strings.TrimSpace(req.CandidateProfile), defaultMaxProfileRunes)
+	matchSystemPrompt := buildMatchSystemPrompt(defaultMaxSummaryRunes)
 	userPrompt := buildMatchUserPrompt(req, description, profile)
 
 	content, promptTokens, err := p.chatCompletion(ctx, chatCompletionRequest{
@@ -456,6 +457,13 @@ func stripCodeFence(value string) string {
 	}
 
 	return strings.TrimSpace(strings.Join(lines[1:len(lines)-1], "\n"))
+}
+
+func buildMatchSystemPrompt(maxSummaryRunes int) string {
+	if maxSummaryRunes <= 0 {
+		maxSummaryRunes = defaultMaxSummaryRunes
+	}
+	return fmt.Sprintf(matchSystemPromptTemplate, maxSummaryRunes)
 }
 
 func buildMatchUserPrompt(req llm.MatchRequest, truncatedDescription string, truncatedProfile string) string {

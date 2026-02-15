@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -459,6 +460,17 @@ func TestParseMatchContentBranches(t *testing.T) {
 			t.Fatalf("expected malformed error for empty summary, got %v", err)
 		}
 	})
+
+	t.Run("truncates long summary", func(t *testing.T) {
+		longSummary := strings.Repeat("a", defaultMaxSummaryRunes+20)
+		parsed, err := parseMatchContent(fmt.Sprintf(`{"score":0.2,"summary":"%s"}`, longSummary))
+		if err != nil {
+			t.Fatalf("expected long summary to be truncated, got error: %v", err)
+		}
+		if len([]rune(parsed.Summary)) != defaultMaxSummaryRunes {
+			t.Fatalf("expected truncated summary length %d, got %d", defaultMaxSummaryRunes, len([]rune(parsed.Summary)))
+		}
+	})
 }
 
 func TestExtractJSONObjectAndStripCodeFence(t *testing.T) {
@@ -480,6 +492,11 @@ func TestExtractJSONObjectAndStripCodeFence(t *testing.T) {
 }
 
 func TestPromptAndTokenHelpers(t *testing.T) {
+	systemPrompt := buildMatchSystemPrompt(defaultMaxSummaryRunes)
+	if !strings.Contains(systemPrompt, fmt.Sprintf("at most %d characters", defaultMaxSummaryRunes)) {
+		t.Fatalf("expected system prompt to include summary limit, got %q", systemPrompt)
+	}
+
 	prompt := buildMatchUserPrompt(llm.MatchRequest{
 		Query:            "",
 		CandidateProfile: "",
