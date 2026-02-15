@@ -28,6 +28,9 @@
 - OpenAI provider implementation exists in `internal/llm/openai` with deterministic response parsing and classified timeout/auth/malformed failure handling.
 - Settings APIs/UI now persist LLM provider/model/base-URL and OpenAI key lifecycle in `SettingsService` + Settings panel tabs.
 - Local runtime backend foundation exists in `internal/localruntime` (detect/status/start/stop for Ollama-first orchestration with deterministic runtime state model).
+- Local runtime service/binding integration exists:
+  - `SettingsService` now exposes runtime status/start/stop methods.
+  - Wails bindings include local-runtime snapshot models and lifecycle method wrappers.
 - CV path submission and matcher-context ingestion are implemented for PDF + plain-text CV files:
   - `cv_path` is persisted via `SettingsService` and configurable in Settings UI.
   - Unsupported CV formats are rejected at submission-time validation.
@@ -42,31 +45,27 @@ Authoritative goal for next slices: non-technical users can choose `Cloud` or `L
    - Why: simplify setup for non-technical users and remove endpoint/networking concepts from default path.
    - Build: mode selector IA, explanatory copy, and visibility gating so raw base-URL fields appear only in `Advanced`.
    - Done when: default settings flow does not require manual endpoint entry and visibility rules are test-covered.
-2. Local runtime service/binding integration (Ollama-first backend foundation is done).
-   - Why: backend orchestration exists but is not yet consumable from UI flows.
-   - Build: expose `internal/localruntime` state/actions through backend service APIs and bindings with explicit validation/error contracts.
-   - Done when: frontend can query runtime status and trigger start/stop through stable service methods without direct process access.
-3. Managed model lifecycle for `Local` mode.
+2. Managed model lifecycle for `Local` mode.
    - Why: users need guided model acquisition and readiness checks.
    - Build: model selection, pull/download progress, readiness validation, and actionable error handling.
    - Done when: users can pick a recommended local model and reach `ready` state in-app without manual endpoint setup.
-4. Matcher wiring for mode-based runtime selection.
+3. Matcher wiring for mode-based runtime selection.
    - Why: saved mode/provider settings must control active scoring path at runtime.
    - Build: provider resolver consumes mode + local-runtime settings and routes to cloud/local providers with safe fallback behavior.
    - Done when: switching modes changes scoring path without restart and is covered by integration tests.
-5. OpenAI-compatible `Advanced` manual endpoint path.
+4. OpenAI-compatible `Advanced` manual endpoint path.
    - Why: preserve expert flexibility and support existing self-hosted gateways.
    - Build: keep validated base-URL/model overrides in advanced-only flow and preserve current classified error handling.
    - Done when: advanced path works for OpenAI-compatible endpoints but is opt-in and hidden from default onboarding.
-6. Token-efficiency controls.
+5. Token-efficiency controls.
    - Why: constrain cost and response time under continuous polling.
    - Build: compact prompt shaping, description truncation bounds, prefilter thresholds, and bounded context windows.
    - Done when: per-match token budgets are configurable and logged; scoring remains stable under large job descriptions.
-7. Match-threshold settings and notifications.
+6. Match-threshold settings and notifications.
    - Why: deliver actionable alerts without noisy low-signal matches.
    - Build: user-configurable threshold + native notification path for high-score transitions.
    - Done when: only matches meeting threshold trigger notifications and this behavior is test-covered.
-8. Deferred UI sorting enhancement (later step, not blocking core matching).
+7. Deferred UI sorting enhancement (later step, not blocking core matching).
    - Build: sort controls for posted date and match score.
    - Done when: sorting is deterministic, persisted if appropriate, and does not regress list virtualization performance.
 

@@ -22,6 +22,33 @@ type failingKeychainStore struct {
 	deleteErr error
 }
 
+type failingLocalRuntimeManager struct {
+	statusErr error
+	startErr  error
+	stopErr   error
+}
+
+func (m failingLocalRuntimeManager) Status(context.Context) (localruntime.Snapshot, error) {
+	if m.statusErr != nil {
+		return localruntime.Snapshot{}, m.statusErr
+	}
+	return localruntime.Snapshot{Status: localruntime.StatusReady}, nil
+}
+
+func (m failingLocalRuntimeManager) Start(context.Context) (localruntime.Snapshot, error) {
+	if m.startErr != nil {
+		return localruntime.Snapshot{}, m.startErr
+	}
+	return localruntime.Snapshot{Status: localruntime.StatusReady}, nil
+}
+
+func (m failingLocalRuntimeManager) Stop(context.Context) (localruntime.Snapshot, error) {
+	if m.stopErr != nil {
+		return localruntime.Snapshot{}, m.stopErr
+	}
+	return localruntime.Snapshot{Status: localruntime.StatusStopped}, nil
+}
+
 func (s failingKeychainStore) Get(string) (string, error) {
 	if s.getErr != nil {
 		return "", s.getErr
@@ -145,6 +172,59 @@ func TestSettingsServiceLocalRuntimeDependencyDefaultsAndInjection(t *testing.T)
 	}
 	if customSnapshot.Status != localruntime.StatusReady {
 		t.Fatalf("expected injected runtime status %q, got %q", localruntime.StatusReady, customSnapshot.Status)
+	}
+}
+
+func TestSettingsServiceLocalRuntimeLifecycle(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	local := stubLocalRuntimeManager{}
+	svc := NewSettingsService(database, kc, reedAdapter, local)
+
+	status, err := svc.GetLocalRuntimeStatus()
+	if err != nil {
+		t.Fatalf("getting local runtime status: %v", err)
+	}
+	if status.Status != localruntime.StatusReady {
+		t.Fatalf("expected local runtime status %q, got %q", localruntime.StatusReady, status.Status)
+	}
+
+	started, err := svc.StartLocalRuntime()
+	if err != nil {
+		t.Fatalf("starting local runtime: %v", err)
+	}
+	if started.Status != localruntime.StatusReady {
+		t.Fatalf("expected start status %q, got %q", localruntime.StatusReady, started.Status)
+	}
+
+	stopped, err := svc.StopLocalRuntime()
+	if err != nil {
+		t.Fatalf("stopping local runtime: %v", err)
+	}
+	if stopped.Status != localruntime.StatusStopped {
+		t.Fatalf("expected stop status %q, got %q", localruntime.StatusStopped, stopped.Status)
+	}
+}
+
+func TestSettingsServiceLocalRuntimeErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter, failingLocalRuntimeManager{
+		statusErr: errors.New("status failed"),
+		startErr:  errors.New("start failed"),
+		stopErr:   errors.New("stop failed"),
+	})
+
+	if _, err := svc.GetLocalRuntimeStatus(); err == nil || !strings.Contains(err.Error(), "getting local runtime status") {
+		t.Fatalf("expected wrapped status error, got %v", err)
+	}
+	if _, err := svc.StartLocalRuntime(); err == nil || !strings.Contains(err.Error(), "starting local runtime") {
+		t.Fatalf("expected wrapped start error, got %v", err)
+	}
+	if _, err := svc.StopLocalRuntime(); err == nil || !strings.Contains(err.Error(), "stopping local runtime") {
+		t.Fatalf("expected wrapped stop error, got %v", err)
 	}
 }
 

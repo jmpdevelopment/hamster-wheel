@@ -281,3 +281,30 @@ func (s *SettingsService) SetCVPath(cvPath string) error {
 	slog.Info("cv path updated", "configured", cvPath != "")
 	return nil
 }
+
+// GetLocalRuntimeStatus returns the current local runtime orchestration status.
+func (s *SettingsService) GetLocalRuntimeStatus() (localruntime.Snapshot, error) {
+	snapshot, err := s.localRuntime.Status(context.Background())
+	if err != nil {
+		return localruntime.Snapshot{}, fmt.Errorf("getting local runtime status: %w", err)
+	}
+	return snapshot, nil
+}
+
+// StartLocalRuntime starts the configured local runtime and returns current status.
+func (s *SettingsService) StartLocalRuntime() (localruntime.Snapshot, error) {
+	snapshot, err := s.localRuntime.Start(context.Background())
+	if err != nil {
+		return localruntime.Snapshot{}, fmt.Errorf("starting local runtime: %w", err)
+	}
+	return snapshot, nil
+}
+
+// StopLocalRuntime stops the app-managed local runtime process and returns current status.
+func (s *SettingsService) StopLocalRuntime() (localruntime.Snapshot, error) {
+	snapshot, err := s.localRuntime.Stop(context.Background())
+	if err != nil {
+		return localruntime.Snapshot{}, fmt.Errorf("stopping local runtime: %w", err)
+	}
+	return snapshot, nil
+}

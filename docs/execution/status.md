@@ -39,6 +39,10 @@ Last updated: 2026-02-15
   - Added `internal/localruntime` manager for runtime detect/status/start/stop orchestration.
   - Manager emits deterministic states (`not_installed`, `stopped`, `starting`, `ready`, `error`) and tracks app-managed process ownership.
   - Runtime manager is now wired into backend composition (`main.go`) and injected into `SettingsService` for upcoming service/binding/UI integration.
+- Phase 2 local-runtime service/binding integration is complete:
+  - `SettingsService` now exposes `GetLocalRuntimeStatus`, `StartLocalRuntime`, and `StopLocalRuntime`.
+  - Wails bindings now include local-runtime snapshot models and service call wrappers for these lifecycle actions.
+  - Error paths are wrapped with operation context and test-covered.
 
 ## Current Runtime Posture (Preserve)
 
@@ -50,7 +54,7 @@ Last updated: 2026-02-15
 - Keep SQLite runtime safeguards (single shared connection + busy retry on writes).
 - Keep CV-context matching fail-open: missing/invalid CV path logs warning and falls back to query-only matching.
 - Preserve easy-first LLM setup direction for upcoming work: default UX is guided `Cloud`/`Local`; manual endpoints are advanced-only.
-- Keep local-runtime orchestration backend-only for now; expose controls after service API + UX flow are implemented.
+- Keep local-runtime controls backend-exposed via `SettingsService` while UI orchestration flows are implemented next.
 
 ## Verification Baseline (Latest Pass: 2026-02-14)
 

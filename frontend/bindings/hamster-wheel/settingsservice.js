@@ -11,6 +11,10 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise, Create as $Create } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as localruntime$0 from "./internal/localruntime/models.js";
+
 /**
  * ClearOpenAIAPIKey removes the stored OpenAI API key.
  * @returns {$CancellablePromise<void>}
@@ -68,6 +72,16 @@ export function GetLLMModel() {
  */
 export function GetLLMProvider() {
     return $Call.ByID(683130982);
+}
+
+/**
+ * GetLocalRuntimeStatus returns the current local runtime orchestration status.
+ * @returns {$CancellablePromise<localruntime$0.Snapshot>}
+ */
+export function GetLocalRuntimeStatus() {
+    return $Call.ByID(1586804687).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
 }
 
 /**
@@ -169,3 +183,26 @@ export function SetReedAPIKey(key) {
 export function SetTheme(theme) {
     return $Call.ByID(466396097, theme);
 }
+
+/**
+ * StartLocalRuntime starts the configured local runtime and returns current status.
+ * @returns {$CancellablePromise<localruntime$0.Snapshot>}
+ */
+export function StartLocalRuntime() {
+    return $Call.ByID(3352722605).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
+}
+
+/**
+ * StopLocalRuntime stops the app-managed local runtime process and returns current status.
+ * @returns {$CancellablePromise<localruntime$0.Snapshot>}
+ */
+export function StopLocalRuntime() {
+    return $Call.ByID(2360813809).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
+}
+
+// Private type creation functions
+const $$createType0 = localruntime$0.Snapshot.createFrom;
