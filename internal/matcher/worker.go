@@ -168,8 +168,8 @@ func (w *Worker) Start() {
 		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
 
-		w.requeueStale(context.Background())
-		w.processBatch(context.Background())
+		w.requeueStale(ctx)
+		w.processBatch(ctx)
 
 		for {
 			select {
