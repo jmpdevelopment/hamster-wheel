@@ -21,6 +21,7 @@ import (
 	"hamster-wheel/internal/llm"
 	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/llm/openai"
+	"hamster-wheel/internal/localruntime"
 	"hamster-wheel/internal/matcher"
 	"hamster-wheel/internal/scheduler"
 )
@@ -97,13 +98,17 @@ func main() {
 		50,
 		24*time.Hour,
 	)
+	localRuntimeManager := localruntime.NewOllamaManager(localruntime.Config{
+		Binary:   strings.TrimSpace(os.Getenv("OLLAMA_BINARY")),
+		Endpoint: strings.TrimSpace(os.Getenv("OLLAMA_BASE_URL")),
+	})
 
 	// Create all services with their dependencies injected.
 	appService := NewAppService(database, sched, matchWorker)
 	jobService := NewJobService(database, adapters)
 	filterService := NewFilterService(database)
 	pollingService := NewPollingService(sched, diagStore)
-	settingsService := NewSettingsService(database, keychainStore, reedAdapter)
+	settingsService := NewSettingsService(database, keychainStore, reedAdapter, localRuntimeManager)
 
 	// Create the Wails v3 application.
 	// Strip the "frontend/dist" prefix from the embedded filesystem.

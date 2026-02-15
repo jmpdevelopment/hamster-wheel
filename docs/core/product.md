@@ -25,6 +25,9 @@ A self-hosted desktop app (macOS and Windows) that:
 - Extensible by design: adapter pattern for job sources and provider abstraction for LLMs.
 - Practical quality bar: deterministic behavior, explicit errors, and test-backed changes.
 - Open and portable: Apache 2.0, native desktop binaries.
+- Easy setup first: non-technical users should configure matching successfully without networking concepts.
+- Progressive disclosure: advanced provider controls (for example manual endpoint overrides) are hidden unless explicitly enabled.
+- Local autonomy: users who prefer local models should be able to run them from guided in-app workflows.
 
 ## Scope by Phase
 

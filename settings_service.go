@@ -12,6 +12,7 @@ import (
 	"hamster-wheel/internal/cv"
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/keychain"
+	"hamster-wheel/internal/localruntime"
 )
 
 const (
@@ -30,17 +31,29 @@ const (
 
 // SettingsService handles application settings operations exposed to the frontend.
 type SettingsService struct {
-	db          *db.DB
-	keychain    keychain.Store
-	reedAdapter *reed.Adapter // Direct reference for API key updates
+	db           *db.DB
+	keychain     keychain.Store
+	reedAdapter  *reed.Adapter // Direct reference for API key updates
+	localRuntime localruntime.Manager
 }
 
 // NewSettingsService creates a new SettingsService.
-func NewSettingsService(database *db.DB, kc keychain.Store, reedAdapter *reed.Adapter) *SettingsService {
+func NewSettingsService(
+	database *db.DB,
+	kc keychain.Store,
+	reedAdapter *reed.Adapter,
+	localRuntimeManagers ...localruntime.Manager,
+) *SettingsService {
+	localRuntimeManager := localruntime.NewNoopManager()
+	if len(localRuntimeManagers) > 0 && localRuntimeManagers[0] != nil {
+		localRuntimeManager = localRuntimeManagers[0]
+	}
+
 	return &SettingsService{
-		db:          database,
-		keychain:    kc,
-		reedAdapter: reedAdapter,
+		db:           database,
+		keychain:     kc,
+		reedAdapter:  reedAdapter,
+		localRuntime: localRuntimeManager,
 	}
 }
 

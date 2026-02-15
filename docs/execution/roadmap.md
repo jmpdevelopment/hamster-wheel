@@ -22,35 +22,51 @@
 - Provider contract and registry exist in `internal/llm`.
 - Matching is decoupled from polling through async queue + worker.
 - Match queue uses atomic claim semantics with stale-processing recovery.
+- Runtime provider selection/hot-switch wiring is implemented through matcher provider resolver (settings are read per match run; no restart required).
 - List/detail UI surfaces match status and score; users can manually requeue recalculation.
 - Default scorer is local heuristic until external providers are integrated.
 - OpenAI provider implementation exists in `internal/llm/openai` with deterministic response parsing and classified timeout/auth/malformed failure handling.
 - Settings APIs/UI now persist LLM provider/model/base-URL and OpenAI key lifecycle in `SettingsService` + Settings panel tabs.
+- Local runtime backend foundation exists in `internal/localruntime` (detect/status/start/stop for Ollama-first orchestration with deterministic runtime state model).
 - CV path submission and matcher-context ingestion are implemented for PDF + plain-text CV files:
   - `cv_path` is persisted via `SettingsService` and configurable in Settings UI.
   - Unsupported CV formats are rejected at submission-time validation.
   - Matcher parses/caches CV text and includes compact profile context in `MatchRequest`.
   - Runtime CV parse/load issues fail open to query-only scoring.
 
-## Phase 2 Immediate Implementation Queue (OpenAI-First)
+## Phase 2 Immediate Implementation Queue (Guided Local Runtime UX)
 
-1. OpenAI-compatible provider path for self-hosted/local models (llama/deepseek-style deployments).
-   - Why: keep vendor lock-in low and support user-controlled infra.
-   - Build: configurable base URL + model settings with OpenAI-compatible request/response contract.
-   - Done when: same provider workflow works against OpenAI-compatible non-OpenAI endpoints without code fork in matcher logic.
-2. Runtime provider selection and configuration wiring.
-   - Why: allow users to switch providers safely without app restart assumptions.
-   - Build (remaining): apply persisted settings to matcher runtime selection and provider construction, including safe reconfiguration without fragile restart assumptions.
-   - Done when: changing provider/model/base URL from settings changes active scoring path with clear validation/runtime errors surfaced to UI/logs.
-3. Token-efficiency controls.
+Authoritative goal for next slices: non-technical users can choose `Cloud` or `Local` matching without entering raw endpoint values, while power users still have an `Advanced` path.
+
+1. LLM mode UX and progressive disclosure (`Cloud` / `Local` / `Advanced`).
+   - Why: simplify setup for non-technical users and remove endpoint/networking concepts from default path.
+   - Build: mode selector IA, explanatory copy, and visibility gating so raw base-URL fields appear only in `Advanced`.
+   - Done when: default settings flow does not require manual endpoint entry and visibility rules are test-covered.
+2. Local runtime service/binding integration (Ollama-first backend foundation is done).
+   - Why: backend orchestration exists but is not yet consumable from UI flows.
+   - Build: expose `internal/localruntime` state/actions through backend service APIs and bindings with explicit validation/error contracts.
+   - Done when: frontend can query runtime status and trigger start/stop through stable service methods without direct process access.
+3. Managed model lifecycle for `Local` mode.
+   - Why: users need guided model acquisition and readiness checks.
+   - Build: model selection, pull/download progress, readiness validation, and actionable error handling.
+   - Done when: users can pick a recommended local model and reach `ready` state in-app without manual endpoint setup.
+4. Matcher wiring for mode-based runtime selection.
+   - Why: saved mode/provider settings must control active scoring path at runtime.
+   - Build: provider resolver consumes mode + local-runtime settings and routes to cloud/local providers with safe fallback behavior.
+   - Done when: switching modes changes scoring path without restart and is covered by integration tests.
+5. OpenAI-compatible `Advanced` manual endpoint path.
+   - Why: preserve expert flexibility and support existing self-hosted gateways.
+   - Build: keep validated base-URL/model overrides in advanced-only flow and preserve current classified error handling.
+   - Done when: advanced path works for OpenAI-compatible endpoints but is opt-in and hidden from default onboarding.
+6. Token-efficiency controls.
    - Why: constrain cost and response time under continuous polling.
    - Build: compact prompt shaping, description truncation bounds, prefilter thresholds, and bounded context windows.
    - Done when: per-match token budgets are configurable and logged; scoring remains stable under large job descriptions.
-4. Match-threshold settings and notifications.
+7. Match-threshold settings and notifications.
    - Why: deliver actionable alerts without noisy low-signal matches.
    - Build: user-configurable threshold + native notification path for high-score transitions.
    - Done when: only matches meeting threshold trigger notifications and this behavior is test-covered.
-5. Deferred UI sorting enhancement (later step, not blocking core matching).
+8. Deferred UI sorting enhancement (later step, not blocking core matching).
    - Build: sort controls for posted date and match score.
    - Done when: sorting is deterministic, persisted if appropriate, and does not regress list virtualization performance.
 

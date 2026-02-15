@@ -350,9 +350,10 @@ func TestServiceDependencies(t *testing.T) {
 			name:        "SettingsService",
 			serviceType: reflect.TypeOf(SettingsService{}),
 			expectedFields: map[string]string{
-				"db":          "*db.DB",
-				"keychain":    "keychain.Store",
-				"reedAdapter": "*reed.Adapter",
+				"db":           "*db.DB",
+				"keychain":     "keychain.Store",
+				"reedAdapter":  "*reed.Adapter",
+				"localRuntime": "localruntime.Manager",
 			},
 		},
 		{

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"hamster-wheel/internal/adapter/reed"
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/keychain"
+	"hamster-wheel/internal/localruntime"
 )
 
 type failingKeychainStore struct {
@@ -98,6 +100,51 @@ func TestSettingsServiceAPIKeyLifecycle(t *testing.T) {
 	}
 	if reedAdapter.HasAPIKey() {
 		t.Fatal("expected adapter key to be cleared")
+	}
+}
+
+type stubLocalRuntimeManager struct{}
+
+func (stubLocalRuntimeManager) Status(context.Context) (localruntime.Snapshot, error) {
+	return localruntime.Snapshot{Status: localruntime.StatusReady}, nil
+}
+
+func (stubLocalRuntimeManager) Start(context.Context) (localruntime.Snapshot, error) {
+	return localruntime.Snapshot{Status: localruntime.StatusReady}, nil
+}
+
+func (stubLocalRuntimeManager) Stop(context.Context) (localruntime.Snapshot, error) {
+	return localruntime.Snapshot{Status: localruntime.StatusStopped}, nil
+}
+
+func TestSettingsServiceLocalRuntimeDependencyDefaultsAndInjection(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+
+	defaultSvc := NewSettingsService(database, kc, reedAdapter)
+	if defaultSvc.localRuntime == nil {
+		t.Fatal("expected default local runtime manager to be configured")
+	}
+	defaultSnapshot, err := defaultSvc.localRuntime.Status(context.Background())
+	if err != nil {
+		t.Fatalf("checking default local runtime status: %v", err)
+	}
+	if defaultSnapshot.Status != localruntime.StatusNotInstalled {
+		t.Fatalf("expected default local runtime status %q, got %q", localruntime.StatusNotInstalled, defaultSnapshot.Status)
+	}
+
+	customManager := stubLocalRuntimeManager{}
+	customSvc := NewSettingsService(database, kc, reedAdapter, customManager)
+	if customSvc.localRuntime == nil {
+		t.Fatal("expected injected local runtime manager to be set")
+	}
+	customSnapshot, err := customSvc.localRuntime.Status(context.Background())
+	if err != nil {
+		t.Fatalf("checking custom local runtime status: %v", err)
+	}
+	if customSnapshot.Status != localruntime.StatusReady {
+		t.Fatalf("expected injected runtime status %q, got %q", localruntime.StatusReady, customSnapshot.Status)
 	}
 }
 

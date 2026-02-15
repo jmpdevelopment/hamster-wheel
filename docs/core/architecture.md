@@ -10,7 +10,7 @@
 | Frontend | React 18 + TypeScript + Vite + Tailwind |
 | Secrets | `zalando/go-keyring` |
 | Notifications | Wails native notifications |
-| LLM integration | Direct provider HTTP APIs via provider interface (OpenAI-first with OpenAI-compatible extension path) |
+| LLM integration | Provider interface with OpenAI-first rollout, guided local-runtime mode, and OpenAI-compatible extension path |
 
 ## Runtime Model
 
@@ -47,6 +47,7 @@ Internal packages:
 - `internal/adapter`: source adapters and registry.
 - `internal/scheduler`: polling orchestration.
 - `internal/matcher`: provider-agnostic matching + async orchestration.
+- `internal/localruntime` (planned): local model runtime detection/start/health abstraction for guided local mode.
 - `internal/keychain`: key storage abstraction.
 - `internal/diagnostics`: poll diagnostics retention/export support.
 
@@ -74,8 +75,11 @@ Representative keys:
 
 - `poll_interval_minutes` (default 30)
 - `match_threshold` (default 0.7)
+- `llm_mode` (`cloud`, `local`, `advanced`)
 - `llm_provider` (default `openai`)
-- `llm_model`, `llm_base_url` (Phase 2 provider runtime settings)
+- `llm_model` (selected model for active mode)
+- `llm_base_url` (advanced mode/manual endpoint override only)
+- `local_runtime_engine`, `local_runtime_model` (guided local mode selections)
 - `cv_path`, `cover_letter_draft`, `custom_instructions`
 - `first_run_complete`
 
@@ -122,6 +126,20 @@ type MatchRequest struct {
 	MaxDescriptionRunes int
 }
 ```
+
+## LLM Runtime UX and Orchestration Model
+
+- Default setup path is mode-based, not endpoint-based:
+  - `Cloud`: hosted provider flow (OpenAI-first).
+  - `Local`: app-managed local runtime flow.
+  - `Advanced`: explicit manual endpoint overrides.
+- `SettingsService` remains the frontend boundary for settings persistence and lifecycle actions needed by the LLM setup UI.
+- Matching runtime selection remains dynamic via matcher provider resolver, reading persisted mode/provider configuration per match execution.
+- Local runtime orchestration responsibilities (planned in `internal/localruntime`):
+  - Detect existing compatible runtimes.
+  - Start/stop/check readiness of managed runtime.
+  - Report actionable status states for UI (`not_installed`, `downloading`, `starting`, `ready`, `error`).
+  - Keep secrets and local process details out of frontend payloads except explicit user-facing status text.
 
 ## Security Model
 

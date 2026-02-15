@@ -1,6 +1,6 @@
 # Status
 
-Last updated: 2026-02-14
+Last updated: 2026-02-15
 
 ## Delivered Baseline
 
@@ -18,6 +18,9 @@ Last updated: 2026-02-14
   - Match parsing is deterministic (`score` + `summary` JSON contract).
   - Timeout/auth/malformed-response paths are classified and test-covered.
   - Prompt-token reporting uses API usage when present with deterministic fallback estimation.
+- Phase 2 runtime provider selection wiring is complete:
+  - Matcher resolves provider/model/base-URL settings dynamically per match execution via provider resolver.
+  - Runtime changes do not require worker restart assumptions.
 - Settings panel IA refresh is complete:
   - Tabs are now split into `Interface`, `Jobs Providers`, and `LLM Providers`.
   - `Interface` includes theme + keyboard-shortcut controls.
@@ -32,17 +35,22 @@ Last updated: 2026-02-14
   - Matcher loads, parses, and caches CV text context from configured file paths.
   - Match requests now include compact CV profile context for provider scoring.
   - Runtime CV parse/load failures (for example moved/deleted files after save) degrade gracefully to query-only scoring.
+- Phase 2 local-runtime backend foundation is complete (Ollama-first):
+  - Added `internal/localruntime` manager for runtime detect/status/start/stop orchestration.
+  - Manager emits deterministic states (`not_installed`, `stopped`, `starting`, `ready`, `error`) and tracks app-managed process ownership.
+  - Runtime manager is now wired into backend composition (`main.go`) and injected into `SettingsService` for upcoming service/binding/UI integration.
 
 ## Current Runtime Posture (Preserve)
 
 - Keep polling and matching decoupled.
 - Keep provider integration behind `internal/llm.Provider` and `internal/llm.Registry`.
 - Keep the default scorer local (`heuristic_v1`) until external providers are fully configured.
-- Keep OpenAI provider registered but non-default until runtime provider-selection settings are complete.
-- Keep LLM settings persisted via `SettingsService` while runtime hot-switch wiring remains in the next queue step.
+- Keep mode/provider/model/base-URL settings applied via matcher provider resolver per run.
 - Keep event-driven updates (`polling:status-changed`, `matching:status-changed`) with bounded/coalesced UI refresh.
 - Keep SQLite runtime safeguards (single shared connection + busy retry on writes).
 - Keep CV-context matching fail-open: missing/invalid CV path logs warning and falls back to query-only matching.
+- Preserve easy-first LLM setup direction for upcoming work: default UX is guided `Cloud`/`Local`; manual endpoints are advanced-only.
+- Keep local-runtime orchestration backend-only for now; expose controls after service API + UX flow are implemented.
 
 ## Verification Baseline (Latest Pass: 2026-02-14)
 

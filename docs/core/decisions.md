@@ -76,3 +76,11 @@ Status legend:
 - Status: Accepted
 - Decision: Integrate OpenAI first for external LLM scoring, while keeping runtime/model/base-URL configuration compatible with OpenAI-style APIs so local/self-hosted providers can be plugged in without matcher rewrites.
 - Rationale: Delivers fastest path to robust production scoring and preserves long-term provider portability (including OSS model endpoints).
+
+## D-013: Default to guided LLM modes, not raw endpoint configuration
+
+- Status: Accepted
+- Decision: Present LLM setup as user modes (`Cloud`, `Local`, `Advanced`) and keep manual base-URL/model endpoint controls behind `Advanced`.
+- Decision: `Local` mode is orchestrated by the app (runtime status, model download/start checks, readiness feedback) so users do not need to manually wire endpoints.
+- Decision: Preserve OpenAI-compatible runtime plumbing internally so advanced users and self-hosted gateways remain supported without matcher-layer forks.
+- Rationale: Keeps setup accessible for non-technical users while preserving expert flexibility and provider portability.
