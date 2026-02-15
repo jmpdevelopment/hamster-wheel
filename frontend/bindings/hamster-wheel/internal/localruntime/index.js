@@ -5,6 +5,7 @@
 export {
     ModelCatalog,
     ModelInfo,
+    PullProgress,
     PullResult,
     Snapshot
 } from "./models.js";

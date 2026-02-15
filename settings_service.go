@@ -391,6 +391,15 @@ func (s *SettingsService) GetLocalRuntimeModels() (localruntime.ModelCatalog, er
 	return catalog, nil
 }
 
+// GetLocalRuntimePullProgress returns in-flight local model pull progress.
+func (s *SettingsService) GetLocalRuntimePullProgress() (localruntime.PullProgress, error) {
+	progress, err := s.localRuntime.GetPullProgress(context.Background())
+	if err != nil {
+		return localruntime.PullProgress{}, fmt.Errorf("getting local runtime pull progress: %w", err)
+	}
+	return progress, nil
+}
+
 // PullLocalRuntimeModel pulls a model into local runtime storage.
 func (s *SettingsService) PullLocalRuntimeModel(model string) (localruntime.PullResult, error) {
 	model = strings.TrimSpace(model)

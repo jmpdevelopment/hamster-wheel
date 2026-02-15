@@ -10,6 +10,7 @@ import {
   GetLLMProvider,
   GetLocalRuntimeModels,
   GetLocalRuntimeModel,
+  GetLocalRuntimePullProgress,
   GetLocalRuntimeStatus,
   HasOpenAIAPIKey,
   HasReedAPIKey,
@@ -87,6 +88,32 @@ function formatGiB(bytes: number): string {
   return `${(bytes / (1024 ** 3)).toFixed(1)} GiB`;
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const precision = value >= 10 || unitIndex === 0 ? 0 : 1;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
+}
+
+interface LocalPullProgressState {
+  active: boolean;
+  model: string;
+  status: string;
+  message: string;
+  totalBytes: number;
+  completedBytes: number;
+  percent: number | null;
+  ready: boolean;
+}
+
 const selectClasses =
   "w-full rounded bg-hw-bg border border-hw-border text-hw-text text-sm px-2 py-1.5 focus:outline-none focus:border-hw-accent focus-visible:ring-2 focus-visible:ring-hw-accent focus-visible:ring-offset-1 focus-visible:ring-offset-hw-bg transition-colors duration-150";
 
@@ -127,6 +154,17 @@ export function SettingsPanel({
   const [localRuntimeStarting, setLocalRuntimeStarting] = useState(false);
   const [localRuntimeStopping, setLocalRuntimeStopping] = useState(false);
   const [localModelPulling, setLocalModelPulling] = useState(false);
+  const [localPullProgress, setLocalPullProgress] =
+    useState<LocalPullProgressState>({
+      active: false,
+      model: "",
+      status: "",
+      message: "",
+      totalBytes: 0,
+      completedBytes: 0,
+      percent: null,
+      ready: false,
+    });
   const [llmConfigSaving, setLLMConfigSaving] = useState(false);
   const [llmConfigSaved, setLLMConfigSaved] = useState(false);
   const [cvPath, setCVPathState] = useState("");
@@ -138,9 +176,46 @@ export function SettingsPanel({
   const llmSavedTimeoutRef = useRef<number | null>(null);
   const cvSavedTimeoutRef = useRef<number | null>(null);
 
+  const refreshLocalPullProgress = async (reportErrors = true) => {
+    try {
+      const progress = await GetLocalRuntimePullProgress();
+      const totalBytes = Number(progress.totalBytes || 0);
+      const completedBytes = Number(progress.completedBytes || 0);
+      const rawPercent = Number(progress.percent);
+      const percent =
+        Number.isFinite(rawPercent) && rawPercent >= 0
+          ? Math.min(100, Math.max(0, rawPercent))
+          : null;
+      const active = Boolean(progress.active);
+
+      setLocalPullProgress({
+        active,
+        model: String(progress.model || ""),
+        status: String(progress.status || ""),
+        message: String(progress.message || ""),
+        totalBytes: Number.isFinite(totalBytes) && totalBytes > 0 ? totalBytes : 0,
+        completedBytes:
+          Number.isFinite(completedBytes) && completedBytes > 0
+            ? completedBytes
+            : 0,
+        percent,
+        ready: Boolean(progress.ready),
+      });
+      setLocalModelPulling(active);
+    } catch (err: unknown) {
+      if (reportErrors) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to refresh local runtime pull progress:", message);
+        onError(message);
+      }
+    }
+  };
+
   const refreshLocalRuntime = async (reportErrors = true) => {
     setLocalRuntimeRefreshing(true);
     try {
+      await refreshLocalPullProgress(reportErrors);
+
       const snapshot = await GetLocalRuntimeStatus();
       setLocalRuntimeStatus(String(snapshot.status || "unknown"));
       setLocalRuntimeMessage(String(snapshot.message || ""));
@@ -306,6 +381,30 @@ export function SettingsPanel({
     }
   }, [llmMode]);
 
+  useEffect(() => {
+    if (llmMode !== "local") {
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      if (cancelled) {
+        return;
+      }
+      await refreshLocalPullProgress(false);
+    };
+
+    void refresh();
+    const intervalID = window.setInterval(() => {
+      void refresh();
+    }, 1000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalID);
+    };
+  }, [llmMode]);
+
   const setTimedSavedState = (
     setter: (saved: boolean) => void,
     timeoutRef: MutableRefObject<number | null>
@@ -319,6 +418,13 @@ export function SettingsPanel({
       timeoutRef.current = null;
     }, 2000);
   };
+
+  const localPullInFlight = localModelPulling || localPullProgress.active;
+  const hasLocalPullPercent = localPullProgress.percent !== null;
+  const localPullByteLabel =
+    localPullProgress.totalBytes > 0
+      ? `${formatBytes(localPullProgress.completedBytes)} / ${formatBytes(localPullProgress.totalBytes)}`
+      : "";
 
   const handleSetKeyboardShortcuts = async (enabled: boolean) => {
     try {
@@ -503,6 +609,10 @@ export function SettingsPanel({
   };
 
   const handlePullLocalModel = async () => {
+    if (localPullInFlight) {
+      onError(`Download for ${localModelName} is already in progress.`);
+      return;
+    }
     setLocalModelPulling(true);
     try {
       await PullLocalRuntimeModel(localModelName);
@@ -513,12 +623,17 @@ export function SettingsPanel({
       onError(message);
     } finally {
       setLocalModelPulling(false);
+      await refreshLocalPullProgress(false);
     }
   };
 
   const handleRunLocalSetup = async () => {
     if (localRuntimeStatus === "not_installed") {
-      onError("Install Ollama first, then run local setup.");
+      onError("Install Ollama, open it once, then run local setup.");
+      return;
+    }
+    if (localPullInFlight) {
+      onError(`Download for ${localModelName} is already in progress.`);
       return;
     }
 
@@ -535,6 +650,7 @@ export function SettingsPanel({
     } finally {
       setLocalRuntimeStarting(false);
       setLocalModelPulling(false);
+      await refreshLocalPullProgress(false);
     }
   };
 
@@ -952,6 +1068,9 @@ export function SettingsPanel({
               <p className="text-xs text-hw-text-muted mb-2">
                 Guided local setup uses Ollama + {localModelName}.
               </p>
+              <p className="text-xs text-hw-text-muted mb-2">
+                After installing Ollama, open it once so the local runtime is available.
+              </p>
               <div className="space-y-3">
                 <div>
                   <label
@@ -986,6 +1105,48 @@ export function SettingsPanel({
                     Approx download size: {formatGiB(localModelEstimatedBytes)}
                   </p>
                 </div>
+                {(localPullProgress.active ||
+                  localPullProgress.status ||
+                  localPullProgress.message) && (
+                  <div className="rounded border border-hw-border bg-hw-bg px-3 py-2">
+                    <p className="text-xs text-hw-text">
+                      Download status:{" "}
+                      <span className="font-semibold">
+                        {localPullProgress.active
+                          ? "in_progress"
+                          : localPullProgress.ready
+                            ? "completed"
+                            : localPullProgress.status || "idle"}
+                      </span>
+                    </p>
+                    {localPullProgress.message && (
+                      <p className="mt-1 text-xs text-hw-text-muted">
+                        {localPullProgress.message}
+                      </p>
+                    )}
+                    {hasLocalPullPercent && (
+                      <div className="mt-2 space-y-1">
+                        <div
+                          className="h-1.5 w-full overflow-hidden rounded bg-hw-border"
+                          role="progressbar"
+                          aria-label="Llama download progress"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(localPullProgress.percent ?? 0)}
+                        >
+                          <div
+                            className="h-full bg-hw-accent transition-[width] duration-500"
+                            style={{ width: `${localPullProgress.percent ?? 0}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-hw-text-muted">
+                          {(localPullProgress.percent ?? 0).toFixed(1)}%
+                          {localPullByteLabel ? ` (${localPullByteLabel})` : ""}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     variant="secondary"
@@ -1013,6 +1174,7 @@ export function SettingsPanel({
                         size="sm"
                         onClick={handleStartLocalRuntime}
                         loading={localRuntimeStarting}
+                        disabled={localPullInFlight}
                       >
                         Start runtime
                       </Button>
@@ -1023,27 +1185,31 @@ export function SettingsPanel({
                       size="sm"
                       onClick={handleStopLocalRuntime}
                       loading={localRuntimeStopping}
+                      disabled={localPullInFlight}
                     >
                       Stop runtime
                     </Button>
                   )}
-                  {localRuntimeStatus === "ready" && !localModelInstalled && (
+                  {localRuntimeStatus === "ready" &&
+                    (!localModelInstalled || localPullInFlight) && (
                     <Button
                       variant="primary"
                       size="sm"
                       onClick={handlePullLocalModel}
-                      loading={localModelPulling}
+                      loading={localPullInFlight}
+                      disabled={localPullInFlight || localModelInstalled}
                     >
-                      Download Llama
+                      {localPullInFlight ? "Downloading Llama..." : "Download Llama"}
                     </Button>
-                  )}
+                    )}
                   {localRuntimeStatus !== "not_installed" &&
                     (!localRuntimeReady || !localModelInstalled) && (
                       <Button
                         variant="primary"
                         size="sm"
                         onClick={handleRunLocalSetup}
-                        loading={localRuntimeStarting || localModelPulling}
+                        loading={localRuntimeStarting || localPullInFlight}
+                        disabled={localPullInFlight}
                       >
                         Run guided setup
                       </Button>

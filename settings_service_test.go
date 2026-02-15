@@ -28,8 +28,10 @@ type failingLocalRuntimeManager struct {
 	stopErr       error
 	listErr       error
 	pullModelErr  error
+	pullStateErr  error
 	modelCatalog  localruntime.ModelCatalog
 	pullModelResp localruntime.PullResult
+	pullStateResp localruntime.PullProgress
 }
 
 func (m failingLocalRuntimeManager) Status(context.Context) (localruntime.Snapshot, error) {
@@ -75,6 +77,23 @@ func (m failingLocalRuntimeManager) PullModel(_ context.Context, model string) (
 		}
 	}
 	return m.pullModelResp, nil
+}
+
+func (m failingLocalRuntimeManager) GetPullProgress(context.Context) (localruntime.PullProgress, error) {
+	if m.pullStateErr != nil {
+		return localruntime.PullProgress{}, m.pullStateErr
+	}
+	if m.pullStateResp.Model == "" && !m.pullStateResp.Active {
+		m.pullStateResp = localruntime.PullProgress{
+			Model:          "llama3.1:8b",
+			Active:         true,
+			Status:         "downloading",
+			TotalBytes:     1024,
+			CompletedBytes: 256,
+			Percent:        25,
+		}
+	}
+	return m.pullStateResp, nil
 }
 
 func (s failingKeychainStore) Get(string) (string, error) {
@@ -190,6 +209,18 @@ func (stubLocalRuntimeManager) PullModel(_ context.Context, model string) (local
 	}, nil
 }
 
+func (stubLocalRuntimeManager) GetPullProgress(context.Context) (localruntime.PullProgress, error) {
+	return localruntime.PullProgress{
+		Model:          "llama3.1:8b",
+		Active:         false,
+		Status:         "completed",
+		TotalBytes:     1024,
+		CompletedBytes: 1024,
+		Percent:        100,
+		Ready:          true,
+	}, nil
+}
+
 func TestSettingsServiceLocalRuntimeDependencyDefaultsAndInjection(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()
@@ -273,6 +304,17 @@ func TestSettingsServiceLocalRuntimeLifecycle(t *testing.T) {
 	if !pulled.Ready {
 		t.Fatal("expected pulled model ready=true")
 	}
+
+	pullState, err := svc.GetLocalRuntimePullProgress()
+	if err != nil {
+		t.Fatalf("getting local runtime pull progress: %v", err)
+	}
+	if pullState.Percent != 100 {
+		t.Fatalf("expected pull progress percent 100, got %v", pullState.Percent)
+	}
+	if !pullState.Ready {
+		t.Fatal("expected pull progress ready=true")
+	}
 }
 
 func TestSettingsServiceLocalRuntimeErrors(t *testing.T) {
@@ -285,6 +327,7 @@ func TestSettingsServiceLocalRuntimeErrors(t *testing.T) {
 		stopErr:      errors.New("stop failed"),
 		listErr:      errors.New("list models failed"),
 		pullModelErr: errors.New("pull model failed"),
+		pullStateErr: errors.New("pull progress failed"),
 	})
 
 	if _, err := svc.GetLocalRuntimeStatus(); err == nil || !strings.Contains(err.Error(), "getting local runtime status") {
@@ -301,6 +344,9 @@ func TestSettingsServiceLocalRuntimeErrors(t *testing.T) {
 	}
 	if _, err := svc.PullLocalRuntimeModel("llama3.1:8b"); err == nil || !strings.Contains(err.Error(), "pulling local runtime model") {
 		t.Fatalf("expected wrapped pull-model error, got %v", err)
+	}
+	if _, err := svc.GetLocalRuntimePullProgress(); err == nil || !strings.Contains(err.Error(), "getting local runtime pull progress") {
+		t.Fatalf("expected wrapped pull-progress error, got %v", err)
 	}
 	if _, err := svc.PullLocalRuntimeModel("   "); err == nil || !strings.Contains(err.Error(), "local runtime model is required") {
 		t.Fatalf("expected local runtime model validation error, got %v", err)

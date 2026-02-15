@@ -68,6 +68,10 @@ func (*stubResolverRuntimeManager) PullModel(context.Context, string) (localrunt
 	return localruntime.PullResult{}, nil
 }
 
+func (*stubResolverRuntimeManager) GetPullProgress(context.Context) (localruntime.PullProgress, error) {
+	return localruntime.PullProgress{}, nil
+}
+
 func TestMatcherProviderResolverDefaultsToHeuristicWhenUnset(t *testing.T) {
 	database := testResolverDB(t)
 	resolver := newMatcherProviderResolver(

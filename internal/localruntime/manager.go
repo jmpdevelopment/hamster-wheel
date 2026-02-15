@@ -38,6 +38,7 @@ const (
 	defaultHealthPath          = "/api/version"
 	defaultStartupTimeout      = 8 * time.Second
 	defaultStopTimeout         = 3 * time.Second
+	defaultPullTimeout         = 45 * time.Minute
 	defaultHealthCheckInterval = 250 * time.Millisecond
 	defaultHTTPTimeout         = 1200 * time.Millisecond
 	defaultRetryDelay          = 300 * time.Millisecond
@@ -89,6 +90,21 @@ type PullResult struct {
 	Message string `json:"message,omitempty"`
 }
 
+// PullProgress captures in-flight model pull telemetry.
+type PullProgress struct {
+	Model          string    `json:"model"`
+	Active         bool      `json:"active"`
+	Status         string    `json:"status,omitempty"`
+	Message        string    `json:"message,omitempty"`
+	Digest         string    `json:"digest,omitempty"`
+	TotalBytes     int64     `json:"totalBytes,omitempty"`
+	CompletedBytes int64     `json:"completedBytes,omitempty"`
+	Percent        float64   `json:"percent,omitempty"`
+	Ready          bool      `json:"ready"`
+	StartedAt      time.Time `json:"startedAt,omitempty"`
+	UpdatedAt      time.Time `json:"updatedAt,omitempty"`
+}
+
 // Manager is the local runtime orchestration contract.
 type Manager interface {
 	Status(ctx context.Context) (Snapshot, error)
@@ -96,6 +112,7 @@ type Manager interface {
 	Stop(ctx context.Context) (Snapshot, error)
 	ListModels(ctx context.Context) (ModelCatalog, error)
 	PullModel(ctx context.Context, model string) (PullResult, error)
+	GetPullProgress(ctx context.Context) (PullProgress, error)
 }
 
 // Config controls manager startup and probing behavior.
@@ -106,6 +123,7 @@ type Config struct {
 	ManagedStateFile    string
 	StartupTimeout      time.Duration
 	StopTimeout         time.Duration
+	PullTimeout         time.Duration
 	HealthCheckInterval time.Duration
 	HTTPClient          *http.Client
 	Logger              *slog.Logger
@@ -135,6 +153,7 @@ type RuntimeManager struct {
 
 	startupTimeout      time.Duration
 	stopTimeout         time.Duration
+	pullTimeout         time.Duration
 	healthCheckInterval time.Duration
 
 	client *http.Client
@@ -149,6 +168,7 @@ type RuntimeManager struct {
 	startedByApp   bool
 	stopping       bool
 	lastProcessErr error
+	pullProgress   PullProgress
 }
 
 // NewOllamaManager constructs an Ollama runtime manager with safe defaults.
@@ -177,6 +197,10 @@ func NewOllamaManager(cfg Config) *RuntimeManager {
 	stopTimeout := cfg.StopTimeout
 	if stopTimeout <= 0 {
 		stopTimeout = defaultStopTimeout
+	}
+	pullTimeout := cfg.PullTimeout
+	if pullTimeout <= 0 {
+		pullTimeout = defaultPullTimeout
 	}
 	healthCheckInterval := cfg.HealthCheckInterval
 	if healthCheckInterval <= 0 {
@@ -207,6 +231,7 @@ func NewOllamaManager(cfg Config) *RuntimeManager {
 		healthURL:           healthURL,
 		startupTimeout:      startupTimeout,
 		stopTimeout:         stopTimeout,
+		pullTimeout:         pullTimeout,
 		healthCheckInterval: healthCheckInterval,
 		client:              client,
 		logger:              logger,
@@ -238,7 +263,7 @@ func (m *RuntimeManager) Status(ctx context.Context) (Snapshot, error) {
 	}
 	if !installed {
 		snapshot.Status = StatusNotInstalled
-		snapshot.Message = "Install Ollama to enable guided local model mode."
+		snapshot.Message = "Install Ollama, open it once, then return to run guided local model setup."
 		return snapshot, nil
 	}
 
@@ -536,7 +561,7 @@ func (m *RuntimeManager) ListModels(ctx context.Context) (ModelCatalog, error) {
 	return catalog, nil
 }
 
-func (m *RuntimeManager) PullModel(ctx context.Context, model string) (PullResult, error) {
+func (m *RuntimeManager) PullModel(ctx context.Context, model string) (result PullResult, err error) {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return PullResult{}, errors.New("model name is required")
@@ -549,10 +574,29 @@ func (m *RuntimeManager) PullModel(ctx context.Context, model string) (PullResul
 	if !installed {
 		return PullResult{Model: model, Status: StatusNotInstalled}, fmt.Errorf("%w: %s", ErrRuntimeNotInstalled, m.binary)
 	}
+	if err := m.beginPullTracking(model); err != nil {
+		return PullResult{}, err
+	}
+	defer func() {
+		if err != nil {
+			m.completePullTracking(model, "failed", err.Error(), false)
+			return
+		}
+
+		status := strings.TrimSpace(result.Status)
+		if status == "" {
+			status = "completed"
+		}
+		message := strings.TrimSpace(result.Message)
+		if message == "" {
+			message = status
+		}
+		m.completePullTracking(model, status, message, result.Ready)
+	}()
 
 	body, err := json.Marshal(map[string]any{
 		"name":   model,
-		"stream": false,
+		"stream": true,
 	})
 	if err != nil {
 		return PullResult{}, fmt.Errorf("encoding pull request: %w", err)
@@ -562,36 +606,58 @@ func (m *RuntimeManager) PullModel(ctx context.Context, model string) (PullResul
 	if err != nil {
 		return PullResult{}, fmt.Errorf("building model pull request: %w", err)
 	}
-	response, err := m.doWithRetry(ctx, "pull-model", func() (*http.Response, error) {
-		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, requestURL.String(), bytes.NewReader(body))
+
+	pullCtx := ctx
+	cancelPull := func() {}
+	if m.pullTimeout > 0 {
+		pullCtx, cancelPull = context.WithTimeout(ctx, m.pullTimeout)
+	}
+	defer cancelPull()
+
+	pullClient := m.cloneClientWithTimeout(0)
+	response, err := m.doWithRetry(pullCtx, "pull-model", func() (*http.Response, error) {
+		req, reqErr := http.NewRequestWithContext(pullCtx, http.MethodPost, requestURL.String(), bytes.NewReader(body))
 		if reqErr != nil {
 			return nil, fmt.Errorf("creating model pull request: %w", reqErr)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		return m.client.Do(req)
+		return pullClient.Do(req)
 	})
 	if err != nil {
 		return PullResult{}, fmt.Errorf("pulling model: %w", err)
 	}
 	defer response.Body.Close()
 
-	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
-	if err != nil {
-		return PullResult{}, fmt.Errorf("reading model pull response: %w", err)
-	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		raw, readErr := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
+		if readErr != nil {
+			return PullResult{}, fmt.Errorf("reading model pull failure response: %w", readErr)
+		}
+		if detail := decodePullFailureMessage(raw); detail != "" {
+			return PullResult{}, fmt.Errorf("model pull failed with status %d: %s", response.StatusCode, detail)
+		}
 		return PullResult{}, fmt.Errorf("model pull failed with status %d", response.StatusCode)
 	}
 
-	var payload struct {
-		Status string `json:"status"`
-		Error  string `json:"error"`
-	}
-	if err := json.Unmarshal(raw, &payload); err != nil {
-		return PullResult{}, fmt.Errorf("parsing model pull response: %w", err)
-	}
-	if strings.TrimSpace(payload.Error) != "" {
-		return PullResult{}, fmt.Errorf("model pull failed: %s", strings.TrimSpace(payload.Error))
+	decoder := json.NewDecoder(response.Body)
+	lastStatus := "completed"
+	for {
+		var event pullStreamEvent
+		decodeErr := decoder.Decode(&event)
+		if decodeErr != nil {
+			if errors.Is(decodeErr, io.EOF) {
+				break
+			}
+			return PullResult{}, fmt.Errorf("parsing model pull progress stream: %w", decodeErr)
+		}
+
+		if eventError := strings.TrimSpace(event.Error); eventError != "" {
+			return PullResult{}, fmt.Errorf("model pull failed: %s", eventError)
+		}
+		if status := strings.TrimSpace(event.Status); status != "" {
+			lastStatus = status
+		}
+		m.updatePullTrackingFromEvent(model, event)
 	}
 
 	catalog, listErr := m.ListModels(ctx)
@@ -605,19 +671,148 @@ func (m *RuntimeManager) PullModel(ctx context.Context, model string) (PullResul
 		}
 	}
 
-	status := strings.TrimSpace(payload.Status)
-	if status == "" {
-		status = "completed"
-	}
-	result := PullResult{
+	result = PullResult{
 		Model:  model,
-		Status: status,
+		Status: strings.TrimSpace(lastStatus),
 		Ready:  ready,
+	}
+	if result.Status == "" {
+		result.Status = "completed"
 	}
 	if !ready && listErr != nil {
 		result.Message = "Pull completed but readiness could not be confirmed yet."
 	}
 	return result, nil
+}
+
+// GetPullProgress returns the current model-pull progress snapshot.
+func (m *RuntimeManager) GetPullProgress(context.Context) (PullProgress, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.pullProgress, nil
+}
+
+type pullStreamEvent struct {
+	Status    string `json:"status"`
+	Error     string `json:"error"`
+	Digest    string `json:"digest"`
+	Total     int64  `json:"total"`
+	Completed int64  `json:"completed"`
+}
+
+func decodePullFailureMessage(raw []byte) string {
+	var payload struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+		Status  string `json:"status"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return ""
+	}
+	for _, candidate := range []string{payload.Error, payload.Message, payload.Status} {
+		if text := strings.TrimSpace(candidate); text != "" {
+			return text
+		}
+	}
+	return ""
+}
+
+func (m *RuntimeManager) beginPullTracking(model string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.pullProgress.Active {
+		activeModel := strings.TrimSpace(m.pullProgress.Model)
+		if activeModel == "" {
+			activeModel = "another model"
+		}
+		return fmt.Errorf("model pull already in progress for %s", activeModel)
+	}
+
+	now := time.Now().UTC()
+	m.pullProgress = PullProgress{
+		Model:     model,
+		Active:    true,
+		Status:    "starting",
+		Message:   "Starting download",
+		Ready:     false,
+		StartedAt: now,
+		UpdatedAt: now,
+	}
+	return nil
+}
+
+func (m *RuntimeManager) updatePullTrackingFromEvent(model string, event pullStreamEvent) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.pullProgress.Active || m.pullProgress.Model != model {
+		return
+	}
+
+	status := strings.TrimSpace(event.Status)
+	if status != "" {
+		m.pullProgress.Status = status
+	}
+	if digest := strings.TrimSpace(event.Digest); digest != "" {
+		m.pullProgress.Digest = digest
+	}
+	if event.Total > 0 {
+		m.pullProgress.TotalBytes = event.Total
+	}
+	if event.Completed >= 0 {
+		m.pullProgress.CompletedBytes = event.Completed
+	}
+	if m.pullProgress.TotalBytes > 0 {
+		m.pullProgress.Percent = clampPullPercent(
+			float64(m.pullProgress.CompletedBytes) / float64(m.pullProgress.TotalBytes) * 100,
+		)
+	}
+	if m.pullProgress.Status != "" {
+		m.pullProgress.Message = m.pullProgress.Status
+	}
+	m.pullProgress.UpdatedAt = time.Now().UTC()
+}
+
+func (m *RuntimeManager) completePullTracking(model, status, message string, ready bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.pullProgress.Model != model {
+		return
+	}
+	m.pullProgress.Active = false
+	m.pullProgress.Ready = ready
+	if text := strings.TrimSpace(status); text != "" {
+		m.pullProgress.Status = text
+	}
+	if text := strings.TrimSpace(message); text != "" {
+		m.pullProgress.Message = text
+	}
+	if ready && m.pullProgress.Percent < 100 {
+		m.pullProgress.Percent = 100
+	}
+	m.pullProgress.UpdatedAt = time.Now().UTC()
+}
+
+func clampPullPercent(percent float64) float64 {
+	switch {
+	case math.IsNaN(percent), math.IsInf(percent, 0), percent < 0:
+		return 0
+	case percent > 100:
+		return 100
+	default:
+		return percent
+	}
+}
+
+func (m *RuntimeManager) cloneClientWithTimeout(timeout time.Duration) *http.Client {
+	if m.client == nil {
+		return &http.Client{Timeout: timeout}
+	}
+	clone := *m.client
+	clone.Timeout = timeout
+	return &clone
 }
 
 type managedProcessState struct {
@@ -847,6 +1042,14 @@ func (noopManager) ListModels(context.Context) (ModelCatalog, error) {
 
 func (noopManager) PullModel(context.Context, string) (PullResult, error) {
 	return PullResult{}, fmt.Errorf("%w: local runtime orchestration is disabled", ErrRuntimeUnsupported)
+}
+
+func (noopManager) GetPullProgress(context.Context) (PullProgress, error) {
+	return PullProgress{
+		Active:  false,
+		Status:  "disabled",
+		Message: "Local runtime orchestration is not configured.",
+	}, nil
 }
 
 type osRunner struct{}

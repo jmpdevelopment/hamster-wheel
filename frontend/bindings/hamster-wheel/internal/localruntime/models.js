@@ -116,6 +116,107 @@ export class ModelInfo {
 }
 
 /**
+ * PullProgress captures in-flight model pull telemetry.
+ */
+export class PullProgress {
+    /**
+     * Creates a new PullProgress instance.
+     * @param {Partial<PullProgress>} [$$source = {}] - The source object to create the PullProgress.
+     */
+    constructor($$source = {}) {
+        if (!("model" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["model"] = "";
+        }
+        if (!("active" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["active"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["status"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["message"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["digest"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {number | undefined}
+             */
+            this["totalBytes"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {number | undefined}
+             */
+            this["completedBytes"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {number | undefined}
+             */
+            this["percent"] = undefined;
+        }
+        if (!("ready" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["ready"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {time$0.Time | undefined}
+             */
+            this["startedAt"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {time$0.Time | undefined}
+             */
+            this["updatedAt"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PullProgress instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {PullProgress}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PullProgress(/** @type {Partial<PullProgress>} */($$parsedSource));
+    }
+}
+
+/**
  * PullResult captures the outcome of a local model pull operation.
  */
 export class PullResult {

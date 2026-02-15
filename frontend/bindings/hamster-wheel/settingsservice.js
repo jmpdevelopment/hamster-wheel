@@ -112,12 +112,22 @@ export function GetLocalRuntimeModels() {
 }
 
 /**
+ * GetLocalRuntimePullProgress returns in-flight local model pull progress.
+ * @returns {$CancellablePromise<localruntime$0.PullProgress>}
+ */
+export function GetLocalRuntimePullProgress() {
+    return $Call.ByID(1631203121).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType1($result);
+    }));
+}
+
+/**
  * GetLocalRuntimeStatus returns the current local runtime orchestration status.
  * @returns {$CancellablePromise<localruntime$0.Snapshot>}
  */
 export function GetLocalRuntimeStatus() {
     return $Call.ByID(1586804687).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
+        return $$createType2($result);
     }));
 }
 
@@ -154,7 +164,7 @@ export function HasReedAPIKey() {
  */
 export function PullLocalRuntimeModel(model) {
     return $Call.ByID(666476807, model).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType2($result);
+        return $$createType3($result);
     }));
 }
 
@@ -265,7 +275,7 @@ export function SetTheme(theme) {
  */
 export function StartLocalRuntime() {
     return $Call.ByID(3352722605).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
+        return $$createType2($result);
     }));
 }
 
@@ -275,11 +285,12 @@ export function StartLocalRuntime() {
  */
 export function StopLocalRuntime() {
     return $Call.ByID(2360813809).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType1($result);
+        return $$createType2($result);
     }));
 }
 
 // Private type creation functions
 const $$createType0 = localruntime$0.ModelCatalog.createFrom;
-const $$createType1 = localruntime$0.Snapshot.createFrom;
-const $$createType2 = localruntime$0.PullResult.createFrom;
+const $$createType1 = localruntime$0.PullProgress.createFrom;
+const $$createType2 = localruntime$0.Snapshot.createFrom;
+const $$createType3 = localruntime$0.PullResult.createFrom;

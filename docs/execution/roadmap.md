@@ -52,7 +52,7 @@ Authoritative goal for next slices: non-technical users can choose `Cloud` or `L
 
 1. Managed model lifecycle for `Local` mode.
    - Why: users need guided model acquisition and readiness checks.
-   - Build: complete pull/download progress telemetry (not just busy state), keep readiness validation + actionable error handling, and harden retry/timeout UX under network faults.
+   - Build: preserve completed progress/timeout lifecycle hardening (streamed pull telemetry, in-progress state restore, duplicate-pull guard, and long-pull timeout behavior) and continue improving actionable failure guidance under intermittent/offline network faults.
    - Done when: users can complete guided local setup with explicit progress visibility and reach `ready` in-app without manual endpoint setup.
 2. OpenAI-compatible `Advanced` manual endpoint path.
    - Why: preserve expert flexibility and support existing self-hosted gateways.

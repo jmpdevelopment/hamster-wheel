@@ -393,6 +393,112 @@ func TestPullModelSuccess(t *testing.T) {
 	}
 }
 
+func TestPullModelUsesDedicatedPullTimeoutInsteadOfClientTimeout(t *testing.T) {
+	client, runtime := newRuntimeClient()
+	client.Timeout = 25 * time.Millisecond
+	runtime.setPullDelay(120 * time.Millisecond)
+
+	manager := NewOllamaManager(Config{
+		Endpoint: "http://localruntime.test",
+		Runner: &fakeRunner{
+			lookPathResult: "/usr/local/bin/ollama",
+		},
+		HTTPClient:  client,
+		PullTimeout: 2 * time.Second,
+	})
+
+	result, err := manager.PullModel(context.Background(), "llama3.1:8b")
+	if err != nil {
+		t.Fatalf("pulling model with delayed runtime response: %v", err)
+	}
+	if !result.Ready {
+		t.Fatal("expected delayed pull to complete and mark model ready")
+	}
+}
+
+func TestPullModelRespectsConfiguredPullTimeout(t *testing.T) {
+	client, runtime := newRuntimeClient()
+	runtime.setPullDelay(200 * time.Millisecond)
+
+	manager := NewOllamaManager(Config{
+		Endpoint: "http://localruntime.test",
+		Runner: &fakeRunner{
+			lookPathResult: "/usr/local/bin/ollama",
+		},
+		HTTPClient:  client,
+		PullTimeout: 50 * time.Millisecond,
+	})
+
+	_, err := manager.PullModel(context.Background(), "llama3.1:8b")
+	if err == nil {
+		t.Fatal("expected pull timeout error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "deadline exceeded") {
+		t.Fatalf("expected pull timeout error to include deadline context, got %v", err)
+	}
+}
+
+func TestPullModelTracksProgressAndBlocksConcurrentPulls(t *testing.T) {
+	client, runtime := newRuntimeClient()
+	runtime.setPullDelay(250 * time.Millisecond)
+
+	manager := NewOllamaManager(Config{
+		Endpoint: "http://localruntime.test",
+		Runner: &fakeRunner{
+			lookPathResult: "/usr/local/bin/ollama",
+		},
+		HTTPClient:  client,
+		PullTimeout: 2 * time.Second,
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		_, pullErr := manager.PullModel(context.Background(), "llama3.1:8b")
+		errCh <- pullErr
+	}()
+
+	var inFlight PullProgress
+	deadline := time.Now().Add(150 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		progress, progressErr := manager.GetPullProgress(context.Background())
+		if progressErr != nil {
+			t.Fatalf("reading pull progress: %v", progressErr)
+		}
+		if progress.Active {
+			inFlight = progress
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !inFlight.Active {
+		t.Fatal("expected pull to report active=true while running")
+	}
+	if inFlight.Model != "llama3.1:8b" {
+		t.Fatalf("expected active pull model llama3.1:8b, got %q", inFlight.Model)
+	}
+
+	if _, err := manager.PullModel(context.Background(), "llama3.1:8b"); err == nil {
+		t.Fatal("expected concurrent pull to be rejected")
+	} else if !strings.Contains(strings.ToLower(err.Error()), "already in progress") {
+		t.Fatalf("expected duplicate-pull error, got %v", err)
+	}
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("expected first pull to complete, got %v", err)
+	}
+
+	completed, err := manager.GetPullProgress(context.Background())
+	if err != nil {
+		t.Fatalf("reading final pull progress: %v", err)
+	}
+	if completed.Active {
+		t.Fatal("expected active=false after pull completion")
+	}
+	if !completed.Ready {
+		t.Fatal("expected ready=true after successful pull completion")
+	}
+}
+
 func TestPullModelRejectsEmptyName(t *testing.T) {
 	client, _ := newRuntimeClient()
 
@@ -475,6 +581,14 @@ func TestNoopManagerContract(t *testing.T) {
 	if _, err := manager.PullModel(context.Background(), "llama3.1:8b"); err == nil {
 		t.Fatal("expected noop pull to fail")
 	}
+
+	progress, err := manager.GetPullProgress(context.Background())
+	if err != nil {
+		t.Fatalf("noop pull progress: %v", err)
+	}
+	if progress.Active {
+		t.Fatal("expected noop manager pull progress to be inactive")
+	}
 }
 
 func newRuntimeClient() (*http.Client, *fakeRuntimeTransport) {
@@ -497,6 +611,7 @@ type fakeRuntimeTransport struct {
 	mu         sync.Mutex
 	models     map[string]ModelInfo
 	pullError  string
+	pullDelay  time.Duration
 	pullCalled int
 }
 
@@ -507,6 +622,12 @@ func (t *fakeRuntimeTransport) setHealthStatus(status int) {
 func (t *fakeRuntimeTransport) setPullError(message string) {
 	t.mu.Lock()
 	t.pullError = message
+	t.mu.Unlock()
+}
+
+func (t *fakeRuntimeTransport) setPullDelay(delay time.Duration) {
+	t.mu.Lock()
+	t.pullDelay = delay
 	t.mu.Unlock()
 }
 
@@ -551,7 +672,18 @@ func (t *fakeRuntimeTransport) RoundTrip(req *http.Request) (*http.Response, err
 		t.mu.Lock()
 		t.pullCalled++
 		pullError := t.pullError
+		pullDelay := t.pullDelay
 		t.mu.Unlock()
+
+		if pullDelay > 0 {
+			timer := time.NewTimer(pullDelay)
+			defer timer.Stop()
+			select {
+			case <-req.Context().Done():
+				return nil, req.Context().Err()
+			case <-timer.C:
+			}
+		}
 
 		if int(t.pullStatus.Load()) != http.StatusOK {
 			return buildFakeResponse(req, int(t.pullStatus.Load()), `{"error":"pull failed"}`), nil
@@ -562,7 +694,8 @@ func (t *fakeRuntimeTransport) RoundTrip(req *http.Request) (*http.Response, err
 		}
 
 		var body struct {
-			Name string `json:"name"`
+			Name   string `json:"name"`
+			Stream bool   `json:"stream"`
 		}
 		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 			return buildFakeResponse(req, http.StatusBadRequest, `{"error":"invalid request"}`), nil
@@ -570,6 +703,15 @@ func (t *fakeRuntimeTransport) RoundTrip(req *http.Request) (*http.Response, err
 		model := strings.TrimSpace(body.Name)
 		if model != "" {
 			t.addModel(model, "sha256:pulled", 1024)
+		}
+		if body.Stream {
+			stream := strings.Join([]string{
+				`{"status":"pulling manifest"}`,
+				`{"status":"downloading","digest":"sha256:layer","total":1024,"completed":512}`,
+				`{"status":"downloading","digest":"sha256:layer","total":1024,"completed":1024}`,
+				`{"status":"success"}`,
+			}, "\n")
+			return buildFakeResponse(req, http.StatusOK, stream), nil
 		}
 		return buildFakeResponse(req, http.StatusOK, `{"status":"success"}`), nil
 	default:

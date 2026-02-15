@@ -20,6 +20,7 @@ const mockSetLLMBaseURL = vi.fn();
 const mockGetLocalRuntimeStatus = vi.fn();
 const mockGetLocalRuntimeModels = vi.fn();
 const mockGetLocalRuntimeModel = vi.fn();
+const mockGetLocalRuntimePullProgress = vi.fn();
 const mockPullLocalRuntimeModel = vi.fn();
 const mockStartLocalRuntime = vi.fn();
 const mockStopLocalRuntime = vi.fn();
@@ -51,6 +52,8 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   GetLocalRuntimeModels: (...args: unknown[]) =>
     mockGetLocalRuntimeModels(...args),
   GetLocalRuntimeModel: (...args: unknown[]) => mockGetLocalRuntimeModel(...args),
+  GetLocalRuntimePullProgress: (...args: unknown[]) =>
+    mockGetLocalRuntimePullProgress(...args),
   PullLocalRuntimeModel: (...args: unknown[]) =>
     mockPullLocalRuntimeModel(...args),
   StartLocalRuntime: (...args: unknown[]) => mockStartLocalRuntime(...args),
@@ -111,6 +114,16 @@ beforeEach(() => {
     installed: [{ name: "llama3.1:8b" }],
   });
   mockGetLocalRuntimeModel.mockResolvedValue("llama3.1:8b");
+  mockGetLocalRuntimePullProgress.mockResolvedValue({
+    active: false,
+    model: "llama3.1:8b",
+    status: "",
+    message: "",
+    totalBytes: 0,
+    completedBytes: 0,
+    percent: 0,
+    ready: false,
+  });
   mockPullLocalRuntimeModel.mockResolvedValue({
     model: "llama3.1:8b",
     ready: true,
@@ -366,10 +379,42 @@ describe("SettingsPanel", () => {
     expect(mockPullLocalRuntimeModel).toHaveBeenCalledWith("llama3.1:8b");
   });
 
+  it("shows in-progress llama download state and disables duplicate download action", async () => {
+    mockGetLocalRuntimeStatus.mockResolvedValue({
+      status: "ready",
+      message: "",
+      startedByApp: true,
+    });
+    mockGetLocalRuntimeModels.mockResolvedValue({
+      installed: [],
+    });
+    mockGetLocalRuntimePullProgress.mockResolvedValue({
+      active: true,
+      model: "llama3.1:8b",
+      status: "downloading",
+      message: "downloading",
+      totalBytes: 1024,
+      completedBytes: 512,
+      percent: 50,
+      ready: false,
+    });
+
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+    await userEvent.click(screen.getByRole("radio", { name: "Local" }));
+
+    expect(screen.getByText(/Download status:/)).toBeInTheDocument();
+    expect(screen.getByText("50.0% (512 B / 1.0 KB)")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: "Llama download progress" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Downloading Llama..." })
+    ).toBeDisabled();
+  });
+
   it("shows install action when ollama is missing", async () => {
     mockGetLocalRuntimeStatus.mockResolvedValue({
       status: "not_installed",
-      message: "Install Ollama to enable guided local model mode.",
+      message: "Install Ollama, open it once, then return to run guided local model setup.",
       startedByApp: false,
     });
 

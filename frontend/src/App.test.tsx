@@ -93,6 +93,16 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
   GetLocalRuntimeModels: vi.fn().mockResolvedValue({
     installed: [{ name: "llama3.1:8b" }],
   }),
+  GetLocalRuntimePullProgress: vi.fn().mockResolvedValue({
+    active: false,
+    model: "llama3.1:8b",
+    status: "",
+    message: "",
+    totalBytes: 0,
+    completedBytes: 0,
+    percent: 0,
+    ready: false,
+  }),
   PullLocalRuntimeModel: vi.fn().mockResolvedValue({
     model: "llama3.1:8b",
     ready: true,
