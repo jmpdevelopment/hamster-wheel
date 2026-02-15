@@ -111,6 +111,9 @@ func main() {
 		),
 		PollInterval: 3 * time.Second,
 		BatchSize:    3,
+		ProviderTimeouts: map[string]time.Duration{
+			localProviderOllama: localProviderMatchTimeout,
+		},
 	})
 	matchWorker.SetLogger(slog.With("component", "matcher_worker"))
 	diagStore := diagnostics.NewStore(

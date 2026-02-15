@@ -284,6 +284,59 @@ func TestRunOnceUsesProviderResolver(t *testing.T) {
 	}
 }
 
+func TestRunOnceUsesProviderSpecificTimeoutOverride(t *testing.T) {
+	database := testDB(t)
+	probe := &deadlineProbeProvider{
+		name: "local_ollama",
+		result: llm.MatchResult{
+			Score:   0.55,
+			Summary: "Local scoring completed.",
+		},
+	}
+
+	worker := New(database, llm.NewRegistry(), WorkerConfig{
+		ProviderName: "local_ollama",
+		ProviderResolver: func(context.Context) (string, llm.Provider, error) {
+			return "local_ollama", probe, nil
+		},
+		BatchSize:    1,
+		MatchTimeout: 25 * time.Millisecond,
+		ProviderTimeouts: map[string]time.Duration{
+			"local_ollama": 150 * time.Millisecond,
+		},
+	})
+
+	jobID, err := database.InsertJob(context.Background(), &db.Job{
+		Source:      "reed_uk",
+		SourceID:    "matcher-timeout-override-1",
+		Title:       "Go Backend Engineer",
+		Description: "Build APIs.",
+		URL:         "https://example.com/jobs/timeout-override",
+	})
+	if err != nil {
+		t.Fatalf("inserting job: %v", err)
+	}
+	if err := database.EnsureJobMatchPending(context.Background(), jobID); err != nil {
+		t.Fatalf("ensuring pending row: %v", err)
+	}
+
+	processed, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("running matcher once: %v", err)
+	}
+	if processed != 1 {
+		t.Fatalf("expected 1 processed row, got %d", processed)
+	}
+
+	deadlineBudget, ok := probe.deadlineSnapshot()
+	if !ok {
+		t.Fatal("expected provider match context to include a deadline")
+	}
+	if deadlineBudget < 80*time.Millisecond {
+		t.Fatalf("expected provider-specific timeout override budget >= 80ms, got %v", deadlineBudget)
+	}
+}
+
 func TestRunOnceIncludesCVProfileFromConfiguredPath(t *testing.T) {
 	database := testDB(t)
 	cvPath := filepath.Join(t.TempDir(), "candidate-cv.txt")
@@ -502,6 +555,48 @@ type stubProvider struct {
 	result  llm.MatchResult
 	err     error
 	lastReq llm.MatchRequest
+}
+
+type deadlineProbeProvider struct {
+	name   string
+	result llm.MatchResult
+
+	mu             sync.Mutex
+	seenDeadline   bool
+	deadlineBudget time.Duration
+}
+
+func (p *deadlineProbeProvider) Name() string {
+	return p.name
+}
+
+func (p *deadlineProbeProvider) DisplayName() string {
+	return p.name
+}
+
+func (p *deadlineProbeProvider) Validate(context.Context) error {
+	return nil
+}
+
+func (p *deadlineProbeProvider) Match(ctx context.Context, _ llm.MatchRequest) (llm.MatchResult, error) {
+	deadline, ok := ctx.Deadline()
+	budget := time.Duration(0)
+	if ok {
+		budget = time.Until(deadline)
+	}
+
+	p.mu.Lock()
+	p.seenDeadline = ok
+	p.deadlineBudget = budget
+	p.mu.Unlock()
+
+	return p.result, nil
+}
+
+func (p *deadlineProbeProvider) deadlineSnapshot() (time.Duration, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.deadlineBudget, p.seenDeadline
 }
 
 func (p *stubProvider) Name() string {

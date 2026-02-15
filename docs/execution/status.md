@@ -50,11 +50,14 @@ Last updated: 2026-02-15
   - Cloud mode save flow resets manual base-URL overrides, preserving endpoint-free defaults for non-technical setup.
 - Phase 2 local setup hardening is in place (Llama-only path):
   - Local mode now guides users through runtime readiness (`status`/`start`/`stop`) and in-app model pull for `llama3.1:8b`.
+  - Local mode setup controls are explicit (`Start runtime` and `Download Llama`) with no combined one-click setup action.
   - Local setup shows estimated model download footprint and blocks Local-mode enablement until runtime + model readiness are confirmed.
+  - Local setup now includes minimum/recommended system requirements and expected machine-impact messaging for local Llama usage.
   - Local setup instructions now explicitly require opening Ollama once after install before continuing local setup.
   - Local model pull now uses a dedicated long-running request path bounded by pull-timeout settings (avoids short generic health/request timeouts during first download).
   - Local model pull now exposes progress telemetry (`active`, status text, bytes, percent) via `GetLocalRuntimePullProgress`.
-  - Settings local panel now restores in-flight download state on reopen, shows progress bar/details, and blocks duplicate Llama download triggers while a pull is active.
+  - Settings local panel now restores in-flight download state on reopen, shows progress bar/details, blocks duplicate Llama download triggers while a pull is active, and auto-hides pull status UI after successful completion.
+  - Matcher now applies a provider-specific timeout override for `local_ollama` to reduce first-match cold-start timeouts immediately after local model setup.
   - Runtime manager now tracks app-managed process state and reaps stale managed runtime processes on next launch after abnormal app exit.
   - OpenAI-compatible provider error text is now endpoint-agnostic to avoid cloud-brand leakage when local runtime path is active.
   - Local setup UI now surfaces Llama license/use-policy links and `Built with Llama` attribution notice.

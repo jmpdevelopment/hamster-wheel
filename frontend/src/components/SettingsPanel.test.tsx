@@ -432,6 +432,46 @@ describe("SettingsPanel", () => {
     ).toBeDisabled();
   });
 
+  it("hides download status panel after completed pull", async () => {
+    mockGetLocalRuntimeStatus.mockResolvedValue({
+      status: "ready",
+      message: "",
+      startedByApp: true,
+    });
+    mockGetLocalRuntimeModels.mockResolvedValue({
+      installed: [{ name: "llama3.1:8b" }],
+    });
+    mockGetLocalRuntimePullProgress.mockResolvedValue({
+      active: false,
+      model: "llama3.1:8b",
+      status: "completed",
+      message: "completed",
+      totalBytes: 1024,
+      completedBytes: 1024,
+      percent: 100,
+      ready: true,
+    });
+
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+    await userEvent.click(screen.getByRole("radio", { name: "Local" }));
+
+    expect(screen.queryByText(/Download status:/)).not.toBeInTheDocument();
+  });
+
+  it("shows local runtime system requirements guidance", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+    await userEvent.click(screen.getByRole("radio", { name: "Local" }));
+
+    expect(
+      screen.getByText("System requirements (Llama 3.1 8B local mode)")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Impact while running: higher CPU\/RAM usage/i)
+    ).toBeInTheDocument();
+  });
+
   it("shows install action when ollama is missing", async () => {
     mockGetLocalRuntimeStatus.mockResolvedValue({
       status: "not_installed",

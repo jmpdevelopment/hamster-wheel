@@ -420,6 +420,10 @@ export function SettingsPanel({
   };
 
   const localPullInFlight = localModelPulling || localPullProgress.active;
+  const showLocalPullStatus =
+    localPullProgress.active ||
+    (!localPullProgress.ready &&
+      (Boolean(localPullProgress.status) || Boolean(localPullProgress.message)));
   const hasLocalPullPercent = localPullProgress.percent !== null;
   const localPullByteLabel =
     localPullProgress.totalBytes > 0
@@ -1047,6 +1051,20 @@ export function SettingsPanel({
               <p className="text-xs text-hw-text-muted mb-2">
                 Step 1: Start runtime. Step 2: Download Llama.
               </p>
+              <div className="rounded border border-hw-border bg-hw-bg px-3 py-2">
+                <p className="text-xs font-semibold text-hw-text">
+                  System requirements (Llama 3.1 8B local mode)
+                </p>
+                <p className="mt-1 text-xs text-hw-text-muted">
+                  Minimum: 16 GB RAM, modern 4+ core CPU, ~8 GB free disk.
+                </p>
+                <p className="mt-1 text-xs text-hw-text-muted">
+                  Recommended: 24 GB+ RAM, Apple Silicon M2/M3 (or equivalent), SSD, and plugged-in power.
+                </p>
+                <p className="mt-1 text-xs text-hw-text-muted">
+                  Impact while running: higher CPU/RAM usage, increased battery drain, and slower system responsiveness during matching.
+                </p>
+              </div>
               <div className="space-y-3">
                 <div>
                   <label
@@ -1081,9 +1099,7 @@ export function SettingsPanel({
                     Approx download size: {formatGiB(localModelEstimatedBytes)}
                   </p>
                 </div>
-                {(localPullProgress.active ||
-                  localPullProgress.status ||
-                  localPullProgress.message) && (
+                {showLocalPullStatus && (
                   <div className="rounded border border-hw-border bg-hw-bg px-3 py-2">
                     <p className="text-xs text-hw-text">
                       Download status:{" "}

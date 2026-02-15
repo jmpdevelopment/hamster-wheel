@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
+	"time"
 
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/keychain"
@@ -17,6 +19,8 @@ import (
 )
 
 const localProviderOllama = "local_ollama"
+
+const localProviderMatchTimeout = 90 * time.Second
 
 func newMatcherProviderResolver(
 	database *db.DB,
@@ -88,6 +92,9 @@ func newMatcherProviderResolver(
 				APIKey:  "",
 				Model:   localModel,
 				BaseURL: envOllamaBaseURL,
+				HTTPClient: &http.Client{
+					Timeout: localProviderMatchTimeout,
+				},
 			}), nil
 		}
 

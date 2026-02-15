@@ -48,6 +48,7 @@ type WorkerConfig struct {
 	PollInterval      time.Duration
 	BatchSize         int
 	MatchTimeout      time.Duration
+	ProviderTimeouts  map[string]time.Duration
 	StaleAfter        time.Duration
 	DescriptionsRunes int
 }
@@ -62,6 +63,7 @@ type Worker struct {
 	pollInterval     time.Duration
 	batchSize        int
 	matchTimeout     time.Duration
+	providerTimeouts map[string]time.Duration
 	staleAfter       time.Duration
 	descriptionRunes int
 	providerResolver ProviderResolver
@@ -114,6 +116,14 @@ func New(store Store, providers *llm.Registry, cfg WorkerConfig) *Worker {
 			return providerName, provider, nil
 		}
 	}
+	providerTimeouts := make(map[string]time.Duration)
+	for name, timeout := range cfg.ProviderTimeouts {
+		name = strings.TrimSpace(name)
+		if name == "" || timeout <= 0 {
+			continue
+		}
+		providerTimeouts[name] = timeout
+	}
 
 	return &Worker{
 		store:            store,
@@ -124,6 +134,7 @@ func New(store Store, providers *llm.Registry, cfg WorkerConfig) *Worker {
 		pollInterval:     pollInterval,
 		batchSize:        batchSize,
 		matchTimeout:     matchTimeout,
+		providerTimeouts: providerTimeouts,
 		staleAfter:       staleAfter,
 		descriptionRunes: descriptionRunes,
 	}
@@ -288,7 +299,12 @@ func (w *Worker) processOne(ctx context.Context, jobID string) error {
 	}
 
 	query := w.queryForJob(ctx, job)
-	matchCtx, cancel := context.WithTimeout(ctx, w.matchTimeout)
+	matchTimeout := w.matchTimeout
+	if timeout, ok := w.providerTimeouts[strings.TrimSpace(providerName)]; ok && timeout > 0 {
+		matchTimeout = timeout
+	}
+
+	matchCtx, cancel := context.WithTimeout(ctx, matchTimeout)
 	defer cancel()
 
 	result, err := provider.Match(matchCtx, llm.MatchRequest{
