@@ -23,6 +23,7 @@ const mockGetJobCount = vi.fn();
 const mockDeleteJob = vi.fn();
 const mockSetJobFavorite = vi.fn();
 const mockSetJobsFavorite = vi.fn();
+const mockRecalculateMatchScore = vi.fn();
 const mockGetFilters = vi.fn();
 const mockCreateFilter = vi.fn();
 const mockUpdateFilter = vi.fn();
@@ -57,6 +58,8 @@ vi.mock("../bindings/hamster-wheel/jobservice", () => ({
   DeleteJob: (...args: unknown[]) => mockDeleteJob(...args),
   SetJobFavorite: (...args: unknown[]) => mockSetJobFavorite(...args),
   SetJobsFavorite: (...args: unknown[]) => mockSetJobsFavorite(...args),
+  RecalculateMatchScore: (...args: unknown[]) =>
+    mockRecalculateMatchScore(...args),
 }));
 
 vi.mock("../bindings/hamster-wheel/filterservice", () => ({
@@ -188,6 +191,7 @@ beforeEach(() => {
   mockDeleteJob.mockResolvedValue(undefined);
   mockSetJobFavorite.mockResolvedValue(undefined);
   mockSetJobsFavorite.mockResolvedValue(undefined);
+  mockRecalculateMatchScore.mockResolvedValue(undefined);
   mockGetFilters.mockResolvedValue([]);
   mockCreateFilter.mockResolvedValue("f1");
   mockUpdateFilter.mockResolvedValue(undefined);

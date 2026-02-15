@@ -71,6 +71,7 @@ const defaultProps = {
   onSetFavoriteJobs: vi.fn(),
   onToggleFavoriteJob: vi.fn(),
   onDeleteJobs: vi.fn().mockResolvedValue(undefined),
+  onRecalculateJobs: vi.fn().mockResolvedValue(undefined),
 };
 
 describe("JobList", () => {
@@ -334,6 +335,26 @@ describe("JobList", () => {
     expect(onSetFavoriteJobs).toHaveBeenCalledWith(["j1"], true);
   });
 
+  it("opens context menu for selected jobs and favorites from menu", async () => {
+    const onSetFavoriteJobs = vi.fn();
+    render(<JobList {...defaultProps} onSetFavoriteJobs={onSetFavoriteJobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job go dev/i })
+    );
+    fireEvent.contextMenu(screen.getByText("Go Dev"));
+
+    expect(
+      screen.getByRole("menu", { name: /bulk job actions/i })
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("menuitem", { name: /^favorite selected$/i })
+    );
+
+    expect(onSetFavoriteJobs).toHaveBeenCalledWith(["j1"], true);
+  });
+
   it("select-all chooses visible jobs and bulk delete calls onDeleteJobs", async () => {
     const onDeleteJobs = vi.fn().mockResolvedValue(undefined);
     render(<JobList {...defaultProps} onDeleteJobs={onDeleteJobs} />);
@@ -345,6 +366,40 @@ describe("JobList", () => {
     await userEvent.click(screen.getByRole("button", { name: /delete 2 jobs/i }));
 
     expect(onDeleteJobs).toHaveBeenCalledWith(["j1", "j2"]);
+  });
+
+  it("context-menu delete requires confirmation click", async () => {
+    const onDeleteJobs = vi.fn().mockResolvedValue(undefined);
+    render(<JobList {...defaultProps} onDeleteJobs={onDeleteJobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select all visible jobs/i })
+    );
+    fireEvent.contextMenu(screen.getByText("Go Dev"));
+
+    await userEvent.click(screen.getByRole("menuitem", { name: /delete 2 jobs/i }));
+    expect(onDeleteJobs).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      screen.getByRole("menuitem", { name: /confirm delete 2 jobs/i })
+    );
+    expect(onDeleteJobs).toHaveBeenCalledWith(["j1", "j2"]);
+  });
+
+  it("context-menu recalculate on an unselected row scopes selection to that row", async () => {
+    const onRecalculateJobs = vi.fn().mockResolvedValue(undefined);
+    render(<JobList {...defaultProps} onRecalculateJobs={onRecalculateJobs} />);
+
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /select job go dev/i })
+    );
+    fireEvent.contextMenu(screen.getByText("React Dev"));
+
+    await userEvent.click(
+      screen.getByRole("menuitem", { name: /recalculate match score/i })
+    );
+
+    expect(onRecalculateJobs).toHaveBeenCalledWith(["j2"]);
   });
 
   it("shows only favorites when favorites-only mode is enabled", async () => {

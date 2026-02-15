@@ -12,6 +12,10 @@ Last updated: 2026-02-15
   - Matching runs asynchronously in a separate worker.
   - Queue processing uses atomic claim (`pending` -> `processing`) with stale-processing requeue.
 - Match status UX is implemented in list and detail views, including `Match Score: X%` and per-job `Recalculate score`.
+- Job-list bulk-action context menu is implemented:
+  - Right-click on selected rows now opens bulk actions for `Favorite`, `Unfavorite`, `Delete`, and `Recalculate match score`.
+  - Right-clicking an unselected row scopes selection to that row before opening the menu.
+  - Context-menu delete uses explicit in-menu confirmation click before executing bulk deletion.
 - Matcher observability and UI consistency improvements are complete (structured logs + reusable status badge system).
 - Phase 2 OpenAI provider implementation is complete:
   - `internal/llm/openai` implements `Match` and `Validate`.

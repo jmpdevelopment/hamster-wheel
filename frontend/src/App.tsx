@@ -139,6 +139,16 @@ function App() {
     [jobs, selectedJobId]
   );
 
+  const handleRecalculateJobs = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) {
+        return;
+      }
+      await jobs.recalculateMatchScores(ids);
+    },
+    [jobs]
+  );
+
   const selectedJob = selectedJobId
     ? jobs.jobs.find((j) => j.ID === selectedJobId) ?? null
     : null;
@@ -237,6 +247,7 @@ function App() {
               await jobs.setJobFavorite(jobID, !job.IsFavorite);
             }}
             onDeleteJobs={handleDeleteJobs}
+            onRecalculateJobs={handleRecalculateJobs}
           />
         </div>
 

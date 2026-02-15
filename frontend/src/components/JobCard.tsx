@@ -15,6 +15,7 @@ interface JobCardProps {
   isChecked: boolean;
   isFavorite: boolean;
   onClick: (shiftKey: boolean) => void;
+  onContextMenu: (event: React.MouseEvent<HTMLElement>) => void;
   onToggleChecked: (checked: boolean, shiftKey: boolean) => void;
   onToggleFavorite: () => void;
   style?: React.CSSProperties;
@@ -26,6 +27,7 @@ export const JobCard = memo(function JobCard({
   isChecked,
   isFavorite,
   onClick,
+  onContextMenu,
   onToggleChecked,
   onToggleFavorite,
   style,
@@ -51,6 +53,7 @@ export const JobCard = memo(function JobCard({
           ? "bg-hw-accent/10 border-l-2 border-l-hw-accent"
           : "hover:bg-hw-surface-hover"
       }`}
+      onContextMenu={onContextMenu}
     >
       <div className="flex items-start gap-2 px-3 py-2">
         <input

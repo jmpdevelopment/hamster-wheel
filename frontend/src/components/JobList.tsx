@@ -76,6 +76,7 @@ interface JobListProps {
   onSetFavoriteJobs: (jobIds: string[], favorite: boolean) => Promise<void>;
   onToggleFavoriteJob: (jobId: string) => Promise<void>;
   onDeleteJobs: (jobIds: string[]) => Promise<void>;
+  onRecalculateJobs: (jobIds: string[]) => Promise<void>;
 }
 
 export function JobList({
@@ -91,6 +92,7 @@ export function JobList({
   onSetFavoriteJobs,
   onToggleFavoriteJob,
   onDeleteJobs,
+  onRecalculateJobs,
 }: JobListProps) {
   const {
     searchTerm,
@@ -112,6 +114,12 @@ export function JobList({
   const selectAllRef = useRef<HTMLInputElement>(null);
   const lastToggledJobIDRef = useRef<string | null>(null);
   const shiftPressedRef = useRef(false);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [contextMenuDeleteArmed, setContextMenuDeleteArmed] = useState(false);
 
   const visibleJobs = useMemo(
     () =>
@@ -146,6 +154,23 @@ export function JobList({
     visibleJobs.length > 0 && selectedVisibleCount === visibleJobs.length;
   const hasVisibleSelection =
     selectedVisibleCount > 0 && selectedVisibleCount < visibleJobs.length;
+  const contextMenuLeft = useMemo(() => {
+    if (!contextMenuPosition) {
+      return 0;
+    }
+    return Math.max(8, Math.min(contextMenuPosition.x, window.innerWidth - 232));
+  }, [contextMenuPosition]);
+  const contextMenuTop = useMemo(() => {
+    if (!contextMenuPosition) {
+      return 0;
+    }
+    return Math.max(8, Math.min(contextMenuPosition.y, window.innerHeight - 180));
+  }, [contextMenuPosition]);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenuPosition(null);
+    setContextMenuDeleteArmed(false);
+  }, []);
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -247,6 +272,48 @@ export function JobList({
     };
   }, []);
 
+  useEffect(() => {
+    if (selectedCount === 0) {
+      closeContextMenu();
+    }
+  }, [closeContextMenu, selectedCount]);
+
+  useEffect(() => {
+    if (!contextMenuPosition) {
+      return;
+    }
+
+    const handleMouseDown = (event: MouseEvent) => {
+      if (
+        contextMenuRef.current &&
+        event.target instanceof Node &&
+        !contextMenuRef.current.contains(event.target)
+      ) {
+        closeContextMenu();
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeContextMenu();
+      }
+    };
+    const handleWindowEvent = () => {
+      closeContextMenu();
+    };
+
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleEscape);
+    window.addEventListener("scroll", handleWindowEvent, true);
+    window.addEventListener("resize", handleWindowEvent);
+
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("scroll", handleWindowEvent, true);
+      window.removeEventListener("resize", handleWindowEvent);
+    };
+  }, [closeContextMenu, contextMenuPosition]);
+
   // Notify parent when visible jobs change.
   useEffect(() => {
     onFilteredJobsChange?.(visibleJobs.map((job) => job.ID));
@@ -307,6 +374,7 @@ export function JobList({
       if (currentIndex === undefined) {
         return;
       }
+      closeContextMenu();
       const rangeRequested = shiftKey || shiftPressedRef.current;
       const anchorJobIDAtClick = lastToggledJobIDRef.current ?? selectedJobId;
 
@@ -326,11 +394,12 @@ export function JobList({
 
       lastToggledJobIDRef.current = jobID;
     },
-    [applySelectionRange, selectedJobId, visibleJobIndexByID]
+    [applySelectionRange, closeContextMenu, selectedJobId, visibleJobIndexByID]
   );
 
   const handleRowClick = useCallback(
     (jobID: string, shiftKey: boolean) => {
+      closeContextMenu();
       const currentIndex = visibleJobIndexByID.get(jobID);
       if (currentIndex === undefined) {
         onSelectJob(jobID);
@@ -353,11 +422,38 @@ export function JobList({
       lastToggledJobIDRef.current = jobID;
       onSelectJob(jobID);
     },
-    [applySelectionRange, onSelectJob, selectedJobId, visibleJobIndexByID]
+    [
+      applySelectionRange,
+      closeContextMenu,
+      onSelectJob,
+      selectedJobId,
+      visibleJobIndexByID,
+    ]
+  );
+
+  const handleRowContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLElement>, jobID: string) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const isAlreadySelected = selectedJobIds.has(jobID);
+      if (!isAlreadySelected) {
+        setSelectedJobIds(new Set([jobID]));
+        lastToggledJobIDRef.current = jobID;
+      }
+
+      setContextMenuDeleteArmed(false);
+      setContextMenuPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
+    },
+    [selectedJobIds]
   );
 
   const handleSelectAllVisible = useCallback(
     (checked: boolean) => {
+      closeContextMenu();
       if (!checked) {
         setSelectedJobIds(new Set());
         lastToggledJobIDRef.current = null;
@@ -366,29 +462,39 @@ export function JobList({
       setSelectedJobIds(new Set(visibleJobs.map((job) => job.ID)));
       lastToggledJobIDRef.current = null;
     },
-    [visibleJobs]
+    [closeContextMenu, visibleJobs]
   );
 
   const handleDeleteSelected = useCallback(async () => {
     if (selectedIDs.length === 0) {
       return;
     }
+    closeContextMenu();
     await onDeleteJobs(selectedIDs);
     setSelectedJobIds(new Set());
     lastToggledJobIDRef.current = null;
-  }, [onDeleteJobs, selectedIDs]);
+  }, [closeContextMenu, onDeleteJobs, selectedIDs]);
 
   const handleFavoriteSelected = useCallback(
     (favorite: boolean) => {
       if (selectedIDs.length === 0) {
         return;
       }
+      closeContextMenu();
       void Promise.resolve(onSetFavoriteJobs(selectedIDs, favorite)).catch(() => {
         // Parent tracks mutation errors for display.
       });
     },
-    [onSetFavoriteJobs, selectedIDs]
+    [closeContextMenu, onSetFavoriteJobs, selectedIDs]
   );
+
+  const handleRecalculateSelected = useCallback(async () => {
+    if (selectedIDs.length === 0) {
+      return;
+    }
+    closeContextMenu();
+    await onRecalculateJobs(selectedIDs);
+  }, [closeContextMenu, onRecalculateJobs, selectedIDs]);
 
   const Row = useCallback(
     ({ index, style }: ListChildComponentProps) => {
@@ -401,6 +507,7 @@ export function JobList({
           isChecked={selectedJobIds.has(job.ID)}
           isFavorite={job.IsFavorite}
           onClick={(shiftKey) => handleRowClick(job.ID, shiftKey)}
+          onContextMenu={(event) => handleRowContextMenu(event, job.ID)}
           onToggleChecked={(checked, shiftKey) =>
             handleToggleJobSelection(job.ID, checked, shiftKey)
           }
@@ -418,6 +525,7 @@ export function JobList({
       selectedJobId,
       selectedJobIds,
       handleRowClick,
+      handleRowContextMenu,
       handleToggleJobSelection,
       onToggleFavoriteJob,
     ]
@@ -552,10 +660,10 @@ export function JobList({
               {showFavoritesOnly ? "Show all" : "Favorites only"}
             </Button>
             <p className="text-xs text-hw-text-muted">
-            {visibleJobs.length === jobs.length && !showFavoritesOnly
-              ? `${jobs.length} jobs`
-              : `${visibleJobs.length} of ${jobs.length} jobs`}
-          </p>
+              {visibleJobs.length === jobs.length && !showFavoritesOnly
+                ? `${jobs.length} jobs`
+                : `${visibleJobs.length} of ${jobs.length} jobs`}
+            </p>
           </div>
         )}
       </div>
@@ -603,6 +711,69 @@ export function JobList({
           />
         )}
       </div>
+
+      {contextMenuPosition && selectedCount > 0 && (
+        <div
+          ref={contextMenuRef}
+          role="menu"
+          aria-label={`Bulk job actions (${selectedCount} selected)`}
+          className="fixed z-40 min-w-[224px] overflow-hidden rounded-md border border-hw-border bg-hw-surface shadow-xl"
+          style={{
+            left: contextMenuLeft,
+            top: contextMenuTop,
+          }}
+        >
+          <div className="border-b border-hw-border px-3 py-2 text-xs text-hw-text-muted">
+            {selectedCount} selected
+          </div>
+          <button
+            role="menuitem"
+            className="block w-full px-3 py-2 text-left text-sm text-hw-text transition-colors hover:bg-hw-surface-hover focus-visible:outline-none focus-visible:bg-hw-surface-hover"
+            onClick={() => handleFavoriteSelected(true)}
+          >
+            Favorite selected
+          </button>
+          <button
+            role="menuitem"
+            className="block w-full px-3 py-2 text-left text-sm text-hw-text transition-colors hover:bg-hw-surface-hover focus-visible:outline-none focus-visible:bg-hw-surface-hover"
+            onClick={() => handleFavoriteSelected(false)}
+          >
+            Unfavorite selected
+          </button>
+          <button
+            role="menuitem"
+            className="block w-full px-3 py-2 text-left text-sm text-hw-text transition-colors hover:bg-hw-surface-hover focus-visible:outline-none focus-visible:bg-hw-surface-hover"
+            onClick={() => {
+              void handleRecalculateSelected().catch(() => {
+                // Parent tracks mutation errors for display.
+              });
+            }}
+          >
+            Recalculate match score
+          </button>
+          <button
+            role="menuitem"
+            className="block w-full border-t border-hw-border px-3 py-2 text-left text-sm text-red-400 transition-colors hover:bg-red-500/10 focus-visible:outline-none focus-visible:bg-red-500/10"
+            onClick={() => {
+              if (!contextMenuDeleteArmed) {
+                setContextMenuDeleteArmed(true);
+                return;
+              }
+              void handleDeleteSelected().catch(() => {
+                // Parent tracks mutation errors for display.
+              });
+            }}
+          >
+            {contextMenuDeleteArmed
+              ? selectedCount <= 1
+                ? "Confirm delete job"
+                : `Confirm delete ${selectedCount} jobs`
+              : selectedCount <= 1
+                ? "Delete job"
+                : `Delete ${selectedCount} jobs`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

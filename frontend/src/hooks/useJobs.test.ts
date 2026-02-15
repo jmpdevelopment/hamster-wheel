@@ -8,6 +8,7 @@ const mockGetJobCount = vi.fn();
 const mockDeleteJob = vi.fn();
 const mockSetJobFavorite = vi.fn();
 const mockSetJobsFavorite = vi.fn();
+const mockRecalculateMatchScore = vi.fn();
 
 vi.mock("../../bindings/hamster-wheel/jobservice", () => ({
   GetJobs: (...args: unknown[]) => mockGetJobs(...args),
@@ -15,6 +16,8 @@ vi.mock("../../bindings/hamster-wheel/jobservice", () => ({
   DeleteJob: (...args: unknown[]) => mockDeleteJob(...args),
   SetJobFavorite: (...args: unknown[]) => mockSetJobFavorite(...args),
   SetJobsFavorite: (...args: unknown[]) => mockSetJobsFavorite(...args),
+  RecalculateMatchScore: (...args: unknown[]) =>
+    mockRecalculateMatchScore(...args),
 }));
 
 const fakeJob = (id: string, title: string) => ({
@@ -39,6 +42,7 @@ beforeEach(() => {
   mockDeleteJob.mockResolvedValue(undefined);
   mockSetJobFavorite.mockResolvedValue(undefined);
   mockSetJobsFavorite.mockResolvedValue(undefined);
+  mockRecalculateMatchScore.mockResolvedValue(undefined);
 });
 
 describe("useJobs", () => {
@@ -185,6 +189,42 @@ describe("useJobs", () => {
 
     expect(mockSetJobsFavorite).toHaveBeenCalledWith(["1", "2"], false);
     expect(mockGetJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it("recalculateMatchScores queues recalculation for unique IDs and refreshes", async () => {
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await result.current.recalculateMatchScores(["1", "2", "1"]);
+    });
+
+    expect(mockRecalculateMatchScore).toHaveBeenCalledTimes(2);
+    expect(mockRecalculateMatchScore).toHaveBeenNthCalledWith(1, "1");
+    expect(mockRecalculateMatchScore).toHaveBeenNthCalledWith(2, "2");
+    expect(mockGetJobs).toHaveBeenCalledTimes(2);
+  });
+
+  it("recalculateMatchScores reports partial failures and still refreshes", async () => {
+    mockRecalculateMatchScore
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("missing"));
+
+    const { result } = renderHook(() => useJobs());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await act(async () => {
+      await expect(
+        result.current.recalculateMatchScores(["1", "2"])
+      ).rejects.toThrow("Failed to queue recalculation for 1 of 2 jobs: missing");
+    });
+
+    expect(mockGetJobs).toHaveBeenCalledTimes(2);
+    expect(result.current.error).toBe(
+      "Failed to queue recalculation for 1 of 2 jobs: missing"
+    );
   });
 
   it("deleteJob sets error on failure", async () => {

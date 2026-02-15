@@ -30,6 +30,7 @@ const defaultProps = {
   isChecked: false,
   isFavorite: false,
   onClick: () => {},
+  onContextMenu: () => {},
   onToggleChecked: () => {},
   onToggleFavorite: () => {},
 };

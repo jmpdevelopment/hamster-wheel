@@ -5,6 +5,7 @@ import {
   DeleteJob,
   SetJobFavorite,
   SetJobsFavorite,
+  RecalculateMatchScore,
 } from "../../bindings/hamster-wheel/jobservice";
 import { Job } from "../../bindings/hamster-wheel/internal/db/models";
 
@@ -51,6 +52,7 @@ export interface UseJobsReturn {
   deleteJobs: (ids: string[]) => Promise<void>;
   setJobFavorite: (id: string, favorite: boolean) => Promise<void>;
   setJobsFavorite: (ids: string[], favorite: boolean) => Promise<void>;
+  recalculateMatchScores: (ids: string[]) => Promise<void>;
 }
 
 export function useJobs(limit: number = 0): UseJobsReturn {
@@ -177,6 +179,44 @@ export function useJobs(limit: number = 0): UseJobsReturn {
     [refresh]
   );
 
+  const handleRecalculateMatchScores = useCallback(
+    async (ids: string[]) => {
+      const uniqueIDs = Array.from(new Set(ids)).filter((id) => id.length > 0);
+      if (uniqueIDs.length === 0) {
+        return;
+      }
+
+      try {
+        setError(null);
+        const failures: unknown[] = [];
+        for (const id of uniqueIDs) {
+          try {
+            await callWithBusyRetry(() => RecalculateMatchScore(id));
+          } catch (err: unknown) {
+            failures.push(err);
+          }
+        }
+        await refresh();
+        if (failures.length > 0) {
+          const firstReason = failures[0];
+          const reason =
+            firstReason instanceof Error
+              ? firstReason.message
+              : String(firstReason);
+          const message = `Failed to queue recalculation for ${failures.length} of ${uniqueIDs.length} jobs: ${reason}`;
+          setError(message);
+          throw new Error(message);
+        }
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("Failed to recalculate jobs:", message);
+        setError(message);
+        throw err;
+      }
+    },
+    [refresh]
+  );
+
   return {
     jobs,
     jobCount,
@@ -188,5 +228,6 @@ export function useJobs(limit: number = 0): UseJobsReturn {
     deleteJobs: handleDeleteJobs,
     setJobFavorite: handleSetJobFavorite,
     setJobsFavorite: handleSetJobsFavorite,
+    recalculateMatchScores: handleRecalculateMatchScores,
   };
 }
