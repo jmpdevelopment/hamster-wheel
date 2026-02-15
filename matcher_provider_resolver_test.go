@@ -8,8 +8,6 @@ import (
 
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/keychain"
-	"hamster-wheel/internal/llm"
-	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/llm/openai"
 	"hamster-wheel/internal/localruntime"
 )
@@ -22,15 +20,6 @@ func testResolverDB(t *testing.T) *db.DB {
 	}
 	t.Cleanup(func() { _ = database.Close() })
 	return database
-}
-
-func testResolverRegistry(t *testing.T) *llm.Registry {
-	t.Helper()
-	registry := llm.NewRegistry()
-	if err := registry.Register(heuristic.New()); err != nil {
-		t.Fatalf("registering heuristic provider: %v", err)
-	}
-	return registry
 }
 
 type stubResolverRuntimeManager struct {
@@ -72,12 +61,11 @@ func (*stubResolverRuntimeManager) GetPullProgress(context.Context) (localruntim
 	return localruntime.PullProgress{}, nil
 }
 
-func TestMatcherProviderResolverDefaultsToHeuristicWhenUnset(t *testing.T) {
+func TestMatcherProviderResolverDefaultsToOpenAIWhenUnset(t *testing.T) {
 	database := testResolverDB(t)
 	resolver := newMatcherProviderResolver(
 		database,
 		keychain.NewMemoryStore(),
-		testResolverRegistry(t),
 		"",
 		"",
 		"",
@@ -88,19 +76,16 @@ func TestMatcherProviderResolverDefaultsToHeuristicWhenUnset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolving provider: %v", err)
 	}
-	if name != heuristic.ProviderName {
-		t.Fatalf("expected provider name %q, got %q", heuristic.ProviderName, name)
+	if name != openai.ProviderName {
+		t.Fatalf("expected provider name %q, got %q", openai.ProviderName, name)
 	}
-	if provider == nil || provider.Name() != heuristic.ProviderName {
-		t.Fatalf("expected heuristic provider instance, got %+v", provider)
+	if provider == nil || provider.Name() != openai.ProviderName {
+		t.Fatalf("expected openai provider instance, got %+v", provider)
 	}
 }
 
 func TestMatcherProviderResolverBuildsOpenAIProviderFromSettingsAndKeychain(t *testing.T) {
 	database := testResolverDB(t)
-	if err := database.SetSetting(context.Background(), settingLLMProvider, openai.ProviderName); err != nil {
-		t.Fatalf("setting llm provider: %v", err)
-	}
 	if err := database.SetSetting(context.Background(), settingLLMModel, "gpt-4o-mini"); err != nil {
 		t.Fatalf("setting llm model: %v", err)
 	}
@@ -113,7 +98,6 @@ func TestMatcherProviderResolverBuildsOpenAIProviderFromSettingsAndKeychain(t *t
 	resolver := newMatcherProviderResolver(
 		database,
 		kc,
-		testResolverRegistry(t),
 		"",
 		"",
 		"",
@@ -144,7 +128,6 @@ func TestMatcherProviderResolverBuildsLocalProviderFromModeAndRuntimeSettings(t 
 	resolver := newMatcherProviderResolver(
 		database,
 		keychain.NewMemoryStore(),
-		testResolverRegistry(t),
 		"",
 		"",
 		"",
@@ -176,7 +159,6 @@ func TestMatcherProviderResolverStartsRuntimeWhenLocalModeIsNotReady(t *testing.
 	resolver := newMatcherProviderResolver(
 		database,
 		keychain.NewMemoryStore(),
-		testResolverRegistry(t),
 		"",
 		"",
 		"",
@@ -204,7 +186,6 @@ func TestMatcherProviderResolverReturnsErrorWhenLocalRuntimeMissing(t *testing.T
 	resolver := newMatcherProviderResolver(
 		database,
 		keychain.NewMemoryStore(),
-		testResolverRegistry(t),
 		"",
 		"",
 		"",

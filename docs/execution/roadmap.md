@@ -24,7 +24,7 @@
 - Match queue uses atomic claim semantics with stale-processing recovery.
 - Runtime provider selection/hot-switch wiring is implemented through matcher provider resolver (settings are read per match run; no restart required).
 - List/detail UI surfaces match status and score; users can manually requeue recalculation.
-- Default scorer is local heuristic until external providers are integrated.
+- Default scorer is OpenAI in `cloud` mode; `local` mode routes through an OpenAI-compatible local runtime endpoint.
 - OpenAI provider implementation exists in `internal/llm/openai` with deterministic response parsing and classified timeout/auth/malformed failure handling.
 - Settings APIs/UI now persist LLM provider/model/base-URL and OpenAI key lifecycle in `SettingsService` + Settings panel tabs.
 - Local runtime backend foundation exists in `internal/localruntime` (detect/status/start/stop for Ollama-first orchestration with deterministic runtime state model).

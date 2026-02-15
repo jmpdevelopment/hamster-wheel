@@ -288,14 +288,14 @@ describe("JobDetail", () => {
         job={fakeJob({
           MatchStatus: "matched",
           MatchScore: 0.65,
-          MatchSummary: "Provider: heuristic_v1\nStrong alignment with backend API keywords.",
+          MatchSummary: "Provider: openai\nStrong alignment with backend API keywords.",
         })}
         onDelete={noop}
         onClose={() => {}}
         onRefresh={noop}
       />
     );
-    expect(screen.getByText("LLM provider: Heuristic (Local)")).toBeInTheDocument();
+    expect(screen.getByText("LLM provider: OpenAI")).toBeInTheDocument();
     expect(
       screen.getByText("Strong alignment with backend API keywords.")
     ).toBeInTheDocument();

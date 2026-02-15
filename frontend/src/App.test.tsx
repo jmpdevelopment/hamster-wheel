@@ -96,7 +96,6 @@ vi.mock("../bindings/hamster-wheel/settingsservice", () => ({
   ClearOpenAIAPIKey: vi.fn().mockResolvedValue(undefined),
   GetLLMMode: vi.fn().mockResolvedValue("cloud"),
   SetLLMMode: vi.fn().mockResolvedValue(undefined),
-  SetLLMProvider: vi.fn().mockResolvedValue(undefined),
   GetLLMModel: vi.fn().mockResolvedValue("gpt-4o-mini"),
   SetLLMModel: vi.fn().mockResolvedValue(undefined),
   GetAutoMatchEnabled: vi.fn().mockResolvedValue(true),

@@ -43,9 +43,7 @@ export function JobDetail({ job, onDelete, onClose, onRefresh }: JobDetailProps)
   const matchProviderLabel =
     matchProvider === "openai"
       ? "OpenAI"
-      : matchProvider === "heuristic_v1"
-        ? "Heuristic (Local)"
-        : matchProvider;
+      : matchProvider;
   const sourceNotice = sourceDescriptionNotice(job.Source);
   const safeJobURL = toSafeExternalURL(job.URL);
 

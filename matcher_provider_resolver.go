@@ -12,7 +12,6 @@ import (
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/keychain"
 	"hamster-wheel/internal/llm"
-	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/llm/openai"
 	"hamster-wheel/internal/localruntime"
 	"hamster-wheel/internal/matcher"
@@ -25,7 +24,6 @@ const localProviderMatchTimeout = 90 * time.Second
 func newMatcherProviderResolver(
 	database *db.DB,
 	keychainStore keychain.Store,
-	providers *llm.Registry,
 	envOpenAIKey string,
 	envOpenAIModel string,
 	envOpenAIBaseURL string,
@@ -98,46 +96,28 @@ func newMatcherProviderResolver(
 			}), nil
 		}
 
-		providerName, err := database.GetSetting(ctx, settingLLMProvider)
+		model, err := database.GetSetting(ctx, settingLLMModel)
 		if err != nil {
-			return "", nil, fmt.Errorf("loading llm provider setting: %w", err)
+			return openai.ProviderName, nil, fmt.Errorf("loading llm model setting: %w", err)
 		}
-		providerName = strings.TrimSpace(providerName)
-		if providerName == "" {
-			providerName = heuristic.ProviderName
+		model = strings.TrimSpace(model)
+		if model == "" {
+			model = envOpenAIModel
 		}
 
-		switch providerName {
-		case openai.ProviderName:
-			model, err := database.GetSetting(ctx, settingLLMModel)
-			if err != nil {
-				return providerName, nil, fmt.Errorf("loading llm model setting: %w", err)
-			}
-			model = strings.TrimSpace(model)
-			if model == "" {
-				model = envOpenAIModel
-			}
-
-			openAIKey, err := keychainStore.Get(settingOpenAIAPIKey)
-			if err != nil {
-				slog.Error("failed to load OpenAI API key from keychain", "error", err)
-			}
-			openAIKey = strings.TrimSpace(openAIKey)
-			if openAIKey == "" {
-				openAIKey = envOpenAIKey
-			}
-
-			return providerName, openai.New(openai.Config{
-				APIKey:  openAIKey,
-				Model:   model,
-				BaseURL: envOpenAIBaseURL,
-			}), nil
-		default:
-			provider, ok := providers.Get(providerName)
-			if !ok {
-				return providerName, nil, fmt.Errorf("provider %q is not registered", providerName)
-			}
-			return providerName, provider, nil
+		openAIKey, err := keychainStore.Get(settingOpenAIAPIKey)
+		if err != nil {
+			slog.Error("failed to load OpenAI API key from keychain", "error", err)
 		}
+		openAIKey = strings.TrimSpace(openAIKey)
+		if openAIKey == "" {
+			openAIKey = envOpenAIKey
+		}
+
+		return openai.ProviderName, openai.New(openai.Config{
+			APIKey:  openAIKey,
+			Model:   model,
+			BaseURL: envOpenAIBaseURL,
+		}), nil
 	}
 }

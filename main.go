@@ -22,7 +22,6 @@ import (
 	"hamster-wheel/internal/diagnostics"
 	"hamster-wheel/internal/keychain"
 	"hamster-wheel/internal/llm"
-	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/llm/openai"
 	"hamster-wheel/internal/localruntime"
 	"hamster-wheel/internal/matcher"
@@ -77,9 +76,6 @@ func main() {
 	ollamaBaseURL := strings.TrimSpace(os.Getenv("OLLAMA_BASE_URL"))
 
 	providers := llm.NewRegistry()
-	if err := providers.Register(heuristic.New()); err != nil {
-		log.Fatalf("failed to register heuristic match provider: %v", err)
-	}
 	if err := providers.Register(openai.New(openai.Config{
 		APIKey:  openAIEnvKey,
 		Model:   openAIEnvModel,
@@ -125,11 +121,10 @@ func main() {
 	}
 
 	matchWorker := matcher.New(database, providers, matcher.WorkerConfig{
-		ProviderName: heuristic.ProviderName, // fallback when no setting is persisted yet
+		ProviderName: openai.ProviderName,
 		ProviderResolver: newMatcherProviderResolver(
 			database,
 			keychainStore,
-			providers,
 			openAIEnvKey,
 			openAIEnvModel,
 			openAIEnvBaseURL,

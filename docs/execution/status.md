@@ -91,7 +91,7 @@ Last updated: 2026-02-15
 
 - Keep polling and matching decoupled.
 - Keep provider integration behind `internal/llm.Provider` and `internal/llm.Registry`.
-- Keep the default scorer local (`heuristic_v1`) until external providers are fully configured.
+- Keep the default scorer OpenAI (`cloud` mode) with `local` mode routed through the local runtime endpoint.
 - Keep mode/provider/model/base-URL settings applied via matcher provider resolver per run.
 - Keep event-driven updates (`polling:status-changed`, `matching:status-changed`) with bounded/coalesced UI refresh.
 - Keep SQLite runtime safeguards (single shared connection + busy retry on writes).

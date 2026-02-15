@@ -27,7 +27,6 @@ const (
 	settingFirstRunComplete    = "first_run_complete"
 	settingJobListPreferences  = "job_list_preferences"
 	settingLLMMode             = "llm_mode"
-	settingLLMProvider         = "llm_provider"
 	settingLLMModel            = "llm_model"
 	settingLocalRuntimeEngine  = "local_runtime_engine"
 	settingLocalRuntimeModel   = "local_runtime_model"
@@ -38,7 +37,6 @@ const (
 	settingAutoMatchLimit      = "auto_match_limit"
 	settingCVPath              = "cv_path"
 
-	defaultLLMProvider      = "openai"
 	defaultLLMModel         = "gpt-4o-mini"
 	defaultLLMMode          = "cloud"
 	defaultJobListSortMode  = "posted-desc"
@@ -431,36 +429,6 @@ func (s *SettingsService) SetLLMMode(mode string) error {
 		return fmt.Errorf("setting llm mode: %w", err)
 	}
 	slog.Info("llm mode updated", "mode", mode)
-	return nil
-}
-
-// GetLLMProvider returns the stored LLM provider ("openai" or "heuristic_v1").
-// Empty string falls back to default provider.
-func (s *SettingsService) GetLLMProvider() (string, error) {
-	provider, err := s.db.GetSetting(context.Background(), settingLLMProvider)
-	if err != nil {
-		return "", fmt.Errorf("getting llm provider setting: %w", err)
-	}
-	provider = strings.TrimSpace(provider)
-	if provider == "" {
-		return defaultLLMProvider, nil
-	}
-	return provider, nil
-}
-
-// SetLLMProvider saves the LLM provider.
-func (s *SettingsService) SetLLMProvider(provider string) error {
-	provider = strings.TrimSpace(provider)
-	switch provider {
-	case "openai", "heuristic_v1":
-	default:
-		return fmt.Errorf("invalid llm provider %q: must be openai or heuristic_v1", provider)
-	}
-
-	if err := s.db.SetSetting(context.Background(), settingLLMProvider, provider); err != nil {
-		return fmt.Errorf("setting llm provider: %w", err)
-	}
-	slog.Info("llm provider updated", "provider", provider)
 	return nil
 }
 

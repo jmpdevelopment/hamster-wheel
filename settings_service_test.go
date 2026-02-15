@@ -942,65 +942,6 @@ func TestLLMModeAndLocalRuntimeSettingsDatabaseErrors(t *testing.T) {
 	}
 }
 
-func TestLLMProviderDefaultsAndLifecycle(t *testing.T) {
-	database := openSettingsTestDB(t)
-	kc := keychain.NewMemoryStore()
-	reedAdapter := reed.New("")
-	svc := NewSettingsService(database, kc, reedAdapter)
-
-	provider, err := svc.GetLLMProvider()
-	if err != nil {
-		t.Fatalf("getting default llm provider: %v", err)
-	}
-	if provider != defaultLLMProvider {
-		t.Fatalf("expected default provider %q, got %q", defaultLLMProvider, provider)
-	}
-
-	if err := svc.SetLLMProvider("openai"); err != nil {
-		t.Fatalf("setting llm provider openai: %v", err)
-	}
-	provider, err = svc.GetLLMProvider()
-	if err != nil {
-		t.Fatalf("getting llm provider after set openai: %v", err)
-	}
-	if provider != "openai" {
-		t.Fatalf("expected provider openai, got %q", provider)
-	}
-
-	if err := svc.SetLLMProvider("heuristic_v1"); err != nil {
-		t.Fatalf("setting llm provider heuristic_v1: %v", err)
-	}
-	provider, err = svc.GetLLMProvider()
-	if err != nil {
-		t.Fatalf("getting llm provider after set heuristic_v1: %v", err)
-	}
-	if provider != "heuristic_v1" {
-		t.Fatalf("expected provider heuristic_v1, got %q", provider)
-	}
-
-	if err := svc.SetLLMProvider("anthropic"); err == nil {
-		t.Fatal("expected validation error for unsupported provider")
-	}
-}
-
-func TestLLMProviderDatabaseErrors(t *testing.T) {
-	database := openSettingsTestDB(t)
-	kc := keychain.NewMemoryStore()
-	reedAdapter := reed.New("")
-	svc := NewSettingsService(database, kc, reedAdapter)
-
-	if err := database.Close(); err != nil {
-		t.Fatalf("closing DB: %v", err)
-	}
-
-	if _, err := svc.GetLLMProvider(); err == nil {
-		t.Fatal("expected GetLLMProvider to fail on closed DB")
-	}
-	if err := svc.SetLLMProvider("openai"); err == nil {
-		t.Fatal("expected SetLLMProvider to fail on closed DB")
-	}
-}
-
 func TestLLMModelDefaultsAndLifecycle(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()

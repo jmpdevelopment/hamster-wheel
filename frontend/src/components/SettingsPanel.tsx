@@ -25,7 +25,6 @@ import {
   SetLLMMode,
   SetLLMModel,
   SetPollIntervalMinutes,
-  SetLLMProvider,
   SetLocalRuntimeEngine,
   SetLocalRuntimeModel,
   SetOpenAIAPIKey,
@@ -657,7 +656,6 @@ export function SettingsPanel({
     setLLMConfigSaved(false);
     try {
       await SetLLMMode("cloud");
-      await SetLLMProvider("openai");
       await SetLLMModel(trimmedModel);
       setLLMModeState("cloud");
       setLLMModelState(trimmedModel);
@@ -1453,8 +1451,7 @@ export function SettingsPanel({
               Cloud and Local are guided modes.
             </p>
             <p className="text-xs text-hw-text-muted mb-2">
-              Configuring an LLM provider is optional, but highly recommended for
-              higher-quality match scoring.
+              Configure Cloud or Local mode based on your preferred runtime.
             </p>
             <div
               role="radiogroup"

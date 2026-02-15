@@ -75,10 +75,8 @@ Representative keys:
 
 - `poll_interval_minutes` (default 30)
 - `match_threshold` (default 0.7)
-- `llm_mode` (`cloud`, `local`, `advanced`)
-- `llm_provider` (default `openai`)
+- `llm_mode` (`cloud`, `local`)
 - `llm_model` (selected model for active mode)
-- `llm_base_url` (advanced mode/manual endpoint override only)
 - `local_runtime_engine`, `local_runtime_model` (guided local mode selections)
 - `cv_path`, `cover_letter_draft`, `custom_instructions`
 - `first_run_complete`

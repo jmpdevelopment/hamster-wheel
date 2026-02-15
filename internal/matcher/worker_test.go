@@ -17,7 +17,6 @@ import (
 
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/llm"
-	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/llm/openai"
 )
 
@@ -34,11 +33,17 @@ func testDB(t *testing.T) *db.DB {
 func testWorker(t *testing.T, database *db.DB) *Worker {
 	t.Helper()
 	registry := llm.NewRegistry()
-	if err := registry.Register(heuristic.New()); err != nil {
-		t.Fatalf("registering heuristic provider: %v", err)
+	if err := registry.Register(&stubProvider{
+		name: defaultProviderName,
+		result: llm.MatchResult{
+			Score:   0.56,
+			Summary: "Stub provider score.",
+		},
+	}); err != nil {
+		t.Fatalf("registering stub provider: %v", err)
 	}
 	return New(database, registry, WorkerConfig{
-		ProviderName: heuristic.ProviderName,
+		ProviderName: defaultProviderName,
 		PollInterval: 100 * time.Millisecond,
 		BatchSize:    5,
 		StaleAfter:   10 * time.Second,
@@ -233,12 +238,9 @@ func TestRunOnceProcessesPendingRowsWithOpenAIProvider(t *testing.T) {
 func TestRunOnceUsesProviderResolver(t *testing.T) {
 	database := testDB(t)
 	registry := llm.NewRegistry()
-	if err := registry.Register(heuristic.New()); err != nil {
-		t.Fatalf("registering heuristic provider: %v", err)
-	}
 
 	worker := New(database, registry, WorkerConfig{
-		ProviderName: heuristic.ProviderName,
+		ProviderName: defaultProviderName,
 		ProviderResolver: func(context.Context) (string, llm.Provider, error) {
 			return openai.ProviderName, &stubProvider{
 				name: openai.ProviderName,
@@ -417,7 +419,7 @@ func TestRunOnceIncludesCVProfileFromConfiguredPath(t *testing.T) {
 	}
 
 	stub := &stubProvider{
-		name: heuristic.ProviderName,
+		name: openai.ProviderName,
 		result: llm.MatchResult{
 			Score:   0.52,
 			Summary: "Scored with CV context.",
@@ -425,7 +427,7 @@ func TestRunOnceIncludesCVProfileFromConfiguredPath(t *testing.T) {
 	}
 	worker := New(database, llm.NewRegistry(), WorkerConfig{
 		ProviderResolver: func(context.Context) (string, llm.Provider, error) {
-			return heuristic.ProviderName, stub, nil
+			return openai.ProviderName, stub, nil
 		},
 		BatchSize: 1,
 	})
@@ -465,7 +467,7 @@ func TestRunOnceFallsBackWhenCVProfileCannotBeParsed(t *testing.T) {
 	}
 
 	stub := &stubProvider{
-		name: heuristic.ProviderName,
+		name: openai.ProviderName,
 		result: llm.MatchResult{
 			Score:   0.41,
 			Summary: "Scored without CV context.",
@@ -473,7 +475,7 @@ func TestRunOnceFallsBackWhenCVProfileCannotBeParsed(t *testing.T) {
 	}
 	worker := New(database, llm.NewRegistry(), WorkerConfig{
 		ProviderResolver: func(context.Context) (string, llm.Provider, error) {
-			return heuristic.ProviderName, stub, nil
+			return openai.ProviderName, stub, nil
 		},
 		BatchSize: 1,
 	})
@@ -647,7 +649,7 @@ func TestWorkerSetLoggerAndStatusHook(t *testing.T) {
 func TestRunOnceRequeueError(t *testing.T) {
 	requeueErr := errors.New("requeue failed")
 	worker := New(requeueErrStore{err: requeueErr}, llm.NewRegistry(), WorkerConfig{
-		ProviderName: heuristic.ProviderName,
+		ProviderName: defaultProviderName,
 	})
 
 	_, err := worker.RunOnce(context.Background())

@@ -130,15 +130,6 @@ export function GetLLMModel() {
 }
 
 /**
- * GetLLMProvider returns the stored LLM provider ("openai" or "heuristic_v1").
- * Empty string falls back to default provider.
- * @returns {$CancellablePromise<string>}
- */
-export function GetLLMProvider() {
-    return $Call.ByID(683130982);
-}
-
-/**
  * GetLocalRuntimeEngine returns the configured local runtime engine.
  * Empty string falls back to Ollama.
  * @returns {$CancellablePromise<string>}
@@ -339,15 +330,6 @@ export function SetLLMMode(mode) {
  */
 export function SetLLMModel(model) {
     return $Call.ByID(1381253168, model);
-}
-
-/**
- * SetLLMProvider saves the LLM provider.
- * @param {string} provider
- * @returns {$CancellablePromise<void>}
- */
-export function SetLLMProvider(provider) {
-    return $Call.ByID(4197289026, provider);
 }
 
 /**

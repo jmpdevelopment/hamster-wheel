@@ -20,7 +20,7 @@ import (
 const (
 	defaultPollInterval    = 3 * time.Second
 	defaultBatchSize       = 4
-	defaultProviderName    = "heuristic_v1"
+	defaultProviderName    = "openai"
 	defaultMatchTimeout    = 20 * time.Second
 	defaultStaleProcessing = 2 * time.Minute
 	settingCVPath          = "cv_path"

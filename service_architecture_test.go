@@ -19,10 +19,32 @@ import (
 	"hamster-wheel/internal/diagnostics"
 	"hamster-wheel/internal/keychain"
 	"hamster-wheel/internal/llm"
-	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/matcher"
 	"hamster-wheel/internal/scheduler"
 )
+
+const architectureTestProviderName = "openai"
+
+type architectureTestProvider struct{}
+
+func (architectureTestProvider) Name() string {
+	return architectureTestProviderName
+}
+
+func (architectureTestProvider) DisplayName() string {
+	return "Architecture Test Provider"
+}
+
+func (architectureTestProvider) Validate(context.Context) error {
+	return nil
+}
+
+func (architectureTestProvider) Match(context.Context, llm.MatchRequest) (llm.MatchResult, error) {
+	return llm.MatchResult{
+		Score:   0.5,
+		Summary: "test provider",
+	}, nil
+}
 
 // --- Test Helpers ---
 
@@ -58,11 +80,11 @@ func testServices(t *testing.T) (
 
 	sched := scheduler.New(database, adapters, 1*time.Hour)
 	providers := llm.NewRegistry()
-	if err := providers.Register(heuristic.New()); err != nil {
-		t.Fatalf("registering heuristic provider: %v", err)
+	if err := providers.Register(architectureTestProvider{}); err != nil {
+		t.Fatalf("registering test provider: %v", err)
 	}
 	matchWorker := matcher.New(database, providers, matcher.WorkerConfig{
-		ProviderName: heuristic.ProviderName,
+		ProviderName: architectureTestProviderName,
 		PollInterval: time.Second,
 		BatchSize:    2,
 	})

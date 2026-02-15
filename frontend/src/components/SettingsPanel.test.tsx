@@ -26,7 +26,6 @@ const mockApplyPollingPaused = vi.fn();
 const mockApplyPollingIntervalMinutes = vi.fn();
 const mockGetLLMMode = vi.fn();
 const mockSetLLMMode = vi.fn();
-const mockSetLLMProvider = vi.fn();
 const mockGetLLMModel = vi.fn();
 const mockSetLLMModel = vi.fn();
 const mockGetLocalRuntimeStatus = vi.fn();
@@ -75,7 +74,6 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   SetAutoMatchLimit: (...args: unknown[]) => mockSetAutoMatchLimit(...args),
   GetLLMMode: (...args: unknown[]) => mockGetLLMMode(...args),
   SetLLMMode: (...args: unknown[]) => mockSetLLMMode(...args),
-  SetLLMProvider: (...args: unknown[]) => mockSetLLMProvider(...args),
   GetLLMModel: (...args: unknown[]) => mockGetLLMModel(...args),
   SetLLMModel: (...args: unknown[]) => mockSetLLMModel(...args),
   GetLocalRuntimeStatus: (...args: unknown[]) =>
@@ -151,7 +149,6 @@ beforeEach(() => {
   mockApplyPollingIntervalMinutes.mockResolvedValue(undefined);
   mockGetLLMMode.mockResolvedValue("cloud");
   mockSetLLMMode.mockResolvedValue(undefined);
-  mockSetLLMProvider.mockResolvedValue(undefined);
   mockGetLLMModel.mockResolvedValue("gpt-4o-mini");
   mockSetLLMModel.mockResolvedValue(undefined);
   mockGetLocalRuntimeStatus.mockResolvedValue({
@@ -587,7 +584,6 @@ describe("SettingsPanel", () => {
     );
 
     expect(mockSetLLMMode).toHaveBeenCalledWith("cloud");
-    expect(mockSetLLMProvider).toHaveBeenCalledWith("openai");
     expect(mockSetLLMModel).toHaveBeenCalledWith("gpt-4o");
   });
 

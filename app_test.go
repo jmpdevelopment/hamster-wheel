@@ -11,10 +11,32 @@ import (
 	"hamster-wheel/internal/adapter"
 	"hamster-wheel/internal/db"
 	"hamster-wheel/internal/llm"
-	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/matcher"
 	"hamster-wheel/internal/scheduler"
 )
+
+const appTestProviderName = "openai"
+
+type appTestProvider struct{}
+
+func (appTestProvider) Name() string {
+	return appTestProviderName
+}
+
+func (appTestProvider) DisplayName() string {
+	return "App Test Provider"
+}
+
+func (appTestProvider) Validate(context.Context) error {
+	return nil
+}
+
+func (appTestProvider) Match(context.Context, llm.MatchRequest) (llm.MatchResult, error) {
+	return llm.MatchResult{
+		Score:   0.5,
+		Summary: "test provider",
+	}, nil
+}
 
 func openAppServiceTestDB(t *testing.T) *db.DB {
 	t.Helper()
@@ -29,11 +51,11 @@ func TestAppServiceStartupAndShutdown(t *testing.T) {
 	database := openAppServiceTestDB(t)
 	sched := scheduler.New(database, adapter.NewRegistry(), time.Hour)
 	registry := llm.NewRegistry()
-	if err := registry.Register(heuristic.New()); err != nil {
+	if err := registry.Register(appTestProvider{}); err != nil {
 		t.Fatalf("registering provider: %v", err)
 	}
 	matchWorker := matcher.New(database, registry, matcher.WorkerConfig{
-		ProviderName: heuristic.ProviderName,
+		ProviderName: appTestProviderName,
 		PollInterval: 100 * time.Millisecond,
 		BatchSize:    1,
 	})
@@ -81,11 +103,11 @@ func TestAppServiceStartupRunsRetentionCleanup(t *testing.T) {
 
 	sched := scheduler.New(database, adapter.NewRegistry(), time.Hour)
 	registry := llm.NewRegistry()
-	if err := registry.Register(heuristic.New()); err != nil {
+	if err := registry.Register(appTestProvider{}); err != nil {
 		t.Fatalf("registering provider: %v", err)
 	}
 	matchWorker := matcher.New(database, registry, matcher.WorkerConfig{
-		ProviderName: heuristic.ProviderName,
+		ProviderName: appTestProviderName,
 		PollInterval: 100 * time.Millisecond,
 		BatchSize:    1,
 	})
