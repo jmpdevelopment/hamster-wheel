@@ -263,12 +263,12 @@ func TestSettingsServiceLocalRuntimeLifecycle(t *testing.T) {
 		t.Fatalf("expected 1 installed model, got %d", len(models.Installed))
 	}
 
-	pulled, err := svc.PullLocalRuntimeModel("qwen2.5:7b")
+	pulled, err := svc.PullLocalRuntimeModel("llama3.1:8b")
 	if err != nil {
 		t.Fatalf("pulling local runtime model: %v", err)
 	}
-	if pulled.Model != "qwen2.5:7b" {
-		t.Fatalf("expected pulled model qwen2.5:7b, got %q", pulled.Model)
+	if pulled.Model != "llama3.1:8b" {
+		t.Fatalf("expected pulled model llama3.1:8b, got %q", pulled.Model)
 	}
 	if !pulled.Ready {
 		t.Fatal("expected pulled model ready=true")
@@ -544,19 +544,22 @@ func TestLocalRuntimeEngineAndModelLifecycle(t *testing.T) {
 		t.Fatalf("expected default runtime model %q, got %q", defaultRuntimeModel, model)
 	}
 
-	if err := svc.SetLocalRuntimeModel("qwen2.5:7b"); err != nil {
+	if err := svc.SetLocalRuntimeModel("llama3.1:8b"); err != nil {
 		t.Fatalf("setting local runtime model: %v", err)
 	}
 	model, err = svc.GetLocalRuntimeModel()
 	if err != nil {
 		t.Fatalf("getting local runtime model after set: %v", err)
 	}
-	if model != "qwen2.5:7b" {
-		t.Fatalf("expected model qwen2.5:7b, got %q", model)
+	if model != "llama3.1:8b" {
+		t.Fatalf("expected model llama3.1:8b, got %q", model)
 	}
 
 	if err := svc.SetLocalRuntimeModel("   "); err == nil {
 		t.Fatal("expected validation error for empty local runtime model")
+	}
+	if err := svc.SetLocalRuntimeModel("qwen2.5:7b"); err == nil {
+		t.Fatal("expected validation error for unsupported local runtime model")
 	}
 }
 

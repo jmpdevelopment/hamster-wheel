@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -25,6 +26,7 @@ func newMatcherProviderResolver(
 	envOpenAIModel string,
 	envOpenAIBaseURL string,
 	envOllamaBaseURL string,
+	localRuntimeManagers ...localruntime.Manager,
 ) matcher.ProviderResolver {
 	envOpenAIKey = strings.TrimSpace(envOpenAIKey)
 	envOpenAIModel = strings.TrimSpace(envOpenAIModel)
@@ -32,6 +34,10 @@ func newMatcherProviderResolver(
 	envOllamaBaseURL = strings.TrimSpace(envOllamaBaseURL)
 	if envOllamaBaseURL == "" {
 		envOllamaBaseURL = localruntime.DefaultOllamaEndpoint
+	}
+	var localRuntimeManager localruntime.Manager
+	if len(localRuntimeManagers) > 0 {
+		localRuntimeManager = localRuntimeManagers[0]
 	}
 
 	return func(ctx context.Context) (string, llm.Provider, error) {
@@ -50,8 +56,32 @@ func newMatcherProviderResolver(
 				return localProviderOllama, nil, fmt.Errorf("loading local runtime model setting: %w", err)
 			}
 			localModel = strings.TrimSpace(localModel)
-			if localModel == "" {
+			if localModel == "" || localModel != defaultRuntimeModel {
 				localModel = defaultRuntimeModel
+			}
+			if localRuntimeManager != nil {
+				snapshot, statusErr := localRuntimeManager.Status(ctx)
+				if statusErr != nil {
+					return localProviderOllama, nil, fmt.Errorf("checking local runtime status: %w", statusErr)
+				}
+				switch snapshot.Status {
+				case localruntime.StatusReady:
+				case localruntime.StatusStopped, localruntime.StatusStarting, localruntime.StatusError:
+					startedSnapshot, startErr := localRuntimeManager.Start(ctx)
+					if startErr != nil {
+						return localProviderOllama, nil, fmt.Errorf("starting local runtime for local mode: %w", startErr)
+					}
+					if startedSnapshot.Status != localruntime.StatusReady {
+						return localProviderOllama, nil, fmt.Errorf(
+							"local runtime is not ready (%s): open Settings > LLM Providers > Local to finish setup",
+							startedSnapshot.Status,
+						)
+					}
+				case localruntime.StatusNotInstalled:
+					return localProviderOllama, nil, errors.New("local runtime is not installed: install Ollama in Settings > LLM Providers > Local")
+				default:
+					return localProviderOllama, nil, fmt.Errorf("local runtime is not ready (%s)", snapshot.Status)
+				}
 			}
 
 			return localProviderOllama, openai.New(openai.Config{

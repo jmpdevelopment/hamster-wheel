@@ -4,16 +4,28 @@ import {
   ClearOpenAIAPIKey,
   ClearReedAPIKey,
   GetCVPath,
+  GetLLMBaseURL,
+  GetLLMMode,
   GetLLMModel,
   GetLLMProvider,
+  GetLocalRuntimeModels,
+  GetLocalRuntimeModel,
+  GetLocalRuntimeStatus,
   HasOpenAIAPIKey,
   HasReedAPIKey,
+  PullLocalRuntimeModel,
   SetCVPath,
   SetKeyboardShortcuts,
+  SetLLMBaseURL,
+  SetLLMMode,
   SetLLMModel,
   SetLLMProvider,
+  SetLocalRuntimeEngine,
+  SetLocalRuntimeModel,
   SetOpenAIAPIKey,
   SetReedAPIKey,
+  StartLocalRuntime,
+  StopLocalRuntime,
 } from "../../bindings/hamster-wheel/settingsservice";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
@@ -49,18 +61,31 @@ const llmProviderOptions = [
   { value: "heuristic_v1", label: "Heuristic (Local)" },
 ];
 
+const cloudModelOptions = [
+  { value: "gpt-4o-mini", label: "gpt-4o-mini" },
+  { value: "gpt-4o", label: "gpt-4o" },
+  { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
+  { value: "gpt-4.1", label: "gpt-4.1" },
+];
+
 const llmModelOptionsByProvider: Record<
   string,
   { value: string; label: string }[]
 > = {
-  openai: [
-    { value: "gpt-4o-mini", label: "gpt-4o-mini" },
-    { value: "gpt-4o", label: "gpt-4o" },
-    { value: "gpt-4.1-mini", label: "gpt-4.1-mini" },
-    { value: "gpt-4.1", label: "gpt-4.1" },
-  ],
+  openai: cloudModelOptions,
   heuristic_v1: [{ value: "heuristic_v1", label: "heuristic_v1" }],
 };
+
+type LLMMode = "cloud" | "local" | "advanced";
+
+const localModelName = "llama3.1:8b";
+const localModelEstimatedBytes = 4_900_000_000;
+const llamaLicenseURL = "https://www.llama.com/llama3_1/license/";
+const llamaUsePolicyURL = "https://www.llama.com/llama3_1/use-policy/";
+
+function formatGiB(bytes: number): string {
+  return `${(bytes / (1024 ** 3)).toFixed(1)} GiB`;
+}
 
 const selectClasses =
   "w-full rounded bg-hw-bg border border-hw-border text-hw-text text-sm px-2 py-1.5 focus:outline-none focus:border-hw-accent focus-visible:ring-2 focus-visible:ring-hw-accent focus-visible:ring-offset-1 focus-visible:ring-offset-hw-bg transition-colors duration-150";
@@ -88,8 +113,20 @@ export function SettingsPanel({
   const [openAIClearing, setOpenAIClearing] = useState(false);
   const [hasOpenAIKey, setHasOpenAIKey] = useState(false);
 
+  const [llmMode, setLLMModeState] = useState<LLMMode>("cloud");
   const [llmProvider, setLLMProviderState] = useState("openai");
   const [llmModel, setLLMModelState] = useState("gpt-4o-mini");
+  const [llmBaseURL, setLLMBaseURLState] = useState("");
+  const [localRuntimeModel, setLocalRuntimeModelState] = useState(localModelName);
+  const [localRuntimeStatus, setLocalRuntimeStatus] = useState("unknown");
+  const [localRuntimeMessage, setLocalRuntimeMessage] = useState("");
+  const [localRuntimeStartedByApp, setLocalRuntimeStartedByApp] = useState(false);
+  const [localRuntimeReady, setLocalRuntimeReady] = useState(false);
+  const [localModelInstalled, setLocalModelInstalled] = useState(false);
+  const [localRuntimeRefreshing, setLocalRuntimeRefreshing] = useState(false);
+  const [localRuntimeStarting, setLocalRuntimeStarting] = useState(false);
+  const [localRuntimeStopping, setLocalRuntimeStopping] = useState(false);
+  const [localModelPulling, setLocalModelPulling] = useState(false);
   const [llmConfigSaving, setLLMConfigSaving] = useState(false);
   const [llmConfigSaved, setLLMConfigSaved] = useState(false);
   const [cvPath, setCVPathState] = useState("");
@@ -100,6 +137,41 @@ export function SettingsPanel({
   const openAISavedTimeoutRef = useRef<number | null>(null);
   const llmSavedTimeoutRef = useRef<number | null>(null);
   const cvSavedTimeoutRef = useRef<number | null>(null);
+
+  const refreshLocalRuntime = async (reportErrors = true) => {
+    setLocalRuntimeRefreshing(true);
+    try {
+      const snapshot = await GetLocalRuntimeStatus();
+      setLocalRuntimeStatus(String(snapshot.status || "unknown"));
+      setLocalRuntimeMessage(String(snapshot.message || ""));
+      setLocalRuntimeStartedByApp(Boolean(snapshot.startedByApp));
+
+      const ready = String(snapshot.status || "") === "ready";
+      setLocalRuntimeReady(ready);
+      if (!ready) {
+        setLocalModelInstalled(false);
+        return;
+      }
+
+      const catalog = await GetLocalRuntimeModels();
+      const installed = Array.isArray(catalog.installed)
+        ? catalog.installed.some(
+            (model: { name?: string }) => String(model?.name || "") === localModelName
+          )
+        : false;
+      setLocalModelInstalled(installed);
+    } catch (err: unknown) {
+      setLocalRuntimeReady(false);
+      setLocalModelInstalled(false);
+      const message = err instanceof Error ? err.message : String(err);
+      if (reportErrors) {
+        console.error("Failed to refresh local runtime state:", message);
+        onError(message);
+      }
+    } finally {
+      setLocalRuntimeRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +204,19 @@ export function SettingsPanel({
       }
 
       try {
+        const mode = await GetLLMMode();
+        if (!cancelled) {
+          if (mode === "cloud" || mode === "local" || mode === "advanced") {
+            setLLMModeState(mode);
+          } else {
+            setLLMModeState("cloud");
+          }
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load LLM mode:", err);
+      }
+
+      try {
         const provider = await GetLLMProvider();
         if (!cancelled) {
           if (
@@ -159,12 +244,36 @@ export function SettingsPanel({
       }
 
       try {
+        const baseURL = await GetLLMBaseURL();
+        if (!cancelled) {
+          setLLMBaseURLState(baseURL || "");
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load LLM base URL:", err);
+      }
+
+      try {
+        const localModel = await GetLocalRuntimeModel();
+        if (!cancelled) {
+          setLocalRuntimeModelState(
+            localModel === localModelName ? localModel : localModelName
+          );
+        }
+      } catch (err: unknown) {
+        reportError("Failed to load local runtime model:", err);
+      }
+
+      try {
         const storedPath = await GetCVPath();
         if (!cancelled) {
           setCVPathState(storedPath || "");
         }
       } catch (err: unknown) {
         reportError("Failed to load CV path:", err);
+      }
+
+      if (!cancelled) {
+        await refreshLocalRuntime(false);
       }
     };
 
@@ -192,12 +301,10 @@ export function SettingsPanel({
   }, []);
 
   useEffect(() => {
-    const validModels =
-      llmModelOptionsByProvider[llmProvider] ?? llmModelOptionsByProvider.openai;
-    if (!validModels.some((option) => option.value === llmModel)) {
-      setLLMModelState(validModels[0].value);
+    if (llmMode === "local") {
+      void refreshLocalRuntime(false);
     }
-  }, [llmModel, llmProvider]);
+  }, [llmMode]);
 
   const setTimedSavedState = (
     setter: (saved: boolean) => void,
@@ -306,23 +413,154 @@ export function SettingsPanel({
     }
   };
 
-  const handleSaveLLMConfig = async () => {
+  const handleSaveCloudConfig = async () => {
     const trimmedModel = llmModel.trim();
     if (!trimmedModel) {
-      onError("LLM model is required");
+      onError("Cloud model is required");
       return;
     }
 
     setLLMConfigSaving(true);
     setLLMConfigSaved(false);
     try {
-      await SetLLMProvider(llmProvider);
+      await SetLLMMode("cloud");
+      await SetLLMProvider("openai");
       await SetLLMModel(trimmedModel);
+      await SetLLMBaseURL("");
+      setLLMModeState("cloud");
+      setLLMProviderState("openai");
       setLLMModelState(trimmedModel);
+      setLLMBaseURLState("");
       setTimedSavedState(setLLMConfigSaved, llmSavedTimeoutRef);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      console.error("Failed to save LLM provider settings:", message);
+      console.error("Failed to save cloud LLM settings:", message);
+      onError(message);
+    } finally {
+      setLLMConfigSaving(false);
+    }
+  };
+
+  const handleSaveLocalConfig = async () => {
+    const trimmedModel = localRuntimeModel.trim();
+    if (trimmedModel !== localModelName) {
+      onError(`Local mode currently supports ${localModelName} only.`);
+      return;
+    }
+    if (!localRuntimeReady) {
+      onError("Start local runtime before enabling Local mode.");
+      return;
+    }
+    if (!localModelInstalled) {
+      onError(`Download ${localModelName} before enabling Local mode.`);
+      return;
+    }
+
+    setLLMConfigSaving(true);
+    setLLMConfigSaved(false);
+    try {
+      await SetLLMMode("local");
+      await SetLocalRuntimeEngine("ollama");
+      await SetLocalRuntimeModel(localModelName);
+      setLLMModeState("local");
+      setLocalRuntimeModelState(localModelName);
+      setTimedSavedState(setLLMConfigSaved, llmSavedTimeoutRef);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save local runtime settings:", message);
+      onError(message);
+    } finally {
+      setLLMConfigSaving(false);
+    }
+  };
+
+  const handleStartLocalRuntime = async () => {
+    setLocalRuntimeStarting(true);
+    try {
+      await StartLocalRuntime();
+      await refreshLocalRuntime(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to start local runtime:", message);
+      onError(message);
+    } finally {
+      setLocalRuntimeStarting(false);
+    }
+  };
+
+  const handleStopLocalRuntime = async () => {
+    setLocalRuntimeStopping(true);
+    try {
+      await StopLocalRuntime();
+      await refreshLocalRuntime(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to stop local runtime:", message);
+      onError(message);
+    } finally {
+      setLocalRuntimeStopping(false);
+    }
+  };
+
+  const handlePullLocalModel = async () => {
+    setLocalModelPulling(true);
+    try {
+      await PullLocalRuntimeModel(localModelName);
+      await refreshLocalRuntime(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to pull local runtime model:", message);
+      onError(message);
+    } finally {
+      setLocalModelPulling(false);
+    }
+  };
+
+  const handleRunLocalSetup = async () => {
+    if (localRuntimeStatus === "not_installed") {
+      onError("Install Ollama first, then run local setup.");
+      return;
+    }
+
+    setLocalRuntimeStarting(true);
+    setLocalModelPulling(true);
+    try {
+      await StartLocalRuntime();
+      await PullLocalRuntimeModel(localModelName);
+      await refreshLocalRuntime(false);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed local setup flow:", message);
+      onError(message);
+    } finally {
+      setLocalRuntimeStarting(false);
+      setLocalModelPulling(false);
+    }
+  };
+
+  const handleSaveAdvancedConfig = async () => {
+    const trimmedModel = llmModel.trim();
+    if (!trimmedModel) {
+      onError("LLM model is required");
+      return;
+    }
+
+    const trimmedBaseURL = llmBaseURL.trim();
+
+    setLLMConfigSaving(true);
+    setLLMConfigSaved(false);
+    try {
+      await SetLLMMode("advanced");
+      await SetLLMProvider(llmProvider);
+      await SetLLMModel(trimmedModel);
+      await SetLLMBaseURL(trimmedBaseURL);
+      setLLMModeState("advanced");
+      setLLMModelState(trimmedModel);
+      setLLMBaseURLState(trimmedBaseURL);
+      setTimedSavedState(setLLMConfigSaved, llmSavedTimeoutRef);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Failed to save advanced LLM settings:", message);
       onError(message);
     } finally {
       setLLMConfigSaving(false);
@@ -389,8 +627,10 @@ export function SettingsPanel({
     }
   };
 
-  const modelOptions =
-    llmModelOptionsByProvider[llmProvider] ?? llmModelOptionsByProvider.openai;
+  const effectiveCloudModelOptions =
+    cloudModelOptions.some((option) => option.value === llmModel) || !llmModel.trim()
+      ? cloudModelOptions
+      : [{ value: llmModel, label: `${llmModel} (Current)` }, ...cloudModelOptions];
 
   return (
     <div
@@ -622,133 +862,391 @@ export function SettingsPanel({
 
           <section>
             <h3 className="text-sm font-semibold text-hw-text mb-2">
-              Provider Configuration
+              Matching Mode
             </h3>
-            <div className="space-y-3">
-              <div>
-                <label
-                  htmlFor="llm-provider"
-                  className="block text-xs text-hw-text-muted mb-1"
-                >
-                  Active provider
-                </label>
-                <select
-                  id="llm-provider"
-                  aria-label="LLM Provider"
-                  value={llmProvider}
-                  onChange={(e) => {
-                    const nextProvider = e.target.value;
-                    const nextModelOptions =
-                      llmModelOptionsByProvider[nextProvider] ??
-                      llmModelOptionsByProvider.openai;
-                    setLLMProviderState(nextProvider);
-                    setLLMModelState(nextModelOptions[0].value);
+            <p className="text-xs text-hw-text-muted mb-2">
+              Cloud and Local are guided modes. Advanced exposes manual endpoint
+              settings.
+            </p>
+            <div
+              role="radiogroup"
+              aria-label="LLM Mode"
+              className="grid grid-cols-3 gap-2"
+            >
+              {[
+                { value: "cloud", label: "Cloud" },
+                { value: "local", label: "Local" },
+                { value: "advanced", label: "Advanced" },
+              ].map((modeOption) => (
+                <button
+                  key={modeOption.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={llmMode === modeOption.value}
+                  onClick={() => {
+                    setLLMModeState(modeOption.value as LLMMode);
                     setLLMConfigSaved(false);
                   }}
-                  className={selectClasses}
+                  className={`rounded px-3 py-2 text-xs font-medium border text-left transition-colors duration-150 ${
+                    llmMode === modeOption.value
+                      ? "bg-hw-accent border-hw-accent text-white"
+                      : "bg-hw-bg border-hw-border text-hw-text hover:bg-hw-surface-hover"
+                  }`}
                 >
-                  {llmProviderOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="llm-model"
-                  className="block text-xs text-hw-text-muted mb-1"
-                >
-                  Model
-                </label>
-                <select
-                  id="llm-model"
-                  aria-label="LLM Model"
-                  value={llmModel}
-                  onChange={(e) => {
-                    setLLMModelState(e.target.value);
-                    setLLMConfigSaved(false);
-                  }}
-                  className={selectClasses}
-                >
-                  {modelOptions.map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleSaveLLMConfig}
-                loading={llmConfigSaving}
-              >
-                {llmConfigSaved ? "Saved" : "Save configuration"}
-              </Button>
+                  {modeOption.label}
+                </button>
+              ))}
             </div>
           </section>
 
-          <section>
-            <h3 className="text-sm font-semibold text-hw-text mb-2">
-              OpenAI API Key
-            </h3>
-            <div className="flex gap-2">
-              <Input
-                type="password"
-                size="sm"
-                value={openAIAPIKey}
-                onChange={(e) => {
-                  setOpenAIAPIKey(e.target.value);
-                  setOpenAISaved(false);
-                }}
-                placeholder={
-                  hasOpenAIKey
-                    ? "Enter new API key to replace existing key"
-                    : "Enter API key"
-                }
-                className="flex-1 min-w-0"
-                aria-label="OpenAI API Key"
-              />
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleSaveOpenAIKey}
-                disabled={!openAIAPIKey.trim()}
-                loading={openAISaving}
-                className="shrink-0"
-              >
-                {openAISaved ? "Saved" : "Save"}
-              </Button>
-              {hasOpenAIKey && (
+          {llmMode === "cloud" && (
+            <section>
+              <h3 className="text-sm font-semibold text-hw-text mb-2">
+                Cloud Configuration
+              </h3>
+              <p className="text-xs text-hw-text-muted mb-2">
+                Use OpenAI hosted models. No endpoint setup required.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="cloud-llm-model"
+                    className="block text-xs text-hw-text-muted mb-1"
+                  >
+                    Cloud model
+                  </label>
+                  <select
+                    id="cloud-llm-model"
+                    aria-label="Cloud LLM Model"
+                    value={llmModel}
+                    onChange={(e) => {
+                      setLLMModelState(e.target.value);
+                      setLLMConfigSaved(false);
+                    }}
+                    className={selectClasses}
+                  >
+                    {effectiveCloudModelOptions.map((model) => (
+                      <option key={model.value} value={model.value}>
+                        {model.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <Button
-                  variant="danger"
+                  variant="primary"
                   size="sm"
-                  onClick={handleClearOpenAIKey}
-                  loading={openAIClearing}
+                  onClick={handleSaveCloudConfig}
+                  loading={llmConfigSaving}
+                >
+                  {llmConfigSaved ? "Saved" : "Save cloud settings"}
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {llmMode === "local" && (
+            <section>
+              <h3 className="text-sm font-semibold text-hw-text mb-2">
+                Local Configuration
+              </h3>
+              <p className="text-xs text-hw-text-muted mb-2">
+                Guided local setup uses Ollama + {localModelName}.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="local-runtime-model"
+                    className="block text-xs text-hw-text-muted mb-1"
+                  >
+                    Local model
+                  </label>
+                  <Input
+                    id="local-runtime-model"
+                    aria-label="Local Runtime Model"
+                    type="text"
+                    size="sm"
+                    value={localRuntimeModel}
+                    readOnly
+                  />
+                </div>
+                <div className="rounded border border-hw-border bg-hw-bg px-3 py-2">
+                  <p className="text-xs text-hw-text">
+                    Runtime status:{" "}
+                    <span className="font-semibold">{localRuntimeStatus}</span>
+                  </p>
+                  {localRuntimeMessage && (
+                    <p className="mt-1 text-xs text-hw-text-muted">
+                      {localRuntimeMessage}
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-hw-text-muted">
+                    Llama installed: {localModelInstalled ? "Yes" : "No"}
+                  </p>
+                  <p className="mt-1 text-xs text-hw-text-muted">
+                    Approx download size: {formatGiB(localModelEstimatedBytes)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      void refreshLocalRuntime(true);
+                    }}
+                    loading={localRuntimeRefreshing}
+                  >
+                    Refresh status
+                  </Button>
+                  {localRuntimeStatus === "not_installed" && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => Browser.OpenURL("https://ollama.com/download")}
+                    >
+                      Install Ollama
+                    </Button>
+                  )}
+                  {localRuntimeStatus !== "ready" &&
+                    localRuntimeStatus !== "not_installed" && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={handleStartLocalRuntime}
+                        loading={localRuntimeStarting}
+                      >
+                        Start runtime
+                      </Button>
+                    )}
+                  {localRuntimeStatus === "ready" && localRuntimeStartedByApp && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleStopLocalRuntime}
+                      loading={localRuntimeStopping}
+                    >
+                      Stop runtime
+                    </Button>
+                  )}
+                  {localRuntimeStatus === "ready" && !localModelInstalled && (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handlePullLocalModel}
+                      loading={localModelPulling}
+                    >
+                      Download Llama
+                    </Button>
+                  )}
+                  {localRuntimeStatus !== "not_installed" &&
+                    (!localRuntimeReady || !localModelInstalled) && (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={handleRunLocalSetup}
+                        loading={localRuntimeStarting || localModelPulling}
+                      >
+                        Run guided setup
+                      </Button>
+                    )}
+                </div>
+                <div className="rounded border border-hw-border bg-hw-bg px-3 py-2">
+                  <p className="text-xs font-semibold text-hw-text">
+                    Built with Llama
+                  </p>
+                  <p className="mt-1 text-xs text-hw-text-muted">
+                    By downloading and using Llama, you must comply with Meta&apos;s
+                    Llama Community License and Acceptable Use Policy.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => Browser.OpenURL(llamaLicenseURL)}
+                    >
+                      View license
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => Browser.OpenURL(llamaUsePolicyURL)}
+                    >
+                      View use policy
+                    </Button>
+                  </div>
+                </div>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSaveLocalConfig}
+                  loading={llmConfigSaving}
+                  disabled={!localRuntimeReady || !localModelInstalled}
+                >
+                  {llmConfigSaved ? "Saved" : "Save local settings"}
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {llmMode === "advanced" && (
+            <section>
+              <h3 className="text-sm font-semibold text-hw-text mb-2">
+                Advanced Configuration
+              </h3>
+              <p className="text-xs text-hw-text-muted mb-2">
+                Manual OpenAI-compatible endpoint and model overrides.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label
+                    htmlFor="advanced-llm-provider"
+                    className="block text-xs text-hw-text-muted mb-1"
+                  >
+                    Active provider
+                  </label>
+                  <select
+                    id="advanced-llm-provider"
+                    aria-label="LLM Provider"
+                    value={llmProvider}
+                    onChange={(e) => {
+                      const nextProvider = e.target.value;
+                      const nextModelOptions =
+                        llmModelOptionsByProvider[nextProvider] ??
+                        llmModelOptionsByProvider.openai;
+                      setLLMProviderState(nextProvider);
+                      if (!llmModel.trim()) {
+                        setLLMModelState(nextModelOptions[0].value);
+                      }
+                      setLLMConfigSaved(false);
+                    }}
+                    className={selectClasses}
+                  >
+                    {llmProviderOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="advanced-llm-model"
+                    className="block text-xs text-hw-text-muted mb-1"
+                  >
+                    Model
+                  </label>
+                  <Input
+                    id="advanced-llm-model"
+                    type="text"
+                    size="sm"
+                    value={llmModel}
+                    onChange={(e) => {
+                      setLLMModelState(e.target.value);
+                      setLLMConfigSaved(false);
+                    }}
+                    placeholder="gpt-4o-mini"
+                    aria-label="LLM Model"
+                  />
+                </div>
+
+                {llmProvider === "openai" && (
+                  <div>
+                    <label
+                      htmlFor="advanced-llm-base-url"
+                      className="block text-xs text-hw-text-muted mb-1"
+                    >
+                      Base URL (optional)
+                    </label>
+                    <Input
+                      id="advanced-llm-base-url"
+                      type="text"
+                      size="sm"
+                      value={llmBaseURL}
+                      onChange={(e) => {
+                        setLLMBaseURLState(e.target.value);
+                        setLLMConfigSaved(false);
+                      }}
+                      placeholder="https://api.openai.com"
+                      aria-label="LLM Base URL"
+                    />
+                  </div>
+                )}
+
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSaveAdvancedConfig}
+                  loading={llmConfigSaving}
+                >
+                  {llmConfigSaved ? "Saved" : "Save advanced settings"}
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {(llmMode === "cloud" ||
+            (llmMode === "advanced" && llmProvider === "openai")) && (
+            <section>
+              <h3 className="text-sm font-semibold text-hw-text mb-2">
+                OpenAI API Key
+              </h3>
+              <div className="flex gap-2">
+                <Input
+                  type="password"
+                  size="sm"
+                  value={openAIAPIKey}
+                  onChange={(e) => {
+                    setOpenAIAPIKey(e.target.value);
+                    setOpenAISaved(false);
+                  }}
+                  placeholder={
+                    hasOpenAIKey
+                      ? "Enter new API key to replace existing key"
+                      : "Enter API key"
+                  }
+                  className="flex-1 min-w-0"
+                  aria-label="OpenAI API Key"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSaveOpenAIKey}
+                  disabled={!openAIAPIKey.trim()}
+                  loading={openAISaving}
                   className="shrink-0"
                 >
-                  Clear
+                  {openAISaved ? "Saved" : "Save"}
+                </Button>
+                {hasOpenAIKey && (
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={handleClearOpenAIKey}
+                    loading={openAIClearing}
+                    className="shrink-0"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              {hasOpenAIKey ? (
+                <p className="mt-1 text-xs text-hw-text-muted">
+                  Key is stored securely in your OS keychain.
+                </p>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-1"
+                  onClick={() =>
+                    Browser.OpenURL("https://platform.openai.com/api-keys")
+                  }
+                >
+                  Obtain an API Key
                 </Button>
               )}
-            </div>
-            {hasOpenAIKey ? (
-              <p className="mt-1 text-xs text-hw-text-muted">
-                Key is stored securely in your OS keychain.
-              </p>
-            ) : (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mt-1"
-                onClick={() => Browser.OpenURL("https://platform.openai.com/api-keys")}
-              >
-                Obtain an API Key
-              </Button>
-            )}
-          </section>
+            </section>
+          )}
         </div>
       </div>
 

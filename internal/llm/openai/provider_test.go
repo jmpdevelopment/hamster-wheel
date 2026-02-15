@@ -322,6 +322,21 @@ func TestUsesOpenAICloudHost(t *testing.T) {
 	}
 }
 
+func TestIsRetryableTransportError(t *testing.T) {
+	if isRetryableTransportError(errors.New("dial tcp: connection refused")) != true {
+		t.Fatal("expected connection refused to be retryable")
+	}
+	if isRetryableTransportError(errors.New("network is unreachable")) != true {
+		t.Fatal("expected network unreachable to be retryable")
+	}
+	if isRetryableTransportError(context.Canceled) != false {
+		t.Fatal("expected context cancellation to be non-retryable")
+	}
+	if isRetryableTransportError(errors.New("unauthorized")) != false {
+		t.Fatal("expected generic non-network error to be non-retryable")
+	}
+}
+
 func TestClassifyStatusErrorBranches(t *testing.T) {
 	t.Run("rate limited", func(t *testing.T) {
 		err := classifyStatusError(http.StatusTooManyRequests, []byte(`{"error":{"message":"slow down"}}`))

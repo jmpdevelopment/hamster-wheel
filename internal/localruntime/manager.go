@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +21,9 @@ import (
 
 const (
 	EngineOllama = "ollama"
+
+	RecommendedLlamaModel       = "llama3.1:8b"
+	EstimatedLlamaDownloadBytes = int64(4_900_000_000)
 
 	StatusNotInstalled = "not_installed"
 	StatusStopped      = "stopped"
@@ -35,6 +40,8 @@ const (
 	defaultStopTimeout         = 3 * time.Second
 	defaultHealthCheckInterval = 250 * time.Millisecond
 	defaultHTTPTimeout         = 1200 * time.Millisecond
+	defaultRetryDelay          = 300 * time.Millisecond
+	defaultRequestAttempts     = 3
 	maxResponseBytes           = 1 << 20 // 1 MiB
 )
 
@@ -45,9 +52,7 @@ var (
 )
 
 var recommendedModels = []string{
-	"llama3.1:8b",
-	"qwen2.5:7b",
-	"mistral:7b",
+	RecommendedLlamaModel,
 }
 
 // Snapshot is the runtime status returned to callers.
@@ -98,6 +103,7 @@ type Config struct {
 	Binary              string
 	Endpoint            string
 	HealthPath          string
+	ManagedStateFile    string
 	StartupTimeout      time.Duration
 	StopTimeout         time.Duration
 	HealthCheckInterval time.Duration
@@ -134,6 +140,8 @@ type RuntimeManager struct {
 	client *http.Client
 	logger *slog.Logger
 	runner Runner
+
+	managedStateFile string
 
 	mu             sync.Mutex
 	process        Process
@@ -187,8 +195,12 @@ func NewOllamaManager(cfg Config) *RuntimeManager {
 	if logger == nil {
 		logger = slog.Default().With("component", "local_runtime", "engine", EngineOllama)
 	}
+	managedStateFile := strings.TrimSpace(cfg.ManagedStateFile)
+	if managedStateFile != "" {
+		managedStateFile = filepath.Clean(managedStateFile)
+	}
 
-	return &RuntimeManager{
+	manager := &RuntimeManager{
 		engine:              EngineOllama,
 		binary:              binary,
 		endpoint:            endpoint,
@@ -199,7 +211,12 @@ func NewOllamaManager(cfg Config) *RuntimeManager {
 		client:              client,
 		logger:              logger,
 		runner:              runner,
+		managedStateFile:    managedStateFile,
 	}
+	if managedStateFile != "" {
+		manager.reapStaleManagedProcess()
+	}
+	return manager
 }
 
 // NewNoopManager returns a disabled manager used when runtime orchestration
@@ -298,6 +315,9 @@ func (m *RuntimeManager) Start(ctx context.Context) (Snapshot, error) {
 		m.startedByApp = true
 		m.stopping = false
 		m.lastProcessErr = nil
+		if err := m.writeManagedState(process.PID()); err != nil {
+			m.logger.Warn("failed to persist managed runtime state", "error", err)
+		}
 
 		waitDone := m.waitDone
 		go m.watchProcess(process, waitDone)
@@ -341,9 +361,15 @@ func (m *RuntimeManager) Stop(ctx context.Context) (Snapshot, error) {
 		case <-waitDone:
 		case <-time.After(500 * time.Millisecond):
 		}
+		if err := m.clearManagedState(); err != nil {
+			m.logger.Debug("failed to clear managed runtime state after context cancellation", "error", err)
+		}
 		return Snapshot{}, ctx.Err()
 	}
 
+	if err := m.clearManagedState(); err != nil {
+		m.logger.Debug("failed to clear managed runtime state during stop", "error", err)
+	}
 	return m.Status(ctx)
 }
 
@@ -399,6 +425,7 @@ func (m *RuntimeManager) watchProcess(process Process, waitDone chan struct{}) {
 		}
 	}
 	m.mu.Unlock()
+	_ = m.clearManagedState()
 
 	close(waitDone)
 }
@@ -456,12 +483,13 @@ func (m *RuntimeManager) ListModels(ctx context.Context) (ModelCatalog, error) {
 		return catalog, fmt.Errorf("building model list request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
-	if err != nil {
-		return catalog, fmt.Errorf("creating model list request: %w", err)
-	}
-
-	response, err := m.client.Do(req)
+	response, err := m.doWithRetry(ctx, "list-models", func() (*http.Response, error) {
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating model list request: %w", reqErr)
+		}
+		return m.client.Do(req)
+	})
 	if err != nil {
 		return catalog, fmt.Errorf("querying model catalog: %w", err)
 	}
@@ -534,13 +562,14 @@ func (m *RuntimeManager) PullModel(ctx context.Context, model string) (PullResul
 	if err != nil {
 		return PullResult{}, fmt.Errorf("building model pull request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL.String(), bytes.NewReader(body))
-	if err != nil {
-		return PullResult{}, fmt.Errorf("creating model pull request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	response, err := m.client.Do(req)
+	response, err := m.doWithRetry(ctx, "pull-model", func() (*http.Response, error) {
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, requestURL.String(), bytes.NewReader(body))
+		if reqErr != nil {
+			return nil, fmt.Errorf("creating model pull request: %w", reqErr)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		return m.client.Do(req)
+	})
 	if err != nil {
 		return PullResult{}, fmt.Errorf("pulling model: %w", err)
 	}
@@ -589,6 +618,194 @@ func (m *RuntimeManager) PullModel(ctx context.Context, model string) (PullResul
 		result.Message = "Pull completed but readiness could not be confirmed yet."
 	}
 	return result, nil
+}
+
+type managedProcessState struct {
+	PID      int       `json:"pid"`
+	Binary   string    `json:"binary"`
+	Recorded time.Time `json:"recorded"`
+}
+
+func (m *RuntimeManager) doWithRetry(
+	ctx context.Context,
+	operation string,
+	requestFn func() (*http.Response, error),
+) (*http.Response, error) {
+	var lastErr error
+	for attempt := 1; attempt <= defaultRequestAttempts; attempt++ {
+		response, err := requestFn()
+		if err == nil {
+			return response, nil
+		}
+		lastErr = err
+		if !isRetryableNetworkError(err) || attempt == defaultRequestAttempts {
+			break
+		}
+		delay := time.Duration(math.Pow(2, float64(attempt-1))) * defaultRetryDelay
+		m.logger.Warn(
+			"local runtime request failed; retrying",
+			"operation", operation,
+			"attempt", attempt,
+			"error", err,
+			"retry_delay_ms", delay.Milliseconds(),
+		)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+	if lastErr == nil {
+		lastErr = errors.New("request failed")
+	}
+	if isRetryableNetworkError(lastErr) {
+		return nil, fmt.Errorf("runtime endpoint is unreachable; ensure Ollama is running and network is available: %w", lastErr)
+	}
+	return nil, lastErr
+}
+
+func isRetryableNetworkError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	retryableFragments := []string{
+		"connection refused",
+		"connection reset",
+		"broken pipe",
+		"network is unreachable",
+		"no route to host",
+		"no such host",
+		"temporary failure",
+		"i/o timeout",
+		"tls handshake timeout",
+	}
+	for _, fragment := range retryableFragments {
+		if strings.Contains(lower, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *RuntimeManager) reapStaleManagedProcess() {
+	state, err := m.readManagedState()
+	if err != nil {
+		m.logger.Warn("failed to read local runtime managed-state file; removing", "path", m.managedStateFile, "error", err)
+		_ = m.clearManagedState()
+		return
+	}
+	if state.PID <= 0 {
+		_ = m.clearManagedState()
+		return
+	}
+
+	if !processLooksLikeBinary(state.PID, state.Binary) {
+		m.logger.Info("stale local runtime state file does not match a live managed process; clearing", "pid", state.PID)
+		_ = m.clearManagedState()
+		return
+	}
+
+	m.logger.Warn("reaping stale app-managed local runtime process from previous session", "pid", state.PID)
+	if err := signalProcessTree(state.PID, os.Interrupt); err != nil {
+		m.logger.Debug("failed to send interrupt to stale local runtime process", "pid", state.PID, "error", err)
+	}
+	deadline := time.Now().Add(m.stopTimeout)
+	for time.Now().Before(deadline) {
+		if !isProcessAlive(state.PID) {
+			_ = m.clearManagedState()
+			return
+		}
+		time.Sleep(75 * time.Millisecond)
+	}
+	if err := killProcessTree(state.PID); err != nil {
+		m.logger.Warn("failed to kill stale local runtime process", "pid", state.PID, "error", err)
+	}
+	_ = m.clearManagedState()
+}
+
+func (m *RuntimeManager) writeManagedState(pid int) error {
+	if strings.TrimSpace(m.managedStateFile) == "" || pid <= 0 {
+		return nil
+	}
+
+	state := managedProcessState{
+		PID:      pid,
+		Binary:   m.binary,
+		Recorded: time.Now().UTC(),
+	}
+	raw, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("encoding managed state: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(m.managedStateFile), 0o755); err != nil {
+		return fmt.Errorf("creating managed state directory: %w", err)
+	}
+	tmpPath := m.managedStateFile + ".tmp"
+	if err := os.WriteFile(tmpPath, raw, 0o600); err != nil {
+		return fmt.Errorf("writing managed state tmp file: %w", err)
+	}
+	if err := os.Rename(tmpPath, m.managedStateFile); err != nil {
+		return fmt.Errorf("moving managed state file into place: %w", err)
+	}
+	return nil
+}
+
+func (m *RuntimeManager) clearManagedState() error {
+	if strings.TrimSpace(m.managedStateFile) == "" {
+		return nil
+	}
+	if err := os.Remove(m.managedStateFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func (m *RuntimeManager) readManagedState() (managedProcessState, error) {
+	if strings.TrimSpace(m.managedStateFile) == "" {
+		return managedProcessState{}, nil
+	}
+	raw, err := os.ReadFile(m.managedStateFile)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return managedProcessState{}, nil
+		}
+		return managedProcessState{}, err
+	}
+	var state managedProcessState
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return managedProcessState{}, err
+	}
+	return state, nil
+}
+
+func processLooksLikeBinary(pid int, binary string) bool {
+	if pid <= 0 {
+		return false
+	}
+	output, err := exec.Command("ps", "-p", fmt.Sprintf("%d", pid), "-o", "command=").Output()
+	if err != nil {
+		return false
+	}
+	commandLine := strings.ToLower(strings.TrimSpace(string(output)))
+	if commandLine == "" {
+		return false
+	}
+	base := strings.ToLower(filepath.Base(strings.TrimSpace(binary)))
+	if base == "" {
+		base = defaultBinary
+	}
+	return strings.Contains(commandLine, base)
 }
 
 type noopManager struct{}
@@ -640,6 +857,7 @@ func (osRunner) LookPath(file string) (string, error) {
 
 func (osRunner) Start(binary string, args ...string) (Process, error) {
 	cmd := exec.Command(binary, args...)
+	configureProcessGroup(cmd)
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Start(); err != nil {
@@ -663,12 +881,18 @@ func (p *execProcess) Signal(signal os.Signal) error {
 	if p == nil || p.cmd == nil || p.cmd.Process == nil {
 		return errors.New("process is not running")
 	}
+	if err := signalProcessTree(p.cmd.Process.Pid, signal); err == nil {
+		return nil
+	}
 	return p.cmd.Process.Signal(signal)
 }
 
 func (p *execProcess) Kill() error {
 	if p == nil || p.cmd == nil || p.cmd.Process == nil {
 		return errors.New("process is not running")
+	}
+	if err := killProcessTree(p.cmd.Process.Pid); err == nil {
+		return nil
 	}
 	return p.cmd.Process.Kill()
 }

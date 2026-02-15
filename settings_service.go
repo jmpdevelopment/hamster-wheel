@@ -337,6 +337,9 @@ func (s *SettingsService) SetLocalRuntimeModel(model string) error {
 	if model == "" {
 		return errors.New("local runtime model is required")
 	}
+	if model != defaultRuntimeModel {
+		return fmt.Errorf("invalid local runtime model %q: must be %s", model, defaultRuntimeModel)
+	}
 	if err := s.db.SetSetting(context.Background(), settingLocalRuntimeModel, model); err != nil {
 		return fmt.Errorf("setting local runtime model: %w", err)
 	}

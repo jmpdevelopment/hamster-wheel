@@ -9,10 +9,22 @@ const mockClearReedAPIKey = vi.fn();
 const mockHasOpenAIAPIKey = vi.fn();
 const mockSetOpenAIAPIKey = vi.fn();
 const mockClearOpenAIAPIKey = vi.fn();
+const mockGetLLMMode = vi.fn();
+const mockSetLLMMode = vi.fn();
 const mockGetLLMProvider = vi.fn();
 const mockSetLLMProvider = vi.fn();
 const mockGetLLMModel = vi.fn();
 const mockSetLLMModel = vi.fn();
+const mockGetLLMBaseURL = vi.fn();
+const mockSetLLMBaseURL = vi.fn();
+const mockGetLocalRuntimeStatus = vi.fn();
+const mockGetLocalRuntimeModels = vi.fn();
+const mockGetLocalRuntimeModel = vi.fn();
+const mockPullLocalRuntimeModel = vi.fn();
+const mockStartLocalRuntime = vi.fn();
+const mockStopLocalRuntime = vi.fn();
+const mockSetLocalRuntimeEngine = vi.fn();
+const mockSetLocalRuntimeModel = vi.fn();
 const mockGetCVPath = vi.fn();
 const mockSetCVPath = vi.fn();
 const mockSetKeyboardShortcuts = vi.fn();
@@ -26,10 +38,27 @@ vi.mock("../../bindings/hamster-wheel/settingsservice", () => ({
   HasOpenAIAPIKey: (...args: unknown[]) => mockHasOpenAIAPIKey(...args),
   SetOpenAIAPIKey: (...args: unknown[]) => mockSetOpenAIAPIKey(...args),
   ClearOpenAIAPIKey: (...args: unknown[]) => mockClearOpenAIAPIKey(...args),
+  GetLLMMode: (...args: unknown[]) => mockGetLLMMode(...args),
+  SetLLMMode: (...args: unknown[]) => mockSetLLMMode(...args),
   GetLLMProvider: (...args: unknown[]) => mockGetLLMProvider(...args),
   SetLLMProvider: (...args: unknown[]) => mockSetLLMProvider(...args),
   GetLLMModel: (...args: unknown[]) => mockGetLLMModel(...args),
   SetLLMModel: (...args: unknown[]) => mockSetLLMModel(...args),
+  GetLLMBaseURL: (...args: unknown[]) => mockGetLLMBaseURL(...args),
+  SetLLMBaseURL: (...args: unknown[]) => mockSetLLMBaseURL(...args),
+  GetLocalRuntimeStatus: (...args: unknown[]) =>
+    mockGetLocalRuntimeStatus(...args),
+  GetLocalRuntimeModels: (...args: unknown[]) =>
+    mockGetLocalRuntimeModels(...args),
+  GetLocalRuntimeModel: (...args: unknown[]) => mockGetLocalRuntimeModel(...args),
+  PullLocalRuntimeModel: (...args: unknown[]) =>
+    mockPullLocalRuntimeModel(...args),
+  StartLocalRuntime: (...args: unknown[]) => mockStartLocalRuntime(...args),
+  StopLocalRuntime: (...args: unknown[]) => mockStopLocalRuntime(...args),
+  SetLocalRuntimeEngine: (...args: unknown[]) =>
+    mockSetLocalRuntimeEngine(...args),
+  SetLocalRuntimeModel: (...args: unknown[]) =>
+    mockSetLocalRuntimeModel(...args),
   GetCVPath: (...args: unknown[]) => mockGetCVPath(...args),
   SetCVPath: (...args: unknown[]) => mockSetCVPath(...args),
   SetKeyboardShortcuts: (...args: unknown[]) =>
@@ -65,10 +94,40 @@ beforeEach(() => {
   mockHasOpenAIAPIKey.mockResolvedValue(false);
   mockSetOpenAIAPIKey.mockResolvedValue(undefined);
   mockClearOpenAIAPIKey.mockResolvedValue(undefined);
+  mockGetLLMMode.mockResolvedValue("cloud");
+  mockSetLLMMode.mockResolvedValue(undefined);
   mockGetLLMProvider.mockResolvedValue("openai");
   mockSetLLMProvider.mockResolvedValue(undefined);
   mockGetLLMModel.mockResolvedValue("gpt-4o-mini");
   mockSetLLMModel.mockResolvedValue(undefined);
+  mockGetLLMBaseURL.mockResolvedValue("");
+  mockSetLLMBaseURL.mockResolvedValue(undefined);
+  mockGetLocalRuntimeStatus.mockResolvedValue({
+    status: "ready",
+    message: "",
+    startedByApp: false,
+  });
+  mockGetLocalRuntimeModels.mockResolvedValue({
+    installed: [{ name: "llama3.1:8b" }],
+  });
+  mockGetLocalRuntimeModel.mockResolvedValue("llama3.1:8b");
+  mockPullLocalRuntimeModel.mockResolvedValue({
+    model: "llama3.1:8b",
+    ready: true,
+    status: "success",
+  });
+  mockStartLocalRuntime.mockResolvedValue({
+    status: "ready",
+    message: "",
+    startedByApp: true,
+  });
+  mockStopLocalRuntime.mockResolvedValue({
+    status: "stopped",
+    message: "",
+    startedByApp: false,
+  });
+  mockSetLocalRuntimeEngine.mockResolvedValue(undefined);
+  mockSetLocalRuntimeModel.mockResolvedValue(undefined);
   mockGetCVPath.mockResolvedValue("");
   mockSetCVPath.mockResolvedValue(undefined);
   mockSetKeyboardShortcuts.mockResolvedValue(undefined);
@@ -115,8 +174,10 @@ describe("SettingsPanel", () => {
     expect(await screen.findByLabelText("Reed API Key")).toBeInTheDocument();
 
     await openTab("LLM Providers");
-    expect(await screen.findByLabelText("OpenAI API Key")).toBeInTheDocument();
-    expect(screen.getByLabelText("LLM Provider")).toBeInTheDocument();
+    expect(await screen.findByText("Matching Mode")).toBeInTheDocument();
+    expect(screen.getByLabelText("LLM Mode")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cloud LLM Model")).toBeInTheDocument();
+    expect(screen.queryByLabelText("LLM Base URL")).not.toBeInTheDocument();
 
     await openTab("Interface");
     expect(screen.getByText("Theme")).toBeInTheDocument();
@@ -218,66 +279,128 @@ describe("SettingsPanel", () => {
     );
   });
 
-  it("loads and displays llm provider values", async () => {
+  it("loads cloud mode by default and hides advanced endpoint fields", async () => {
     mockHasOpenAIAPIKey.mockResolvedValue(true);
-    mockGetLLMProvider.mockResolvedValue("heuristic_v1");
-    mockGetLLMModel.mockResolvedValue("heuristic_v1");
-
     render(<SettingsPanel {...defaultProps} />);
     await openTab("LLM Providers");
 
     await waitFor(() => {
-      expect(screen.getByLabelText("LLM Provider")).toHaveValue("heuristic_v1");
-      expect(screen.getByLabelText("LLM Model")).toHaveValue("heuristic_v1");
+      expect(screen.getByRole("radio", { name: "Cloud" })).toHaveAttribute(
+        "aria-checked",
+        "true"
+      );
+      expect(screen.getByLabelText("Cloud LLM Model")).toHaveValue("gpt-4o-mini");
     });
+    expect(screen.queryByLabelText("LLM Base URL")).not.toBeInTheDocument();
     expect(
       screen.getByText("Key is stored securely in your OS keychain.")
     ).toBeInTheDocument();
   });
 
-  it("shows provider-specific model options", async () => {
+  it("switches mode sections and gates base url to advanced only", async () => {
     render(<SettingsPanel {...defaultProps} />);
     await openTab("LLM Providers");
 
-    expect(screen.getByLabelText("LLM Model")).toHaveValue("gpt-4o-mini");
-    expect(screen.getByRole("option", { name: "gpt-4o-mini" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("radio", { name: "Local" }));
+    expect(screen.getByLabelText("Local Runtime Model")).toBeInTheDocument();
+    expect(screen.queryByLabelText("OpenAI API Key")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("LLM Base URL")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("radio", { name: "Advanced" }));
+    expect(screen.getByLabelText("LLM Provider")).toBeInTheDocument();
+    expect(screen.getByLabelText("LLM Model")).toBeInTheDocument();
+    expect(screen.getByLabelText("LLM Base URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("OpenAI API Key")).toBeInTheDocument();
 
     await userEvent.selectOptions(screen.getByLabelText("LLM Provider"), "heuristic_v1");
-    await waitFor(() => {
-      expect(screen.getByLabelText("LLM Model")).toHaveValue("heuristic_v1");
-    });
-    expect(
-      screen.queryByRole("option", { name: "gpt-4o-mini" })
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "heuristic_v1" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("LLM Base URL")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("OpenAI API Key")).not.toBeInTheDocument();
   });
 
-  it("normalizes incompatible saved model for the active provider", async () => {
-    mockGetLLMProvider.mockResolvedValue("heuristic_v1");
-    mockGetLLMModel.mockResolvedValue("gpt-4o");
-
+  it("saves cloud mode settings", async () => {
     render(<SettingsPanel {...defaultProps} />);
     await openTab("LLM Providers");
 
-    await waitFor(() => {
-      expect(screen.getByLabelText("LLM Provider")).toHaveValue("heuristic_v1");
-      expect(screen.getByLabelText("LLM Model")).toHaveValue("heuristic_v1");
-    });
-  });
-
-  it("saves llm provider/model settings", async () => {
-    render(<SettingsPanel {...defaultProps} />);
-    await openTab("LLM Providers");
-
-    await userEvent.selectOptions(screen.getByLabelText("LLM Provider"), "openai");
-    await userEvent.selectOptions(screen.getByLabelText("LLM Model"), "gpt-4o");
-
+    await userEvent.selectOptions(screen.getByLabelText("Cloud LLM Model"), "gpt-4o");
     await userEvent.click(
-      screen.getByRole("button", { name: "Save configuration" })
+      screen.getByRole("button", { name: "Save cloud settings" })
     );
 
+    expect(mockSetLLMMode).toHaveBeenCalledWith("cloud");
     expect(mockSetLLMProvider).toHaveBeenCalledWith("openai");
     expect(mockSetLLMModel).toHaveBeenCalledWith("gpt-4o");
+    expect(mockSetLLMBaseURL).toHaveBeenCalledWith("");
+  });
+
+  it("saves local mode settings", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+
+    await userEvent.click(screen.getByRole("radio", { name: "Local" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save local settings" })
+    );
+
+    expect(mockSetLLMMode).toHaveBeenCalledWith("local");
+    expect(mockSetLocalRuntimeEngine).toHaveBeenCalledWith("ollama");
+    expect(mockSetLocalRuntimeModel).toHaveBeenCalledWith("llama3.1:8b");
+  });
+
+  it("runs guided local setup by starting runtime and downloading llama", async () => {
+    mockGetLocalRuntimeStatus.mockResolvedValue({
+      status: "stopped",
+      message: "",
+      startedByApp: false,
+    });
+    mockGetLocalRuntimeModels.mockResolvedValue({
+      installed: [],
+    });
+
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+    await userEvent.click(screen.getByRole("radio", { name: "Local" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Run guided setup" }));
+
+    expect(mockStartLocalRuntime).toHaveBeenCalled();
+    expect(mockPullLocalRuntimeModel).toHaveBeenCalledWith("llama3.1:8b");
+  });
+
+  it("shows install action when ollama is missing", async () => {
+    mockGetLocalRuntimeStatus.mockResolvedValue({
+      status: "not_installed",
+      message: "Install Ollama to enable guided local model mode.",
+      startedByApp: false,
+    });
+
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+    await userEvent.click(screen.getByRole("radio", { name: "Local" }));
+
+    await userEvent.click(screen.getByRole("button", { name: "Install Ollama" }));
+    expect(mockOpenURL).toHaveBeenCalledWith("https://ollama.com/download");
+  });
+
+  it("saves advanced mode settings", async () => {
+    render(<SettingsPanel {...defaultProps} />);
+    await openTab("LLM Providers");
+
+    await userEvent.click(screen.getByRole("radio", { name: "Advanced" }));
+    await userEvent.selectOptions(screen.getByLabelText("LLM Provider"), "openai");
+    await userEvent.clear(screen.getByLabelText("LLM Model"));
+    await userEvent.type(screen.getByLabelText("LLM Model"), "custom-model");
+    await userEvent.type(
+      screen.getByLabelText("LLM Base URL"),
+      "https://gateway.example/v1"
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Save advanced settings" })
+    );
+
+    expect(mockSetLLMMode).toHaveBeenCalledWith("advanced");
+    expect(mockSetLLMProvider).toHaveBeenCalledWith("openai");
+    expect(mockSetLLMModel).toHaveBeenCalledWith("custom-model");
+    expect(mockSetLLMBaseURL).toHaveBeenCalledWith("https://gateway.example/v1");
   });
 
   it("loads, browses, saves, and clears CV path", async () => {
@@ -305,9 +428,7 @@ describe("SettingsPanel", () => {
     render(<SettingsPanel {...defaultProps} />);
     await openTab("LLM Providers");
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "Save configuration" })
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Save cloud settings" }));
 
     await waitFor(() => {
       expect(defaultProps.onError).toHaveBeenCalledWith("model save failed");

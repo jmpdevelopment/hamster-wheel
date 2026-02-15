@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"hamster-wheel/internal/db"
@@ -10,6 +11,7 @@ import (
 	"hamster-wheel/internal/llm"
 	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/llm/openai"
+	"hamster-wheel/internal/localruntime"
 )
 
 func testResolverDB(t *testing.T) *db.DB {
@@ -29,6 +31,41 @@ func testResolverRegistry(t *testing.T) *llm.Registry {
 		t.Fatalf("registering heuristic provider: %v", err)
 	}
 	return registry
+}
+
+type stubResolverRuntimeManager struct {
+	status      localruntime.Snapshot
+	statusErr   error
+	start       localruntime.Snapshot
+	startErr    error
+	startCalled bool
+}
+
+func (m *stubResolverRuntimeManager) Status(context.Context) (localruntime.Snapshot, error) {
+	if m.statusErr != nil {
+		return localruntime.Snapshot{}, m.statusErr
+	}
+	return m.status, nil
+}
+
+func (m *stubResolverRuntimeManager) Start(context.Context) (localruntime.Snapshot, error) {
+	m.startCalled = true
+	if m.startErr != nil {
+		return localruntime.Snapshot{}, m.startErr
+	}
+	return m.start, nil
+}
+
+func (*stubResolverRuntimeManager) Stop(context.Context) (localruntime.Snapshot, error) {
+	return localruntime.Snapshot{Status: localruntime.StatusStopped}, nil
+}
+
+func (*stubResolverRuntimeManager) ListModels(context.Context) (localruntime.ModelCatalog, error) {
+	return localruntime.ModelCatalog{}, nil
+}
+
+func (*stubResolverRuntimeManager) PullModel(context.Context, string) (localruntime.PullResult, error) {
+	return localruntime.PullResult{}, nil
 }
 
 func TestMatcherProviderResolverDefaultsToHeuristicWhenUnset(t *testing.T) {
@@ -96,7 +133,7 @@ func TestMatcherProviderResolverBuildsLocalProviderFromModeAndRuntimeSettings(t 
 	if err := database.SetSetting(context.Background(), settingLLMMode, "local"); err != nil {
 		t.Fatalf("setting llm mode: %v", err)
 	}
-	if err := database.SetSetting(context.Background(), settingLocalRuntimeModel, "qwen2.5:7b"); err != nil {
+	if err := database.SetSetting(context.Background(), settingLocalRuntimeModel, "llama3.1:8b"); err != nil {
 		t.Fatalf("setting local runtime model: %v", err)
 	}
 
@@ -119,5 +156,63 @@ func TestMatcherProviderResolverBuildsLocalProviderFromModeAndRuntimeSettings(t 
 	}
 	if provider == nil || provider.Name() != openai.ProviderName {
 		t.Fatalf("expected openai provider instance for local mode, got %+v", provider)
+	}
+}
+
+func TestMatcherProviderResolverStartsRuntimeWhenLocalModeIsNotReady(t *testing.T) {
+	database := testResolverDB(t)
+	if err := database.SetSetting(context.Background(), settingLLMMode, "local"); err != nil {
+		t.Fatalf("setting llm mode: %v", err)
+	}
+	runtimeManager := &stubResolverRuntimeManager{
+		status: localruntime.Snapshot{Status: localruntime.StatusStopped},
+		start:  localruntime.Snapshot{Status: localruntime.StatusReady},
+	}
+
+	resolver := newMatcherProviderResolver(
+		database,
+		keychain.NewMemoryStore(),
+		testResolverRegistry(t),
+		"",
+		"",
+		"",
+		"http://localhost:11434",
+		runtimeManager,
+	)
+
+	if _, _, err := resolver(context.Background()); err != nil {
+		t.Fatalf("resolving provider: %v", err)
+	}
+	if !runtimeManager.startCalled {
+		t.Fatal("expected resolver to attempt starting local runtime")
+	}
+}
+
+func TestMatcherProviderResolverReturnsErrorWhenLocalRuntimeMissing(t *testing.T) {
+	database := testResolverDB(t)
+	if err := database.SetSetting(context.Background(), settingLLMMode, "local"); err != nil {
+		t.Fatalf("setting llm mode: %v", err)
+	}
+	runtimeManager := &stubResolverRuntimeManager{
+		status: localruntime.Snapshot{Status: localruntime.StatusNotInstalled},
+	}
+
+	resolver := newMatcherProviderResolver(
+		database,
+		keychain.NewMemoryStore(),
+		testResolverRegistry(t),
+		"",
+		"",
+		"",
+		"http://localhost:11434",
+		runtimeManager,
+	)
+
+	_, _, err := resolver(context.Background())
+	if err == nil {
+		t.Fatal("expected local runtime missing error")
+	}
+	if !strings.Contains(err.Error(), "not installed") {
+		t.Fatalf("expected missing runtime message, got %v", err)
 	}
 }

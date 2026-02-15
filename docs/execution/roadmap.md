@@ -31,6 +31,15 @@
 - Local runtime service/binding integration exists:
   - `SettingsService` now exposes runtime status/start/stop methods.
   - Wails bindings include local-runtime snapshot models and lifecycle method wrappers.
+- Matcher wiring for mode-based runtime selection is implemented:
+  - Provider resolver reads `llm_mode` dynamically per match execution.
+  - `Local` mode routes to local runtime model settings; `Cloud`/`Advanced` continue through provider/base-URL settings.
+- Guided LLM mode UX + progressive disclosure is implemented in Settings:
+  - Users choose `Cloud`, `Local`, or `Advanced` mode.
+  - Raw base-URL endpoint input is only shown in `Advanced`.
+- Guided Local setup flow is partially implemented:
+  - Settings local panel now orchestrates runtime status/start/stop and single-model pull for `llama3.1:8b`.
+  - Local setup now includes Llama attribution + policy links and estimated model footprint messaging.
 - CV path submission and matcher-context ingestion are implemented for PDF + plain-text CV files:
   - `cv_path` is persisted via `SettingsService` and configurable in Settings UI.
   - Unsupported CV formats are rejected at submission-time validation.
@@ -41,31 +50,23 @@
 
 Authoritative goal for next slices: non-technical users can choose `Cloud` or `Local` matching without entering raw endpoint values, while power users still have an `Advanced` path.
 
-1. LLM mode UX and progressive disclosure (`Cloud` / `Local` / `Advanced`).
-   - Why: simplify setup for non-technical users and remove endpoint/networking concepts from default path.
-   - Build: mode selector IA, explanatory copy, and visibility gating so raw base-URL fields appear only in `Advanced`.
-   - Done when: default settings flow does not require manual endpoint entry and visibility rules are test-covered.
-2. Managed model lifecycle for `Local` mode.
+1. Managed model lifecycle for `Local` mode.
    - Why: users need guided model acquisition and readiness checks.
-   - Build: model selection, pull/download progress, readiness validation, and actionable error handling.
-   - Done when: users can pick a recommended local model and reach `ready` state in-app without manual endpoint setup.
-3. Matcher wiring for mode-based runtime selection.
-   - Why: saved mode/provider settings must control active scoring path at runtime.
-   - Build: provider resolver consumes mode + local-runtime settings and routes to cloud/local providers with safe fallback behavior.
-   - Done when: switching modes changes scoring path without restart and is covered by integration tests.
-4. OpenAI-compatible `Advanced` manual endpoint path.
+   - Build: complete pull/download progress telemetry (not just busy state), keep readiness validation + actionable error handling, and harden retry/timeout UX under network faults.
+   - Done when: users can complete guided local setup with explicit progress visibility and reach `ready` in-app without manual endpoint setup.
+2. OpenAI-compatible `Advanced` manual endpoint path.
    - Why: preserve expert flexibility and support existing self-hosted gateways.
-   - Build: keep validated base-URL/model overrides in advanced-only flow and preserve current classified error handling.
+   - Build: harden advanced endpoint validation and UX affordances for custom gateways while preserving current classified error handling.
    - Done when: advanced path works for OpenAI-compatible endpoints but is opt-in and hidden from default onboarding.
-5. Token-efficiency controls.
+3. Token-efficiency controls.
    - Why: constrain cost and response time under continuous polling.
    - Build: compact prompt shaping, description truncation bounds, prefilter thresholds, and bounded context windows.
    - Done when: per-match token budgets are configurable and logged; scoring remains stable under large job descriptions.
-6. Match-threshold settings and notifications.
+4. Match-threshold settings and notifications.
    - Why: deliver actionable alerts without noisy low-signal matches.
    - Build: user-configurable threshold + native notification path for high-score transitions.
    - Done when: only matches meeting threshold trigger notifications and this behavior is test-covered.
-7. Deferred UI sorting enhancement (later step, not blocking core matching).
+5. Deferred UI sorting enhancement (later step, not blocking core matching).
    - Build: sort controls for posted date and match score.
    - Done when: sorting is deterministic, persisted if appropriate, and does not regress list virtualization performance.
 

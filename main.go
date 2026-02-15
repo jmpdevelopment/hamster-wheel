@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"io/fs"
 	"log"
 	"log/slog"
@@ -80,6 +82,21 @@ func main() {
 	})); err != nil {
 		log.Fatalf("failed to register openai match provider: %v", err)
 	}
+	localRuntimeManager := localruntime.NewOllamaManager(localruntime.Config{
+		Binary:           strings.TrimSpace(os.Getenv("OLLAMA_BINARY")),
+		Endpoint:         ollamaBaseURL,
+		ManagedStateFile: filepath.Join(os.TempDir(), "hamster-wheel", "localruntime-ollama-managed.json"),
+	})
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		if _, err := localRuntimeManager.Stop(shutdownCtx); err != nil &&
+			!errors.Is(err, context.Canceled) &&
+			!errors.Is(err, context.DeadlineExceeded) &&
+			!errors.Is(err, localruntime.ErrRuntimeNotInstalled) {
+			slog.Warn("failed to stop managed local runtime during app shutdown", "error", err)
+		}
+	}()
 	matchWorker := matcher.New(database, providers, matcher.WorkerConfig{
 		ProviderName: heuristic.ProviderName, // fallback when no setting is persisted yet
 		ProviderResolver: newMatcherProviderResolver(
@@ -90,6 +107,7 @@ func main() {
 			openAIEnvModel,
 			openAIEnvBaseURL,
 			ollamaBaseURL,
+			localRuntimeManager,
 		),
 		PollInterval: 3 * time.Second,
 		BatchSize:    3,
@@ -100,10 +118,6 @@ func main() {
 		50,
 		24*time.Hour,
 	)
-	localRuntimeManager := localruntime.NewOllamaManager(localruntime.Config{
-		Binary:   strings.TrimSpace(os.Getenv("OLLAMA_BINARY")),
-		Endpoint: ollamaBaseURL,
-	})
 
 	// Create all services with their dependencies injected.
 	appService := NewAppService(database, sched, matchWorker)

@@ -27,15 +27,16 @@ const (
 	defaultMaxProfileRunes     = 2000
 	defaultMaxSummaryRunes     = 220
 	maxResponseBytes           = 1 << 20 // 1 MiB
+	localRetryDelay            = 250 * time.Millisecond
 )
 
 var (
-	ErrNotConfigured     = errors.New("openai provider is not configured")
-	ErrUnauthorized      = errors.New("openai request unauthorized")
-	ErrTimeout           = errors.New("openai request timed out")
-	ErrMalformedResponse = errors.New("openai returned malformed response")
-	ErrRateLimited       = errors.New("openai rate limited")
-	ErrUpstreamFailure   = errors.New("openai upstream failure")
+	ErrNotConfigured     = errors.New("llm endpoint provider is not configured")
+	ErrUnauthorized      = errors.New("llm endpoint request unauthorized")
+	ErrTimeout           = errors.New("llm endpoint request timed out")
+	ErrMalformedResponse = errors.New("llm endpoint returned malformed response")
+	ErrRateLimited       = errors.New("llm endpoint rate limited")
+	ErrUpstreamFailure   = errors.New("llm endpoint upstream failure")
 )
 
 const matchSystemPrompt = "You score job relevance for one candidate query. " +
@@ -120,7 +121,7 @@ func (p *Provider) Validate(ctx context.Context) error {
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("validating openai provider: %w", err)
+		return fmt.Errorf("validating llm endpoint provider: %w", err)
 	}
 
 	return nil
@@ -159,12 +160,12 @@ func (p *Provider) Match(ctx context.Context, req llm.MatchRequest) (llm.MatchRe
 		},
 	})
 	if err != nil {
-		return llm.MatchResult{}, fmt.Errorf("requesting match from openai: %w", err)
+		return llm.MatchResult{}, fmt.Errorf("requesting match from llm endpoint: %w", err)
 	}
 
 	parsed, err := parseMatchContent(content)
 	if err != nil {
-		return llm.MatchResult{}, fmt.Errorf("parsing openai match payload: %w", err)
+		return llm.MatchResult{}, fmt.Errorf("parsing llm endpoint match payload: %w", err)
 	}
 
 	if promptTokens <= 0 {
@@ -207,6 +208,34 @@ func (p *Provider) chatCompletion(ctx context.Context, payload chatCompletionReq
 	request.Header.Set("Content-Type", "application/json")
 
 	response, err := p.httpClient.Do(request)
+	if err != nil && !usesOpenAICloudHost(p.baseURL) && isRetryableTransportError(err) {
+		timer := time.NewTimer(localRetryDelay)
+		select {
+		case <-ctx.Done():
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+		case <-timer.C:
+		}
+
+		retryRequest, retryErr := http.NewRequestWithContext(
+			ctx,
+			http.MethodPost,
+			p.baseURL+"/v1/chat/completions",
+			bytes.NewReader(body),
+		)
+		if retryErr != nil {
+			return "", 0, fmt.Errorf("creating retry request: %w", retryErr)
+		}
+		if key := strings.TrimSpace(p.apiKey); key != "" {
+			retryRequest.Header.Set("Authorization", "Bearer "+key)
+		}
+		retryRequest.Header.Set("Content-Type", "application/json")
+		response, err = p.httpClient.Do(retryRequest)
+	}
 	if err != nil {
 		return "", 0, classifyTransportError(ctx, err)
 	}
@@ -268,6 +297,29 @@ func usesOpenAICloudHost(baseURL string) bool {
 	}
 }
 
+func isRetryableTransportError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	retryableFragments := []string{
+		"connection refused",
+		"connection reset",
+		"broken pipe",
+		"network is unreachable",
+		"no route to host",
+		"temporary failure",
+		"i/o timeout",
+		"tls handshake timeout",
+	}
+	for _, fragment := range retryableFragments {
+		if strings.Contains(lower, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
 func classifyTransportError(ctx context.Context, err error) error {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("%w: deadline exceeded", ErrTimeout)
@@ -300,9 +352,9 @@ func classifyStatusError(statusCode int, body []byte) error {
 			return statusError(ErrUpstreamFailure, statusCode, message)
 		}
 		if message != "" {
-			return fmt.Errorf("openai request failed with status %d: %s", statusCode, message)
+			return fmt.Errorf("llm endpoint request failed with status %d: %s", statusCode, message)
 		}
-		return fmt.Errorf("openai request failed with status %d", statusCode)
+		return fmt.Errorf("llm endpoint request failed with status %d", statusCode)
 	}
 }
 

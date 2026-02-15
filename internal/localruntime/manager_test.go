@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -239,6 +240,72 @@ func TestStopEscalatesToKillWhenInterruptDoesNotExit(t *testing.T) {
 	}
 }
 
+func TestManagedStateFileLifecycle(t *testing.T) {
+	client, runtime := newRuntimeClient()
+	runtime.setHealthStatus(http.StatusServiceUnavailable)
+
+	process := newFakeProcess(7711)
+	process.exitOnSignal = true
+
+	statePath := filepath.Join(t.TempDir(), "localruntime-managed-state.json")
+	manager := NewOllamaManager(Config{
+		Endpoint: "http://localruntime.test",
+		Runner: &fakeRunner{
+			lookPathResult: "/usr/local/bin/ollama",
+			process:        process,
+		},
+		HTTPClient:          client,
+		ManagedStateFile:    statePath,
+		StartupTimeout:      90 * time.Millisecond,
+		HealthCheckInterval: 15 * time.Millisecond,
+		StopTimeout:         50 * time.Millisecond,
+	})
+
+	go func() {
+		time.Sleep(30 * time.Millisecond)
+		runtime.setHealthStatus(http.StatusOK)
+	}()
+	if _, err := manager.Start(context.Background()); err != nil {
+		t.Fatalf("starting manager: %v", err)
+	}
+	if _, err := os.Stat(statePath); err != nil {
+		t.Fatalf("expected managed state file to exist after start: %v", err)
+	}
+
+	runtime.setHealthStatus(http.StatusServiceUnavailable)
+	if _, err := manager.Stop(context.Background()); err != nil {
+		t.Fatalf("stopping manager: %v", err)
+	}
+	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected managed state file to be removed after stop, got err=%v", err)
+	}
+}
+
+func TestNewManagerReapsStaleStateFileWithMissingProcess(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "localruntime-stale-state.json")
+	raw, err := json.Marshal(map[string]any{
+		"pid":      999_999,
+		"binary":   "ollama",
+		"recorded": time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatalf("encoding stale state payload: %v", err)
+	}
+	if err := os.WriteFile(statePath, raw, 0o600); err != nil {
+		t.Fatalf("writing stale state file: %v", err)
+	}
+
+	_ = NewOllamaManager(Config{
+		ManagedStateFile: statePath,
+		Runner: &fakeRunner{
+			lookPathResult: "/usr/local/bin/ollama",
+		},
+	})
+	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected stale state file to be cleared, got err=%v", err)
+	}
+}
+
 func TestListModelsReturnsCatalog(t *testing.T) {
 	client, runtime := newRuntimeClient()
 	runtime.addModel("llama3.1:8b", "sha256:abc", 123)
@@ -294,12 +361,12 @@ func TestPullModelSuccess(t *testing.T) {
 		HTTPClient: client,
 	})
 
-	result, err := manager.PullModel(context.Background(), "qwen2.5:7b")
+	result, err := manager.PullModel(context.Background(), "llama3.1:8b")
 	if err != nil {
 		t.Fatalf("pulling model: %v", err)
 	}
-	if result.Model != "qwen2.5:7b" {
-		t.Fatalf("expected pulled model qwen2.5:7b, got %q", result.Model)
+	if result.Model != "llama3.1:8b" {
+		t.Fatalf("expected pulled model llama3.1:8b, got %q", result.Model)
 	}
 	if !result.Ready {
 		t.Fatal("expected pulled model to be marked ready")
@@ -314,7 +381,7 @@ func TestPullModelSuccess(t *testing.T) {
 	}
 	found := false
 	for _, model := range catalog.Installed {
-		if model.Name == "qwen2.5:7b" {
+		if model.Name == "llama3.1:8b" {
 			found = true
 		}
 	}

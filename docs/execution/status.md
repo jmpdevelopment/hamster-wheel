@@ -43,6 +43,17 @@ Last updated: 2026-02-15
   - `SettingsService` now exposes `GetLocalRuntimeStatus`, `StartLocalRuntime`, and `StopLocalRuntime`.
   - Wails bindings now include local-runtime snapshot models and service call wrappers for these lifecycle actions.
   - Error paths are wrapped with operation context and test-covered.
+- Phase 2 mode-aware runtime resolver + guided LLM mode UX is complete:
+  - Matcher provider resolution now reads `llm_mode` per run and routes `Local` mode to app-managed Ollama runtime/model settings.
+  - `SettingsService`/bindings now expose `llm_mode`, local runtime model settings, and local model catalog/pull operations for UI orchestration.
+  - Settings UI now uses progressive disclosure (`Cloud`, `Local`, `Advanced`) so raw base-URL endpoint input is only visible in `Advanced`.
+  - Cloud mode save flow resets manual base-URL overrides, preserving endpoint-free defaults for non-technical setup.
+- Phase 2 local guided setup hardening is in place (Llama-only path):
+  - Local mode now guides users through runtime readiness (`status`/`start`/`stop`) and in-app model pull for `llama3.1:8b`.
+  - Local setup shows estimated model download footprint and blocks Local-mode enablement until runtime + model readiness are confirmed.
+  - Runtime manager now tracks app-managed process state and reaps stale managed runtime processes on next launch after abnormal app exit.
+  - OpenAI-compatible provider error text is now endpoint-agnostic to avoid cloud-brand leakage when local runtime path is active.
+  - Local setup UI now surfaces Llama license/use-policy links and `Built with Llama` attribution notice.
 
 ## Current Runtime Posture (Preserve)
 
@@ -54,7 +65,8 @@ Last updated: 2026-02-15
 - Keep SQLite runtime safeguards (single shared connection + busy retry on writes).
 - Keep CV-context matching fail-open: missing/invalid CV path logs warning and falls back to query-only matching.
 - Preserve easy-first LLM setup direction for upcoming work: default UX is guided `Cloud`/`Local`; manual endpoints are advanced-only.
-- Keep local-runtime controls backend-exposed via `SettingsService` while UI orchestration flows are implemented next.
+- Keep guided mode selector and progressive-disclosure visibility rules stable while local runtime lifecycle UX is expanded next.
+- Keep Local mode pinned to guided `llama3.1:8b` workflow until multi-model UX + policy handling is intentionally designed.
 
 ## Verification Baseline (Latest Pass: 2026-02-14)
 
