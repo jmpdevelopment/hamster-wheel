@@ -31,6 +31,9 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
+//go:embed build/appicon.png
+var appIcon []byte
+
 //go:embed assets/iconTemplate.png
 var trayIcon []byte
 
@@ -159,6 +162,7 @@ func main() {
 
 	app := application.New(application.Options{
 		Name: "Hamster Wheel",
+		Icon: appIcon,
 		Services: []application.Service{
 			application.NewService(appService),      // lifecycle (startup/shutdown)
 			application.NewService(jobService),      // job CRUD
