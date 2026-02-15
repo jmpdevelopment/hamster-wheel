@@ -23,9 +23,13 @@ type failingKeychainStore struct {
 }
 
 type failingLocalRuntimeManager struct {
-	statusErr error
-	startErr  error
-	stopErr   error
+	statusErr     error
+	startErr      error
+	stopErr       error
+	listErr       error
+	pullModelErr  error
+	modelCatalog  localruntime.ModelCatalog
+	pullModelResp localruntime.PullResult
 }
 
 func (m failingLocalRuntimeManager) Status(context.Context) (localruntime.Snapshot, error) {
@@ -47,6 +51,30 @@ func (m failingLocalRuntimeManager) Stop(context.Context) (localruntime.Snapshot
 		return localruntime.Snapshot{}, m.stopErr
 	}
 	return localruntime.Snapshot{Status: localruntime.StatusStopped}, nil
+}
+
+func (m failingLocalRuntimeManager) ListModels(context.Context) (localruntime.ModelCatalog, error) {
+	if m.listErr != nil {
+		return localruntime.ModelCatalog{}, m.listErr
+	}
+	if m.modelCatalog.Engine == "" {
+		m.modelCatalog.Engine = localruntime.EngineOllama
+	}
+	return m.modelCatalog, nil
+}
+
+func (m failingLocalRuntimeManager) PullModel(_ context.Context, model string) (localruntime.PullResult, error) {
+	if m.pullModelErr != nil {
+		return localruntime.PullResult{}, m.pullModelErr
+	}
+	if m.pullModelResp.Model == "" {
+		m.pullModelResp = localruntime.PullResult{
+			Model:  model,
+			Status: "success",
+			Ready:  true,
+		}
+	}
+	return m.pullModelResp, nil
 }
 
 func (s failingKeychainStore) Get(string) (string, error) {
@@ -144,6 +172,24 @@ func (stubLocalRuntimeManager) Stop(context.Context) (localruntime.Snapshot, err
 	return localruntime.Snapshot{Status: localruntime.StatusStopped}, nil
 }
 
+func (stubLocalRuntimeManager) ListModels(context.Context) (localruntime.ModelCatalog, error) {
+	return localruntime.ModelCatalog{
+		Engine:      localruntime.EngineOllama,
+		Recommended: []string{"llama3.1:8b"},
+		Installed: []localruntime.ModelInfo{
+			{Name: "llama3.1:8b", SizeBytes: 1024},
+		},
+	}, nil
+}
+
+func (stubLocalRuntimeManager) PullModel(_ context.Context, model string) (localruntime.PullResult, error) {
+	return localruntime.PullResult{
+		Model:  model,
+		Status: "success",
+		Ready:  true,
+	}, nil
+}
+
 func TestSettingsServiceLocalRuntimeDependencyDefaultsAndInjection(t *testing.T) {
 	database := openSettingsTestDB(t)
 	kc := keychain.NewMemoryStore()
@@ -205,6 +251,28 @@ func TestSettingsServiceLocalRuntimeLifecycle(t *testing.T) {
 	if stopped.Status != localruntime.StatusStopped {
 		t.Fatalf("expected stop status %q, got %q", localruntime.StatusStopped, stopped.Status)
 	}
+
+	models, err := svc.GetLocalRuntimeModels()
+	if err != nil {
+		t.Fatalf("listing local runtime models: %v", err)
+	}
+	if models.Engine != localruntime.EngineOllama {
+		t.Fatalf("expected model catalog engine %q, got %q", localruntime.EngineOllama, models.Engine)
+	}
+	if len(models.Installed) != 1 {
+		t.Fatalf("expected 1 installed model, got %d", len(models.Installed))
+	}
+
+	pulled, err := svc.PullLocalRuntimeModel("qwen2.5:7b")
+	if err != nil {
+		t.Fatalf("pulling local runtime model: %v", err)
+	}
+	if pulled.Model != "qwen2.5:7b" {
+		t.Fatalf("expected pulled model qwen2.5:7b, got %q", pulled.Model)
+	}
+	if !pulled.Ready {
+		t.Fatal("expected pulled model ready=true")
+	}
 }
 
 func TestSettingsServiceLocalRuntimeErrors(t *testing.T) {
@@ -212,9 +280,11 @@ func TestSettingsServiceLocalRuntimeErrors(t *testing.T) {
 	kc := keychain.NewMemoryStore()
 	reedAdapter := reed.New("")
 	svc := NewSettingsService(database, kc, reedAdapter, failingLocalRuntimeManager{
-		statusErr: errors.New("status failed"),
-		startErr:  errors.New("start failed"),
-		stopErr:   errors.New("stop failed"),
+		statusErr:    errors.New("status failed"),
+		startErr:     errors.New("start failed"),
+		stopErr:      errors.New("stop failed"),
+		listErr:      errors.New("list models failed"),
+		pullModelErr: errors.New("pull model failed"),
 	})
 
 	if _, err := svc.GetLocalRuntimeStatus(); err == nil || !strings.Contains(err.Error(), "getting local runtime status") {
@@ -225,6 +295,15 @@ func TestSettingsServiceLocalRuntimeErrors(t *testing.T) {
 	}
 	if _, err := svc.StopLocalRuntime(); err == nil || !strings.Contains(err.Error(), "stopping local runtime") {
 		t.Fatalf("expected wrapped stop error, got %v", err)
+	}
+	if _, err := svc.GetLocalRuntimeModels(); err == nil || !strings.Contains(err.Error(), "listing local runtime models") {
+		t.Fatalf("expected wrapped list-models error, got %v", err)
+	}
+	if _, err := svc.PullLocalRuntimeModel("llama3.1:8b"); err == nil || !strings.Contains(err.Error(), "pulling local runtime model") {
+		t.Fatalf("expected wrapped pull-model error, got %v", err)
+	}
+	if _, err := svc.PullLocalRuntimeModel("   "); err == nil || !strings.Contains(err.Error(), "local runtime model is required") {
+		t.Fatalf("expected local runtime model validation error, got %v", err)
 	}
 }
 
@@ -401,6 +480,115 @@ func TestOpenAIAPIKeyValidationAndErrors(t *testing.T) {
 	}
 	if err := svc.ClearOpenAIAPIKey(); err == nil {
 		t.Fatal("expected keychain error from ClearOpenAIAPIKey")
+	}
+}
+
+func TestLLMModeDefaultsAndLifecycle(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	mode, err := svc.GetLLMMode()
+	if err != nil {
+		t.Fatalf("getting default llm mode: %v", err)
+	}
+	if mode != defaultLLMMode {
+		t.Fatalf("expected default llm mode %q, got %q", defaultLLMMode, mode)
+	}
+
+	for _, valid := range []string{"cloud", "local", "advanced"} {
+		if err := svc.SetLLMMode(valid); err != nil {
+			t.Fatalf("setting llm mode %q: %v", valid, err)
+		}
+		mode, err = svc.GetLLMMode()
+		if err != nil {
+			t.Fatalf("getting llm mode after set %q: %v", valid, err)
+		}
+		if mode != valid {
+			t.Fatalf("expected llm mode %q, got %q", valid, mode)
+		}
+	}
+
+	if err := svc.SetLLMMode("experimental"); err == nil {
+		t.Fatal("expected validation error for invalid llm mode")
+	}
+}
+
+func TestLocalRuntimeEngineAndModelLifecycle(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	engine, err := svc.GetLocalRuntimeEngine()
+	if err != nil {
+		t.Fatalf("getting default local runtime engine: %v", err)
+	}
+	if engine != localruntime.EngineOllama {
+		t.Fatalf("expected default engine %q, got %q", localruntime.EngineOllama, engine)
+	}
+
+	if err := svc.SetLocalRuntimeEngine(localruntime.EngineOllama); err != nil {
+		t.Fatalf("setting local runtime engine: %v", err)
+	}
+	if err := svc.SetLocalRuntimeEngine("vllm"); err == nil {
+		t.Fatal("expected validation error for unsupported local runtime engine")
+	}
+
+	model, err := svc.GetLocalRuntimeModel()
+	if err != nil {
+		t.Fatalf("getting default local runtime model: %v", err)
+	}
+	if model != defaultRuntimeModel {
+		t.Fatalf("expected default runtime model %q, got %q", defaultRuntimeModel, model)
+	}
+
+	if err := svc.SetLocalRuntimeModel("qwen2.5:7b"); err != nil {
+		t.Fatalf("setting local runtime model: %v", err)
+	}
+	model, err = svc.GetLocalRuntimeModel()
+	if err != nil {
+		t.Fatalf("getting local runtime model after set: %v", err)
+	}
+	if model != "qwen2.5:7b" {
+		t.Fatalf("expected model qwen2.5:7b, got %q", model)
+	}
+
+	if err := svc.SetLocalRuntimeModel("   "); err == nil {
+		t.Fatal("expected validation error for empty local runtime model")
+	}
+}
+
+func TestLLMModeAndLocalRuntimeSettingsDatabaseErrors(t *testing.T) {
+	database := openSettingsTestDB(t)
+	kc := keychain.NewMemoryStore()
+	reedAdapter := reed.New("")
+	svc := NewSettingsService(database, kc, reedAdapter)
+
+	if err := database.Close(); err != nil {
+		t.Fatalf("closing DB: %v", err)
+	}
+
+	if _, err := svc.GetLLMMode(); err == nil {
+		t.Fatal("expected GetLLMMode to fail on closed DB")
+	}
+	if err := svc.SetLLMMode("local"); err == nil {
+		t.Fatal("expected SetLLMMode to fail on closed DB")
+	}
+
+	if _, err := svc.GetLocalRuntimeEngine(); err == nil {
+		t.Fatal("expected GetLocalRuntimeEngine to fail on closed DB")
+	}
+	if err := svc.SetLocalRuntimeEngine(localruntime.EngineOllama); err == nil {
+		t.Fatal("expected SetLocalRuntimeEngine to fail on closed DB")
+	}
+
+	if _, err := svc.GetLocalRuntimeModel(); err == nil {
+		t.Fatal("expected GetLocalRuntimeModel to fail on closed DB")
+	}
+	if err := svc.SetLocalRuntimeModel("llama3.1:8b"); err == nil {
+		t.Fatal("expected SetLocalRuntimeModel to fail on closed DB")
 	}
 }
 

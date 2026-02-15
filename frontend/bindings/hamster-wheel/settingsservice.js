@@ -57,6 +57,15 @@ export function GetLLMBaseURL() {
 }
 
 /**
+ * GetLLMMode returns the configured LLM operation mode.
+ * Empty string falls back to default mode.
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetLLMMode() {
+    return $Call.ByID(1309974512);
+}
+
+/**
  * GetLLMModel returns the configured LLM model.
  * Empty string falls back to default model.
  * @returns {$CancellablePromise<string>}
@@ -75,12 +84,40 @@ export function GetLLMProvider() {
 }
 
 /**
+ * GetLocalRuntimeEngine returns the configured local runtime engine.
+ * Empty string falls back to Ollama.
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetLocalRuntimeEngine() {
+    return $Call.ByID(265433883);
+}
+
+/**
+ * GetLocalRuntimeModel returns the configured local runtime model.
+ * Empty string falls back to a default recommended model.
+ * @returns {$CancellablePromise<string>}
+ */
+export function GetLocalRuntimeModel() {
+    return $Call.ByID(379298746);
+}
+
+/**
+ * GetLocalRuntimeModels returns recommended and installed local runtime models.
+ * @returns {$CancellablePromise<localruntime$0.ModelCatalog>}
+ */
+export function GetLocalRuntimeModels() {
+    return $Call.ByID(1610798443).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType0($result);
+    }));
+}
+
+/**
  * GetLocalRuntimeStatus returns the current local runtime orchestration status.
  * @returns {$CancellablePromise<localruntime$0.Snapshot>}
  */
 export function GetLocalRuntimeStatus() {
     return $Call.ByID(1586804687).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
+        return $$createType1($result);
     }));
 }
 
@@ -108,6 +145,17 @@ export function HasOpenAIAPIKey() {
  */
 export function HasReedAPIKey() {
     return $Call.ByID(3464400619);
+}
+
+/**
+ * PullLocalRuntimeModel pulls a model into local runtime storage.
+ * @param {string} model
+ * @returns {$CancellablePromise<localruntime$0.PullResult>}
+ */
+export function PullLocalRuntimeModel(model) {
+    return $Call.ByID(666476807, model).then(/** @type {($result: any) => any} */(($result) => {
+        return $$createType2($result);
+    }));
 }
 
 /**
@@ -140,6 +188,15 @@ export function SetLLMBaseURL(baseURL) {
 }
 
 /**
+ * SetLLMMode saves the configured LLM operation mode.
+ * @param {string} mode
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetLLMMode(mode) {
+    return $Call.ByID(1196399996, mode);
+}
+
+/**
  * SetLLMModel saves the configured LLM model.
  * @param {string} model
  * @returns {$CancellablePromise<void>}
@@ -155,6 +212,24 @@ export function SetLLMModel(model) {
  */
 export function SetLLMProvider(provider) {
     return $Call.ByID(4197289026, provider);
+}
+
+/**
+ * SetLocalRuntimeEngine saves the configured local runtime engine.
+ * @param {string} engine
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetLocalRuntimeEngine(engine) {
+    return $Call.ByID(2832368751, engine);
+}
+
+/**
+ * SetLocalRuntimeModel saves the configured local runtime model.
+ * @param {string} model
+ * @returns {$CancellablePromise<void>}
+ */
+export function SetLocalRuntimeModel(model) {
+    return $Call.ByID(3098276198, model);
 }
 
 /**
@@ -190,7 +265,7 @@ export function SetTheme(theme) {
  */
 export function StartLocalRuntime() {
     return $Call.ByID(3352722605).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
+        return $$createType1($result);
     }));
 }
 
@@ -200,9 +275,11 @@ export function StartLocalRuntime() {
  */
 export function StopLocalRuntime() {
     return $Call.ByID(2360813809).then(/** @type {($result: any) => any} */(($result) => {
-        return $$createType0($result);
+        return $$createType1($result);
     }));
 }
 
 // Private type creation functions
-const $$createType0 = localruntime$0.Snapshot.createFrom;
+const $$createType0 = localruntime$0.ModelCatalog.createFrom;
+const $$createType1 = localruntime$0.Snapshot.createFrom;
+const $$createType2 = localruntime$0.PullResult.createFrom;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -203,6 +204,67 @@ func TestValidateNotConfigured(t *testing.T) {
 	}
 }
 
+func TestValidateAllowsNoAPIKeyForNonOpenAIHost(t *testing.T) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if got := strings.TrimSpace(r.Header.Get("Authorization")); got != "" {
+				t.Fatalf("expected no Authorization header, got %q", got)
+			}
+			return jsonResponse(http.StatusOK, `{
+				"choices": [{"message": {"content": "{\"ok\":true}"}}],
+				"usage": {"prompt_tokens": 2}
+			}`), nil
+		}),
+	}
+
+	provider := New(Config{
+		APIKey:     "",
+		Model:      "llama3.1:8b",
+		BaseURL:    "http://localhost:11434",
+		HTTPClient: client,
+	})
+
+	if err := provider.Validate(context.Background()); err != nil {
+		t.Fatalf("expected keyless validation for local endpoint to succeed, got %v", err)
+	}
+}
+
+func TestMatchOmitsAuthorizationForKeylessLocalEndpoint(t *testing.T) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			if got := strings.TrimSpace(r.Header.Get("Authorization")); got != "" {
+				t.Fatalf("expected no Authorization header, got %q", got)
+			}
+			if got := r.URL.Path; got != "/v1/chat/completions" {
+				t.Fatalf("expected /v1/chat/completions, got %q", got)
+			}
+			return jsonResponse(http.StatusOK, `{
+				"choices": [{"message": {"content": "{\"score\":0.75,\"summary\":\"Good alignment.\"}"}}],
+				"usage": {"prompt_tokens": 9}
+			}`), nil
+		}),
+	}
+
+	provider := New(Config{
+		APIKey:     "",
+		Model:      "llama3.1:8b",
+		BaseURL:    "http://localhost:11434",
+		HTTPClient: client,
+	})
+
+	result, err := provider.Match(context.Background(), llm.MatchRequest{
+		Query:          "backend go",
+		JobTitle:       "Go Engineer",
+		JobDescription: "Build APIs",
+	})
+	if err != nil {
+		t.Fatalf("matching with keyless local endpoint: %v", err)
+	}
+	if result.Score != 0.75 {
+		t.Fatalf("expected score 0.75, got %.2f", result.Score)
+	}
+}
+
 func TestNewDefaultsAndMetadata(t *testing.T) {
 	provider := New(Config{
 		APIKey: "test-key",
@@ -236,6 +298,27 @@ func TestCheckConfiguredMissingModel(t *testing.T) {
 	}
 	if !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("expected ErrNotConfigured, got %v", err)
+	}
+}
+
+func TestUsesOpenAICloudHost(t *testing.T) {
+	cases := []struct {
+		baseURL string
+		want    bool
+	}{
+		{baseURL: "https://api.openai.com", want: true},
+		{baseURL: "https://api.openai.com/v1", want: true},
+		{baseURL: "https://openai.com", want: true},
+		{baseURL: "https://localhost:11434", want: false},
+		{baseURL: "http://127.0.0.1:1234/v1", want: false},
+		{baseURL: "not-a-url", want: true},
+	}
+
+	for _, tc := range cases {
+		got := usesOpenAICloudHost(tc.baseURL)
+		if got != tc.want {
+			t.Fatalf("usesOpenAICloudHost(%q) expected %v, got %v", tc.baseURL, tc.want, got)
+		}
 	}
 }
 
@@ -486,3 +569,17 @@ func (timeoutNetErr) Timeout() bool   { return true }
 func (timeoutNetErr) Temporary() bool { return true }
 
 var _ net.Error = timeoutNetErr{}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
+func jsonResponse(statusCode int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}

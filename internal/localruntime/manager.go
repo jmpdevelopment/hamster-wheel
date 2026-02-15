@@ -1,7 +1,9 @@
 package localruntime
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -27,18 +29,26 @@ const (
 
 const (
 	defaultBinary              = "ollama"
-	defaultEndpoint            = "http://127.0.0.1:11434"
+	DefaultOllamaEndpoint      = "http://127.0.0.1:11434"
 	defaultHealthPath          = "/api/version"
 	defaultStartupTimeout      = 8 * time.Second
 	defaultStopTimeout         = 3 * time.Second
 	defaultHealthCheckInterval = 250 * time.Millisecond
 	defaultHTTPTimeout         = 1200 * time.Millisecond
+	maxResponseBytes           = 1 << 20 // 1 MiB
 )
 
 var (
 	ErrRuntimeNotInstalled = errors.New("local runtime is not installed")
 	ErrRuntimeStartFailed  = errors.New("local runtime failed to start")
+	ErrRuntimeUnsupported  = errors.New("local runtime feature is unsupported")
 )
+
+var recommendedModels = []string{
+	"llama3.1:8b",
+	"qwen2.5:7b",
+	"mistral:7b",
+}
 
 // Snapshot is the runtime status returned to callers.
 type Snapshot struct {
@@ -51,11 +61,36 @@ type Snapshot struct {
 	CheckedAt    time.Time `json:"checkedAt"`
 }
 
+// ModelInfo describes a model available in the local runtime.
+type ModelInfo struct {
+	Name       string    `json:"name"`
+	Digest     string    `json:"digest,omitempty"`
+	SizeBytes  int64     `json:"sizeBytes,omitempty"`
+	ModifiedAt time.Time `json:"modifiedAt,omitempty"`
+}
+
+// ModelCatalog is the local runtime model inventory returned to callers.
+type ModelCatalog struct {
+	Engine      string      `json:"engine"`
+	Recommended []string    `json:"recommended"`
+	Installed   []ModelInfo `json:"installed"`
+}
+
+// PullResult captures the outcome of a local model pull operation.
+type PullResult struct {
+	Model   string `json:"model"`
+	Status  string `json:"status"`
+	Ready   bool   `json:"ready"`
+	Message string `json:"message,omitempty"`
+}
+
 // Manager is the local runtime orchestration contract.
 type Manager interface {
 	Status(ctx context.Context) (Snapshot, error)
 	Start(ctx context.Context) (Snapshot, error)
 	Stop(ctx context.Context) (Snapshot, error)
+	ListModels(ctx context.Context) (ModelCatalog, error)
+	PullModel(ctx context.Context, model string) (PullResult, error)
 }
 
 // Config controls manager startup and probing behavior.
@@ -116,7 +151,7 @@ func NewOllamaManager(cfg Config) *RuntimeManager {
 	}
 	endpoint := strings.TrimRight(strings.TrimSpace(cfg.Endpoint), "/")
 	if endpoint == "" {
-		endpoint = defaultEndpoint
+		endpoint = DefaultOllamaEndpoint
 	}
 	healthPath := strings.TrimSpace(cfg.HealthPath)
 	if healthPath == "" {
@@ -401,6 +436,161 @@ func (m *RuntimeManager) probe(ctx context.Context) (bool, string) {
 	return false, fmt.Sprintf("runtime health check returned HTTP %d", response.StatusCode)
 }
 
+func (m *RuntimeManager) ListModels(ctx context.Context) (ModelCatalog, error) {
+	catalog := ModelCatalog{
+		Engine:      m.engine,
+		Recommended: append([]string(nil), recommendedModels...),
+		Installed:   []ModelInfo{},
+	}
+
+	installed, err := m.isInstalled()
+	if err != nil {
+		return catalog, fmt.Errorf("checking local runtime installation: %w", err)
+	}
+	if !installed {
+		return catalog, fmt.Errorf("%w: %s", ErrRuntimeNotInstalled, m.binary)
+	}
+
+	requestURL, err := url.Parse(m.endpoint + "/api/tags")
+	if err != nil {
+		return catalog, fmt.Errorf("building model list request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
+	if err != nil {
+		return catalog, fmt.Errorf("creating model list request: %w", err)
+	}
+
+	response, err := m.client.Do(req)
+	if err != nil {
+		return catalog, fmt.Errorf("querying model catalog: %w", err)
+	}
+	defer response.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
+	if err != nil {
+		return catalog, fmt.Errorf("reading model list response: %w", err)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return catalog, fmt.Errorf("model list failed with status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Models []struct {
+			Name       string `json:"name"`
+			Digest     string `json:"digest"`
+			Size       int64  `json:"size"`
+			ModifiedAt string `json:"modified_at"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return catalog, fmt.Errorf("parsing model list response: %w", err)
+	}
+
+	for _, model := range payload.Models {
+		name := strings.TrimSpace(model.Name)
+		if name == "" {
+			continue
+		}
+		info := ModelInfo{
+			Name:      name,
+			Digest:    strings.TrimSpace(model.Digest),
+			SizeBytes: model.Size,
+		}
+		if modified := strings.TrimSpace(model.ModifiedAt); modified != "" {
+			if parsed, parseErr := time.Parse(time.RFC3339Nano, modified); parseErr == nil {
+				info.ModifiedAt = parsed
+			}
+		}
+		catalog.Installed = append(catalog.Installed, info)
+	}
+
+	return catalog, nil
+}
+
+func (m *RuntimeManager) PullModel(ctx context.Context, model string) (PullResult, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return PullResult{}, errors.New("model name is required")
+	}
+
+	installed, err := m.isInstalled()
+	if err != nil {
+		return PullResult{}, fmt.Errorf("checking local runtime installation: %w", err)
+	}
+	if !installed {
+		return PullResult{Model: model, Status: StatusNotInstalled}, fmt.Errorf("%w: %s", ErrRuntimeNotInstalled, m.binary)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"name":   model,
+		"stream": false,
+	})
+	if err != nil {
+		return PullResult{}, fmt.Errorf("encoding pull request: %w", err)
+	}
+
+	requestURL, err := url.Parse(m.endpoint + "/api/pull")
+	if err != nil {
+		return PullResult{}, fmt.Errorf("building model pull request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL.String(), bytes.NewReader(body))
+	if err != nil {
+		return PullResult{}, fmt.Errorf("creating model pull request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	response, err := m.client.Do(req)
+	if err != nil {
+		return PullResult{}, fmt.Errorf("pulling model: %w", err)
+	}
+	defer response.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
+	if err != nil {
+		return PullResult{}, fmt.Errorf("reading model pull response: %w", err)
+	}
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return PullResult{}, fmt.Errorf("model pull failed with status %d", response.StatusCode)
+	}
+
+	var payload struct {
+		Status string `json:"status"`
+		Error  string `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return PullResult{}, fmt.Errorf("parsing model pull response: %w", err)
+	}
+	if strings.TrimSpace(payload.Error) != "" {
+		return PullResult{}, fmt.Errorf("model pull failed: %s", strings.TrimSpace(payload.Error))
+	}
+
+	catalog, listErr := m.ListModels(ctx)
+	ready := false
+	if listErr == nil {
+		for _, installedModel := range catalog.Installed {
+			if installedModel.Name == model {
+				ready = true
+				break
+			}
+		}
+	}
+
+	status := strings.TrimSpace(payload.Status)
+	if status == "" {
+		status = "completed"
+	}
+	result := PullResult{
+		Model:  model,
+		Status: status,
+		Ready:  ready,
+	}
+	if !ready && listErr != nil {
+		result.Message = "Pull completed but readiness could not be confirmed yet."
+	}
+	return result, nil
+}
+
 type noopManager struct{}
 
 func (noopManager) Status(context.Context) (Snapshot, error) {
@@ -428,6 +618,18 @@ func (noopManager) Stop(context.Context) (Snapshot, error) {
 		Message:   "Local runtime orchestration is not configured.",
 		CheckedAt: time.Now().UTC(),
 	}, nil
+}
+
+func (noopManager) ListModels(context.Context) (ModelCatalog, error) {
+	return ModelCatalog{
+		Engine:      "none",
+		Recommended: append([]string(nil), recommendedModels...),
+		Installed:   []ModelInfo{},
+	}, fmt.Errorf("%w: local runtime orchestration is disabled", ErrRuntimeUnsupported)
+}
+
+func (noopManager) PullModel(context.Context, string) (PullResult, error) {
+	return PullResult{}, fmt.Errorf("%w: local runtime orchestration is disabled", ErrRuntimeUnsupported)
 }
 
 type osRunner struct{}

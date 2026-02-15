@@ -63,6 +63,7 @@ func main() {
 	openAIEnvKey := strings.TrimSpace(os.Getenv("OPENAI_API_KEY"))
 	openAIEnvModel := strings.TrimSpace(os.Getenv("OPENAI_MODEL"))
 	openAIEnvBaseURL := strings.TrimSpace(os.Getenv("OPENAI_BASE_URL"))
+	ollamaBaseURL := strings.TrimSpace(os.Getenv("OLLAMA_BASE_URL"))
 
 	// Create the scheduler (default 30 minute interval).
 	// It starts polling when the app service receives ServiceStartup.
@@ -88,6 +89,7 @@ func main() {
 			openAIEnvKey,
 			openAIEnvModel,
 			openAIEnvBaseURL,
+			ollamaBaseURL,
 		),
 		PollInterval: 3 * time.Second,
 		BatchSize:    3,
@@ -100,7 +102,7 @@ func main() {
 	)
 	localRuntimeManager := localruntime.NewOllamaManager(localruntime.Config{
 		Binary:   strings.TrimSpace(os.Getenv("OLLAMA_BINARY")),
-		Endpoint: strings.TrimSpace(os.Getenv("OLLAMA_BASE_URL")),
+		Endpoint: ollamaBaseURL,
 	})
 
 	// Create all services with their dependencies injected.

@@ -40,6 +40,7 @@ func TestMatcherProviderResolverDefaultsToHeuristicWhenUnset(t *testing.T) {
 		"",
 		"",
 		"",
+		"",
 	)
 
 	name, provider, err := resolver(context.Background())
@@ -75,6 +76,7 @@ func TestMatcherProviderResolverBuildsOpenAIProviderFromSettingsAndKeychain(t *t
 		"",
 		"",
 		"",
+		"",
 	)
 
 	name, provider, err := resolver(context.Background())
@@ -86,5 +88,36 @@ func TestMatcherProviderResolverBuildsOpenAIProviderFromSettingsAndKeychain(t *t
 	}
 	if provider == nil || provider.Name() != openai.ProviderName {
 		t.Fatalf("expected openai provider instance, got %+v", provider)
+	}
+}
+
+func TestMatcherProviderResolverBuildsLocalProviderFromModeAndRuntimeSettings(t *testing.T) {
+	database := testResolverDB(t)
+	if err := database.SetSetting(context.Background(), settingLLMMode, "local"); err != nil {
+		t.Fatalf("setting llm mode: %v", err)
+	}
+	if err := database.SetSetting(context.Background(), settingLocalRuntimeModel, "qwen2.5:7b"); err != nil {
+		t.Fatalf("setting local runtime model: %v", err)
+	}
+
+	resolver := newMatcherProviderResolver(
+		database,
+		keychain.NewMemoryStore(),
+		testResolverRegistry(t),
+		"",
+		"",
+		"",
+		"http://localhost:11434",
+	)
+
+	name, provider, err := resolver(context.Background())
+	if err != nil {
+		t.Fatalf("resolving provider: %v", err)
+	}
+	if name != localProviderOllama {
+		t.Fatalf("expected provider label %q, got %q", localProviderOllama, name)
+	}
+	if provider == nil || provider.Name() != openai.ProviderName {
+		t.Fatalf("expected openai provider instance for local mode, got %+v", provider)
 	}
 }

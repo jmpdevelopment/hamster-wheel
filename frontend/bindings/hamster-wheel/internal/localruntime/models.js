@@ -11,6 +11,163 @@ import { Create as $Create } from "@wailsio/runtime";
 import * as time$0 from "../../../time/models.js";
 
 /**
+ * ModelCatalog is the local runtime model inventory returned to callers.
+ */
+export class ModelCatalog {
+    /**
+     * Creates a new ModelCatalog instance.
+     * @param {Partial<ModelCatalog>} [$$source = {}] - The source object to create the ModelCatalog.
+     */
+    constructor($$source = {}) {
+        if (!("engine" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["engine"] = "";
+        }
+        if (!("recommended" in $$source)) {
+            /**
+             * @member
+             * @type {string[]}
+             */
+            this["recommended"] = [];
+        }
+        if (!("installed" in $$source)) {
+            /**
+             * @member
+             * @type {ModelInfo[]}
+             */
+            this["installed"] = [];
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ModelCatalog instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ModelCatalog}
+     */
+    static createFrom($$source = {}) {
+        const $$createField1_0 = $$createType0;
+        const $$createField2_0 = $$createType2;
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        if ("recommended" in $$parsedSource) {
+            $$parsedSource["recommended"] = $$createField1_0($$parsedSource["recommended"]);
+        }
+        if ("installed" in $$parsedSource) {
+            $$parsedSource["installed"] = $$createField2_0($$parsedSource["installed"]);
+        }
+        return new ModelCatalog(/** @type {Partial<ModelCatalog>} */($$parsedSource));
+    }
+}
+
+/**
+ * ModelInfo describes a model available in the local runtime.
+ */
+export class ModelInfo {
+    /**
+     * Creates a new ModelInfo instance.
+     * @param {Partial<ModelInfo>} [$$source = {}] - The source object to create the ModelInfo.
+     */
+    constructor($$source = {}) {
+        if (!("name" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["name"] = "";
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["digest"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {number | undefined}
+             */
+            this["sizeBytes"] = undefined;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {time$0.Time | undefined}
+             */
+            this["modifiedAt"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new ModelInfo instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {ModelInfo}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new ModelInfo(/** @type {Partial<ModelInfo>} */($$parsedSource));
+    }
+}
+
+/**
+ * PullResult captures the outcome of a local model pull operation.
+ */
+export class PullResult {
+    /**
+     * Creates a new PullResult instance.
+     * @param {Partial<PullResult>} [$$source = {}] - The source object to create the PullResult.
+     */
+    constructor($$source = {}) {
+        if (!("model" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["model"] = "";
+        }
+        if (!("status" in $$source)) {
+            /**
+             * @member
+             * @type {string}
+             */
+            this["status"] = "";
+        }
+        if (!("ready" in $$source)) {
+            /**
+             * @member
+             * @type {boolean}
+             */
+            this["ready"] = false;
+        }
+        if (/** @type {any} */(false)) {
+            /**
+             * @member
+             * @type {string | undefined}
+             */
+            this["message"] = undefined;
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new PullResult instance from a string or object.
+     * @param {any} [$$source = {}]
+     * @returns {PullResult}
+     */
+    static createFrom($$source = {}) {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new PullResult(/** @type {Partial<PullResult>} */($$parsedSource));
+    }
+}
+
+/**
  * Snapshot is the runtime status returned to callers.
  */
 export class Snapshot {
@@ -82,3 +239,8 @@ export class Snapshot {
         return new Snapshot(/** @type {Partial<Snapshot>} */($$parsedSource));
     }
 }
+
+// Private type creation functions
+const $$createType0 = $Create.Array($Create.Any);
+const $$createType1 = ModelInfo.createFrom;
+const $$createType2 = $Create.Array($$createType1);

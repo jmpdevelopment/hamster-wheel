@@ -10,6 +10,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -200,7 +201,9 @@ func (p *Provider) chatCompletion(ctx context.Context, payload chatCompletionReq
 	if err != nil {
 		return "", 0, fmt.Errorf("creating request: %w", err)
 	}
-	request.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if key := strings.TrimSpace(p.apiKey); key != "" {
+		request.Header.Set("Authorization", "Bearer "+key)
+	}
 	request.Header.Set("Content-Type", "application/json")
 
 	response, err := p.httpClient.Do(request)
@@ -236,13 +239,33 @@ func (p *Provider) chatCompletion(ctx context.Context, payload chatCompletionReq
 }
 
 func (p *Provider) checkConfigured() error {
-	if strings.TrimSpace(p.apiKey) == "" {
-		return fmt.Errorf("%w: missing API key", ErrNotConfigured)
-	}
 	if strings.TrimSpace(p.model) == "" {
 		return fmt.Errorf("%w: missing model", ErrNotConfigured)
 	}
+
+	// Cloud OpenAI endpoints require API-key auth, while many local/self-hosted
+	// OpenAI-compatible runtimes intentionally do not.
+	if strings.TrimSpace(p.apiKey) == "" && usesOpenAICloudHost(p.baseURL) {
+		return fmt.Errorf("%w: missing API key", ErrNotConfigured)
+	}
 	return nil
+}
+
+func usesOpenAICloudHost(baseURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return true
+	}
+	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
+	if host == "" {
+		return true
+	}
+	switch host {
+	case "api.openai.com", "openai.com", "www.openai.com":
+		return true
+	default:
+		return false
+	}
 }
 
 func classifyTransportError(ctx context.Context, err error) error {

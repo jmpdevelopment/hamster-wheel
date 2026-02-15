@@ -11,8 +11,11 @@ import (
 	"hamster-wheel/internal/llm"
 	"hamster-wheel/internal/llm/heuristic"
 	"hamster-wheel/internal/llm/openai"
+	"hamster-wheel/internal/localruntime"
 	"hamster-wheel/internal/matcher"
 )
+
+const localProviderOllama = "local_ollama"
 
 func newMatcherProviderResolver(
 	database *db.DB,
@@ -21,12 +24,43 @@ func newMatcherProviderResolver(
 	envOpenAIKey string,
 	envOpenAIModel string,
 	envOpenAIBaseURL string,
+	envOllamaBaseURL string,
 ) matcher.ProviderResolver {
 	envOpenAIKey = strings.TrimSpace(envOpenAIKey)
 	envOpenAIModel = strings.TrimSpace(envOpenAIModel)
 	envOpenAIBaseURL = strings.TrimSpace(envOpenAIBaseURL)
+	envOllamaBaseURL = strings.TrimSpace(envOllamaBaseURL)
+	if envOllamaBaseURL == "" {
+		envOllamaBaseURL = localruntime.DefaultOllamaEndpoint
+	}
 
 	return func(ctx context.Context) (string, llm.Provider, error) {
+		mode, err := database.GetSetting(ctx, settingLLMMode)
+		if err != nil {
+			return "", nil, fmt.Errorf("loading llm mode setting: %w", err)
+		}
+		mode = strings.TrimSpace(mode)
+		if mode == "" {
+			mode = defaultLLMMode
+		}
+
+		if mode == "local" {
+			localModel, err := database.GetSetting(ctx, settingLocalRuntimeModel)
+			if err != nil {
+				return localProviderOllama, nil, fmt.Errorf("loading local runtime model setting: %w", err)
+			}
+			localModel = strings.TrimSpace(localModel)
+			if localModel == "" {
+				localModel = defaultRuntimeModel
+			}
+
+			return localProviderOllama, openai.New(openai.Config{
+				APIKey:  "",
+				Model:   localModel,
+				BaseURL: envOllamaBaseURL,
+			}), nil
+		}
+
 		providerName, err := database.GetSetting(ctx, settingLLMProvider)
 		if err != nil {
 			return "", nil, fmt.Errorf("loading llm provider setting: %w", err)

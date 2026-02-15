@@ -16,17 +16,22 @@ import (
 )
 
 const (
-	settingReedAPIKey        = "reed_api_key"
-	settingOpenAIAPIKey      = "openai_api_key"
-	settingTheme             = "theme"
-	settingKeyboardShortcuts = "keyboard_shortcuts"
-	settingLLMProvider       = "llm_provider"
-	settingLLMModel          = "llm_model"
-	settingLLMBaseURL        = "llm_base_url"
-	settingCVPath            = "cv_path"
+	settingReedAPIKey         = "reed_api_key"
+	settingOpenAIAPIKey       = "openai_api_key"
+	settingTheme              = "theme"
+	settingKeyboardShortcuts  = "keyboard_shortcuts"
+	settingLLMMode            = "llm_mode"
+	settingLLMProvider        = "llm_provider"
+	settingLLMModel           = "llm_model"
+	settingLLMBaseURL         = "llm_base_url"
+	settingLocalRuntimeEngine = "local_runtime_engine"
+	settingLocalRuntimeModel  = "local_runtime_model"
+	settingCVPath             = "cv_path"
 
-	defaultLLMProvider = "openai"
-	defaultLLMModel    = "gpt-4o-mini"
+	defaultLLMProvider  = "openai"
+	defaultLLMModel     = "gpt-4o-mini"
+	defaultLLMMode      = "cloud"
+	defaultRuntimeModel = "llama3.1:8b"
 )
 
 // SettingsService handles application settings operations exposed to the frontend.
@@ -172,6 +177,35 @@ func (s *SettingsService) SetKeyboardShortcuts(enabled string) error {
 	return nil
 }
 
+// GetLLMMode returns the configured LLM operation mode.
+// Empty string falls back to default mode.
+func (s *SettingsService) GetLLMMode() (string, error) {
+	mode, err := s.db.GetSetting(context.Background(), settingLLMMode)
+	if err != nil {
+		return "", fmt.Errorf("getting llm mode setting: %w", err)
+	}
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return defaultLLMMode, nil
+	}
+	return mode, nil
+}
+
+// SetLLMMode saves the configured LLM operation mode.
+func (s *SettingsService) SetLLMMode(mode string) error {
+	mode = strings.TrimSpace(mode)
+	switch mode {
+	case "cloud", "local", "advanced":
+	default:
+		return fmt.Errorf("invalid llm mode %q: must be cloud, local, or advanced", mode)
+	}
+	if err := s.db.SetSetting(context.Background(), settingLLMMode, mode); err != nil {
+		return fmt.Errorf("setting llm mode: %w", err)
+	}
+	slog.Info("llm mode updated", "mode", mode)
+	return nil
+}
+
 // GetLLMProvider returns the stored LLM provider ("openai" or "heuristic_v1").
 // Empty string falls back to default provider.
 func (s *SettingsService) GetLLMProvider() (string, error) {
@@ -256,6 +290,60 @@ func (s *SettingsService) SetLLMBaseURL(baseURL string) error {
 	return nil
 }
 
+// GetLocalRuntimeEngine returns the configured local runtime engine.
+// Empty string falls back to Ollama.
+func (s *SettingsService) GetLocalRuntimeEngine() (string, error) {
+	engine, err := s.db.GetSetting(context.Background(), settingLocalRuntimeEngine)
+	if err != nil {
+		return "", fmt.Errorf("getting local runtime engine setting: %w", err)
+	}
+	engine = strings.TrimSpace(engine)
+	if engine == "" {
+		return localruntime.EngineOllama, nil
+	}
+	return engine, nil
+}
+
+// SetLocalRuntimeEngine saves the configured local runtime engine.
+func (s *SettingsService) SetLocalRuntimeEngine(engine string) error {
+	engine = strings.TrimSpace(engine)
+	if engine != localruntime.EngineOllama {
+		return fmt.Errorf("invalid local runtime engine %q: must be %s", engine, localruntime.EngineOllama)
+	}
+	if err := s.db.SetSetting(context.Background(), settingLocalRuntimeEngine, engine); err != nil {
+		return fmt.Errorf("setting local runtime engine: %w", err)
+	}
+	slog.Info("local runtime engine updated", "engine", engine)
+	return nil
+}
+
+// GetLocalRuntimeModel returns the configured local runtime model.
+// Empty string falls back to a default recommended model.
+func (s *SettingsService) GetLocalRuntimeModel() (string, error) {
+	model, err := s.db.GetSetting(context.Background(), settingLocalRuntimeModel)
+	if err != nil {
+		return "", fmt.Errorf("getting local runtime model setting: %w", err)
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return defaultRuntimeModel, nil
+	}
+	return model, nil
+}
+
+// SetLocalRuntimeModel saves the configured local runtime model.
+func (s *SettingsService) SetLocalRuntimeModel(model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return errors.New("local runtime model is required")
+	}
+	if err := s.db.SetSetting(context.Background(), settingLocalRuntimeModel, model); err != nil {
+		return fmt.Errorf("setting local runtime model: %w", err)
+	}
+	slog.Info("local runtime model updated", "model", model)
+	return nil
+}
+
 // GetCVPath returns the configured CV file path used for matching context.
 func (s *SettingsService) GetCVPath() (string, error) {
 	cvPath, err := s.db.GetSetting(context.Background(), settingCVPath)
@@ -289,6 +377,28 @@ func (s *SettingsService) GetLocalRuntimeStatus() (localruntime.Snapshot, error)
 		return localruntime.Snapshot{}, fmt.Errorf("getting local runtime status: %w", err)
 	}
 	return snapshot, nil
+}
+
+// GetLocalRuntimeModels returns recommended and installed local runtime models.
+func (s *SettingsService) GetLocalRuntimeModels() (localruntime.ModelCatalog, error) {
+	catalog, err := s.localRuntime.ListModels(context.Background())
+	if err != nil {
+		return localruntime.ModelCatalog{}, fmt.Errorf("listing local runtime models: %w", err)
+	}
+	return catalog, nil
+}
+
+// PullLocalRuntimeModel pulls a model into local runtime storage.
+func (s *SettingsService) PullLocalRuntimeModel(model string) (localruntime.PullResult, error) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return localruntime.PullResult{}, errors.New("local runtime model is required")
+	}
+	result, err := s.localRuntime.PullModel(context.Background(), model)
+	if err != nil {
+		return localruntime.PullResult{}, fmt.Errorf("pulling local runtime model %q: %w", model, err)
+	}
+	return result, nil
 }
 
 // StartLocalRuntime starts the configured local runtime and returns current status.
