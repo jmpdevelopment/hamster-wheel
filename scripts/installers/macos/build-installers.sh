@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
-APP_BUNDLE_PATH="${1:-${REPO_ROOT}/bin/Hamster Wheel.app}"
+APP_BUNDLE_PATH="${1:-${REPO_ROOT}/bin/hamster-wheel.app}"
 VERSION="${2:-0.1.0}"
 OUTPUT_DIR="${3:-${REPO_ROOT}/dist/installers/macos}"
 
@@ -14,7 +14,7 @@ PKG_SIGN_IDENTITY="${PKG_SIGN_IDENTITY:-}"
 
 if [[ ! -d "${APP_BUNDLE_PATH}" ]]; then
   echo "App bundle not found: ${APP_BUNDLE_PATH}" >&2
-  echo "Build it first (for example: wails3 build -platform darwin/universal)." >&2
+  echo "Build it first (for example: cd darwin && wails3 task package:universal)." >&2
   exit 1
 fi
 

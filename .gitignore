@@ -1,5 +1,8 @@
 # Build output
 build/bin/
+build/darwin/icons.icns
+bin/hamster-wheel
+bin/*.app/
 
 # Frontend dependencies
 frontend/node_modules/
@@ -45,3 +48,17 @@ secrets/
 
 # Claude Code local configuration (project-specific model settings)
 .claude/
+
+# Wails generated task cache and optional platform scaffolding
+.task/
+android/
+ios/
+linux/
+docker/
+appicon.icon/
+appicon.png
+Taskfile.yml
+build/Taskfile.yml
+config.yml
+darwin/
+windows/
