@@ -52,7 +52,7 @@ describe("useJobSearch", () => {
       fakeJob("1", "Go Dev", { filterId: "f1" }),
       fakeJob("2", "React Dev", { filterId: "f2" }),
     ];
-    const { result } = renderHook(() => useJobSearch(jobs, "f1"));
+    const { result } = renderHook(() => useJobSearch(jobs, ["f1"]));
     expect(result.current.filteredJobs).toHaveLength(1);
     expect(result.current.filteredJobs[0].Title).toBe("Go Dev");
   });
@@ -208,7 +208,7 @@ describe("useJobSearch", () => {
       fakeJob("2", "React Dev", { filterId: "f2" }),
       fakeJob("3", "Go Engineer", { filterId: "f2" }),
     ];
-    const { result } = renderHook(() => useJobSearch(jobs, "f2"));
+    const { result } = renderHook(() => useJobSearch(jobs, ["f2"]));
 
     act(() => {
       result.current.setSearchTerm("go");
@@ -321,7 +321,7 @@ describe("useJobSearch", () => {
       fakeJob("1", "Go Dev", { filterId: "f1" }),
       fakeJob("2", "React Dev", { filterId: "f1" }),
     ];
-    const { result } = renderHook(() => useJobSearch(jobs, "f1"));
+    const { result } = renderHook(() => useJobSearch(jobs, ["f1"]));
 
     act(() => {
       result.current.setSearchTerm("go");

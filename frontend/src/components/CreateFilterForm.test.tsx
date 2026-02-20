@@ -10,7 +10,8 @@ describe("CreateFilterForm", () => {
     expect(screen.getByLabelText("Filter name")).toBeInTheDocument();
     expect(screen.getByLabelText("Keywords")).toBeInTheDocument();
     expect(screen.getByLabelText("Location")).toBeInTheDocument();
-    expect(screen.getByLabelText("Source")).toBeInTheDocument();
+    expect(screen.getByLabelText(/reed uk/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/adzuna uk/i)).toBeInTheDocument();
   });
 
   it("submit button is disabled when name is empty", () => {
@@ -37,6 +38,16 @@ describe("CreateFilterForm", () => {
     expect(button).toBeEnabled();
   });
 
+  it("submit button is disabled when no sources are selected", async () => {
+    render(<CreateFilterForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("Filter name"), "My Filter");
+    await userEvent.type(screen.getByLabelText("Keywords"), "react developer");
+    await userEvent.click(screen.getByLabelText(/reed uk/i));
+
+    expect(screen.getByRole("button", { name: /create/i })).toBeDisabled();
+  });
+
   it("calls onSubmit with trimmed values", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<CreateFilterForm onSubmit={onSubmit} onCancel={vi.fn()} />);
@@ -50,7 +61,7 @@ describe("CreateFilterForm", () => {
       "My Filter",
       "react",
       "London",
-      "reed_uk"
+      ["reed_uk"]
     );
   });
 
@@ -74,9 +85,9 @@ describe("CreateFilterForm", () => {
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
-  it("shows source as reed_uk", () => {
+  it("shows source list as reed_uk by default", () => {
     render(<CreateFilterForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
-    expect(screen.getByText(/^Source:\s*reed_uk$/)).toBeInTheDocument();
+    expect(screen.getByText(/^Sources:\s*reed_uk$/)).toBeInTheDocument();
     expect(
       screen.queryByText(
         "Adzuna provides a description snippet, not the full job ad. For AI matching, we include the snippet and job URL in the prompt when available."
@@ -84,27 +95,27 @@ describe("CreateFilterForm", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("submits selected adzuna source", async () => {
+  it("submits selected adzuna + reed sources", async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(<CreateFilterForm onSubmit={onSubmit} onCancel={vi.fn()} />);
 
     await userEvent.type(screen.getByLabelText("Filter name"), "Adzuna Filter");
     await userEvent.type(screen.getByLabelText("Keywords"), "go");
-    await userEvent.selectOptions(screen.getByLabelText("Source"), "adzuna_gb");
+    await userEvent.click(screen.getByLabelText(/adzuna uk/i));
     await userEvent.click(screen.getByRole("button", { name: /create/i }));
 
     expect(onSubmit).toHaveBeenCalledWith(
       "Adzuna Filter",
       "go",
       "",
-      "adzuna_gb"
+      ["reed_uk", "adzuna_gb"]
     );
   });
 
   it("shows snippet notice when adzuna source is selected", async () => {
     render(<CreateFilterForm onSubmit={vi.fn()} onCancel={vi.fn()} />);
 
-    await userEvent.selectOptions(screen.getByLabelText("Source"), "adzuna_gb");
+    await userEvent.click(screen.getByLabelText(/adzuna uk/i));
 
     expect(
       screen.getByText(

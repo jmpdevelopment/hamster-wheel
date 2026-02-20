@@ -4,24 +4,37 @@ import { describe, it, expect, vi } from "vitest";
 import { FilterPanel } from "./FilterPanel";
 
 const fakeFilter = (id: string, name: string, enabled = true) => ({
-  ID: id,
+  ID: `group-${id}`,
   Name: name,
   Keywords: "go developer",
   Location: "London",
-  Source: "reed_uk",
+  Sources: ["reed_uk"],
+  FilterIDs: [id],
+  Filters: [
+    {
+      ID: id,
+      Name: name,
+      Keywords: "go developer",
+      Location: "London",
+      Source: "reed_uk",
+      Enabled: enabled,
+      CreatedAt: "2026-02-08T10:00:00Z",
+      UpdatedAt: "2026-02-08T10:00:00Z",
+    },
+  ],
   Enabled: enabled,
-  CreatedAt: "2026-02-08T10:00:00Z",
-  UpdatedAt: "2026-02-08T10:00:00Z",
+  AllEnabled: enabled,
+  EnabledSourceCount: enabled ? 1 : 0,
 });
 
 const defaultProps = {
   filters: [fakeFilter("f1", "Backend"), fakeFilter("f2", "Frontend", false)],
-  jobCountsByFilterId: { f1: 12, f2: 4 },
+  jobCountsByFilterId: { "group-f1": 12, "group-f2": 4 },
   loading: false,
   onCreateFilter: vi.fn().mockResolvedValue(undefined),
   onToggleFilter: vi.fn().mockResolvedValue(undefined),
   onDeleteFilter: vi.fn().mockResolvedValue(undefined) as (
-    id: string,
+    filter: ReturnType<typeof fakeFilter>,
     deleteAssociatedJobs: boolean
   ) => Promise<void>,
 };

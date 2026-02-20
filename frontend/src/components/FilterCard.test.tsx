@@ -4,14 +4,27 @@ import { describe, it, expect, vi } from "vitest";
 import { FilterCard } from "./FilterCard";
 
 const fakeFilter = (overrides = {}) => ({
-  ID: "f1",
+  ID: "group-f1",
   Name: "Backend London",
   Keywords: "go developer",
   Location: "London",
-  Source: "reed_uk",
+  Sources: ["reed_uk"],
+  FilterIDs: ["f1"],
+  Filters: [
+    {
+      ID: "f1",
+      Name: "Backend London",
+      Keywords: "go developer",
+      Location: "London",
+      Source: "reed_uk",
+      Enabled: true,
+      CreatedAt: "2026-02-08T10:00:00Z",
+      UpdatedAt: "2026-02-08T10:00:00Z",
+    },
+  ],
   Enabled: true,
-  CreatedAt: "2026-02-08T10:00:00Z",
-  UpdatedAt: "2026-02-08T10:00:00Z",
+  AllEnabled: true,
+  EnabledSourceCount: 1,
   ...overrides,
 });
 
@@ -28,7 +41,7 @@ describe("FilterCard", () => {
 
     expect(screen.getByText("Backend London")).toBeInTheDocument();
     expect(screen.getByText(/go developer/)).toBeInTheDocument();
-    expect(screen.getByText("reed_uk")).toBeInTheDocument();
+    expect(screen.getByText(/reed_uk/)).toBeInTheDocument();
   });
 
   it("shows location with separator", () => {
@@ -47,7 +60,7 @@ describe("FilterCard", () => {
   it("shows ON when enabled", () => {
     render(
       <FilterCard
-        filter={fakeFilter({ Enabled: true })}
+        filter={fakeFilter({ Enabled: true, AllEnabled: true, EnabledSourceCount: 1 })}
         associatedJobCount={0}
         onToggle={async () => {}}
         onDelete={async () => {}}
@@ -60,7 +73,7 @@ describe("FilterCard", () => {
   it("shows OFF when disabled", () => {
     render(
       <FilterCard
-        filter={fakeFilter({ Enabled: false })}
+        filter={fakeFilter({ Enabled: false, AllEnabled: false, EnabledSourceCount: 0 })}
         associatedJobCount={0}
         onToggle={async () => {}}
         onDelete={async () => {}}

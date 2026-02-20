@@ -19,6 +19,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Toast } from "./components/Toast";
 import { ShortcutsHelp } from "./components/ShortcutsHelp";
 import { useTheme } from "./hooks/useTheme";
+import { FilterGroup, groupFilters } from "./lib/filterGroups";
 
 function App() {
   const jobs = useJobs();
@@ -39,6 +40,10 @@ function App() {
     refreshFilters: filters.refresh,
     setAppError,
   });
+  const filterGroups = useMemo(
+    () => groupFilters(filters.filters),
+    [filters.filters]
+  );
 
   // Fetch keyboard shortcuts setting on mount.
   useEffect(() => {
@@ -122,24 +127,17 @@ function App() {
   };
 
   const handleToggleFilter = useCallback(
-    async (
-      filter: {
-        ID: string;
-        Name: string;
-        Keywords: string;
-        Location: string;
-        Source: string;
-      },
-      enabled: boolean
-    ) => {
-      await filters.updateFilter(
-        filter.ID,
-        filter.Name,
-        filter.Keywords,
-        filter.Location,
-        filter.Source,
-        enabled
-      );
+    async (filterGroup: FilterGroup, enabled: boolean) => {
+      for (const filter of filterGroup.Filters) {
+        await filters.updateFilter(
+          filter.ID,
+          filter.Name,
+          filter.Keywords,
+          filter.Location,
+          filter.Source,
+          enabled
+        );
+      }
     },
     [filters]
   );
@@ -192,6 +190,16 @@ function App() {
     }
     return counts;
   }, [jobs.jobs]);
+  const jobCountsByFilterGroupId = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const filterGroup of filterGroups) {
+      counts[filterGroup.ID] = filterGroup.FilterIDs.reduce(
+        (sum, filterID) => sum + (jobCountsByFilterId[filterID] ?? 0),
+        0
+      );
+    }
+    return counts;
+  }, [filterGroups, jobCountsByFilterId]);
 
   const handleSelectJob = useCallback(
     (id: string | null) => {
@@ -237,8 +245,8 @@ function App() {
     onFocusSearch: () => searchInputRef.current?.focus(),
     isPolling: polling.isPolling,
     canPoll:
-      filters.filters.length > 0 &&
-      filters.filters.some((f) => f.Enabled),
+      filterGroups.length > 0 &&
+      filterGroups.some((f) => f.Enabled),
   });
 
   return (
@@ -248,8 +256,8 @@ function App() {
         isPolling={polling.isPolling}
         pollingPaused={polling.pollingPaused}
         nextPollAt={polling.nextPollAt}
-        hasFilters={filters.filters.length > 0}
-        hasEnabledFilters={filters.filters.some((f) => f.Enabled)}
+        hasFilters={filterGroups.length > 0}
+        hasEnabledFilters={filterGroups.some((f) => f.Enabled)}
         onOpenSettings={() => {
           if (!setupWizardOpen) {
             setSettingsOpen(true);
@@ -262,21 +270,44 @@ function App() {
       <div className="flex flex-1 overflow-hidden relative">
         {/* Left: Filters */}
         <FilterPanel
-          filters={filters.filters}
-          jobCountsByFilterId={jobCountsByFilterId}
+          filters={filterGroups}
+          jobCountsByFilterId={jobCountsByFilterGroupId}
           loading={filters.loading}
-          onCreateFilter={async (name, keywords, location, source) => {
-            await filters.createFilter(name, keywords, location, source);
+          onCreateFilter={async (name, keywords, location, sources) => {
+            const createdFilterIDs: string[] = [];
+            try {
+              for (const source of sources) {
+                const id = await filters.createFilter(
+                  name,
+                  keywords,
+                  location,
+                  source
+                );
+                createdFilterIDs.push(id);
+              }
+            } catch (err: unknown) {
+              for (const id of createdFilterIDs) {
+                await filters.deleteFilter(id).catch(() => {
+                  // Hook tracks any rollback failures through error state.
+                });
+              }
+              throw err;
+            }
           }}
           onToggleFilter={handleToggleFilter}
-          onDeleteFilter={async (id, deleteAssociatedJobs) => {
+          onDeleteFilter={async (filterGroup, deleteAssociatedJobs) => {
+            const filterIDSet = new Set(filterGroup.FilterIDs);
             if (deleteAssociatedJobs) {
               const associatedJobIDs = jobs.jobs
-                .filter((job) => job.FilterID === id)
+                .filter(
+                  (job) => job.FilterID !== null && filterIDSet.has(job.FilterID)
+                )
                 .map((job) => job.ID);
               await handleDeleteJobs(associatedJobIDs);
             }
-            await filters.deleteFilter(id);
+            for (const filterID of filterGroup.FilterIDs) {
+              await filters.deleteFilter(filterID);
+            }
           }}
         />
 
@@ -284,7 +315,8 @@ function App() {
         <div className="flex-1 min-w-0 border-r border-hw-border">
           <JobList
             jobs={jobs.jobs}
-            filters={filters.filters}
+            filters={filterGroups}
+            filtersLoading={filters.loading}
             loading={jobs.loading}
             selectedJobId={selectedJobId}
             onSelectJob={(id) => handleSelectJob(id)}

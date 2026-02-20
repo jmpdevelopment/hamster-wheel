@@ -49,19 +49,33 @@ const fakeJob = (
 });
 
 const fakeFilter = (id: string, name: string) => ({
-  ID: id,
+  ID: `group-${id}`,
   Name: name,
   Keywords: "kw",
   Location: "loc",
-  Source: "reed_uk",
+  Sources: ["reed_uk"],
+  FilterIDs: [id],
+  Filters: [
+    {
+      ID: id,
+      Name: name,
+      Keywords: "kw",
+      Location: "loc",
+      Source: "reed_uk",
+      Enabled: true,
+      CreatedAt: "2026-02-08T10:00:00Z",
+      UpdatedAt: "2026-02-08T10:00:00Z",
+    },
+  ],
   Enabled: true,
-  CreatedAt: "2026-02-08T10:00:00Z",
-  UpdatedAt: "2026-02-08T10:00:00Z",
+  AllEnabled: true,
+  EnabledSourceCount: 1,
 });
 
 const defaultProps = {
   jobs: [fakeJob("j1", "Go Dev"), fakeJob("j2", "React Dev", "f2")],
   filters: [fakeFilter("f1", "Backend"), fakeFilter("f2", "Frontend")],
+  filtersLoading: false,
   loading: false,
   selectedJobId: null,
   onSelectJob: vi.fn(),
@@ -135,8 +149,8 @@ describe("JobList", () => {
     const dropdown = screen.getByRole("combobox", {
       name: /filter jobs by search filter/i,
     });
-    await userEvent.selectOptions(dropdown, "f1");
-    expect(onFilterChange).toHaveBeenCalledWith("f1");
+    await userEvent.selectOptions(dropdown, "group-f1");
+    expect(onFilterChange).toHaveBeenCalledWith("group-f1");
   });
 
   it("loads persisted job list preferences on mount", async () => {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "./Button";
 import { Input } from "./Input";
 import {
@@ -12,7 +12,7 @@ interface CreateFilterFormProps {
     name: string,
     keywords: string,
     location: string,
-    source: string
+    sources: string[]
   ) => Promise<void>;
   onCancel: () => void;
 }
@@ -21,11 +21,37 @@ export function CreateFilterForm({ onSubmit, onCancel }: CreateFilterFormProps) 
   const [name, setName] = useState("");
   const [keywords, setKeywords] = useState("");
   const [location, setLocation] = useState("");
-  const [source, setSource] = useState(REED_SOURCE);
+  const [selectedSources, setSelectedSources] = useState<string[]>([
+    REED_SOURCE,
+  ]);
   const [submitting, setSubmitting] = useState(false);
-  const sourceNotice = sourceDescriptionNotice(source);
+  const sourceOptions = listSourceOptions();
+  const sourceNotices = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          selectedSources
+            .map((source) => sourceDescriptionNotice(source))
+            .filter((notice) => notice !== "")
+        )
+      ),
+    [selectedSources]
+  );
 
-  const canSubmit = name.trim() !== "" && keywords.trim() !== "" && !submitting;
+  const canSubmit =
+    name.trim() !== "" &&
+    keywords.trim() !== "" &&
+    selectedSources.length > 0 &&
+    !submitting;
+
+  const handleToggleSource = (source: string, checked: boolean) => {
+    setSelectedSources((previous) => {
+      if (checked) {
+        return previous.includes(source) ? previous : [...previous, source];
+      }
+      return previous.filter((selectedSource) => selectedSource !== source);
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +59,12 @@ export function CreateFilterForm({ onSubmit, onCancel }: CreateFilterFormProps) 
 
     setSubmitting(true);
     try {
-      await onSubmit(name.trim(), keywords.trim(), location.trim(), source);
+      await onSubmit(
+        name.trim(),
+        keywords.trim(),
+        location.trim(),
+        selectedSources
+      );
       // Reset form on success.
       setName("");
       setKeywords("");
@@ -71,29 +102,37 @@ export function CreateFilterForm({ onSubmit, onCancel }: CreateFilterFormProps) 
         onChange={(e) => setLocation(e.target.value)}
         aria-label="Location"
       />
-      <label className="block text-xs text-hw-text-muted">
-        Source
-        <select
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-          className="mt-1 w-full rounded bg-hw-bg border border-hw-border text-hw-text text-sm px-2 py-1.5 focus:outline-none focus:border-hw-accent"
-          aria-label="Source"
-        >
-          {listSourceOptions().map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
+      <fieldset className="space-y-1">
+        <legend className="text-xs text-hw-text-muted">Sources</legend>
+        <div className="space-y-1 rounded border border-hw-border bg-hw-bg px-2 py-2">
+          {sourceOptions.map((option) => (
+            <label
+              key={option.value}
+              className="flex items-center gap-2 text-sm text-hw-text"
+            >
+              <input
+                type="checkbox"
+                checked={selectedSources.includes(option.value)}
+                onChange={(event) =>
+                  handleToggleSource(option.value, event.target.checked)
+                }
+                className="h-4 w-4 rounded border-hw-border bg-hw-bg text-hw-accent focus:ring-hw-accent"
+                aria-label={option.label}
+              />
+              <span>{option.label}</span>
+            </label>
           ))}
-        </select>
-      </label>
-      <div className="text-xs text-hw-text-muted">
-        Source: {source}
-      </div>
-      {sourceNotice && (
-        <div className="text-xs text-hw-text-muted">
-          {sourceNotice}
         </div>
-      )}
+      </fieldset>
+      <div className="text-xs text-hw-text-muted">
+        Sources:{" "}
+        {selectedSources.length > 0 ? selectedSources.join(", ") : "None"}
+      </div>
+      {sourceNotices.map((notice) => (
+        <div key={notice} className="text-xs text-hw-text-muted">
+          {notice}
+        </div>
+      ))}
       <div className="flex gap-2">
         <Button
           variant="primary"

@@ -1,22 +1,22 @@
 import { useState } from "react";
-import { SearchFilter } from "../../bindings/hamster-wheel/internal/db/models";
+import { FilterGroup } from "../lib/filterGroups";
 import { FilterCard } from "./FilterCard";
 import { CreateFilterForm } from "./CreateFilterForm";
 import { EmptyState } from "./EmptyState";
 
 interface FilterPanelProps {
-  filters: SearchFilter[];
+  filters: FilterGroup[];
   jobCountsByFilterId: Record<string, number>;
   loading: boolean;
   onCreateFilter: (
     name: string,
     keywords: string,
     location: string,
-    source: string
+    sources: string[]
   ) => Promise<void>;
-  onToggleFilter: (filter: SearchFilter, enabled: boolean) => Promise<void>;
+  onToggleFilter: (filter: FilterGroup, enabled: boolean) => Promise<void>;
   onDeleteFilter: (
-    id: string,
+    filter: FilterGroup,
     deleteAssociatedJobs: boolean
   ) => Promise<void>;
 }
@@ -35,9 +35,9 @@ export function FilterPanel({
     name: string,
     keywords: string,
     location: string,
-    source: string
+    sources: string[]
   ) => {
-    await onCreateFilter(name, keywords, location, source);
+    await onCreateFilter(name, keywords, location, sources);
     setShowForm(false);
   };
 
@@ -81,7 +81,7 @@ export function FilterPanel({
               associatedJobCount={jobCountsByFilterId[filter.ID] ?? 0}
               onToggle={(enabled) => onToggleFilter(filter, enabled)}
               onDelete={(deleteAssociatedJobs) =>
-                onDeleteFilter(filter.ID, deleteAssociatedJobs)
+                onDeleteFilter(filter, deleteAssociatedJobs)
               }
             />
           ))

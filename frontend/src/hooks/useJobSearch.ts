@@ -117,7 +117,7 @@ function buildSearchIndex(jobs: Job[]): SearchEntry[] {
 
 export function useJobSearch(
   jobs: Job[],
-  filterByFilterId: string | null
+  filterByFilterIds: string[] | null
 ): UseJobSearchReturn {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
@@ -140,9 +140,10 @@ export function useJobSearch(
   const filteredJobs = useMemo(() => {
     let results = searchIndex;
 
-    if (filterByFilterId) {
+    if (filterByFilterIds && filterByFilterIds.length > 0) {
+      const filterIDs = new Set(filterByFilterIds);
       results = results.filter(
-        (entry) => entry.job.FilterID === filterByFilterId
+        (entry) => entry.job.FilterID !== null && filterIDs.has(entry.job.FilterID)
       );
     }
 
@@ -194,7 +195,7 @@ export function useJobSearch(
   }, [
     searchIndex,
     debouncedTerm,
-    filterByFilterId,
+    filterByFilterIds,
     postedDateFilterMode,
     matchScoreFilterMode,
     sortMode,

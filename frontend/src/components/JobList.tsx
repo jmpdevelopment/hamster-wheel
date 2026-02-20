@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FixedSizeList, ListChildComponentProps } from "react-window";
 import { AutoSizer } from "react-virtualized-auto-sizer";
-import {
-  Job,
-  SearchFilter,
-} from "../../bindings/hamster-wheel/internal/db/models";
+import { Job } from "../../bindings/hamster-wheel/internal/db/models";
 import {
   GetJobListPreferences,
   SetJobListPreferences,
@@ -18,6 +15,7 @@ import {
   type PostedDateFilterMode,
   type MatchScoreFilterMode,
 } from "../hooks/useJobSearch";
+import { FilterGroup, resolveFilterGroupID } from "../lib/filterGroups";
 import { Button } from "./Button";
 import { ConfirmAction } from "./ConfirmAction";
 
@@ -65,7 +63,8 @@ function isMatchScoreFilterMode(value: string): value is MatchScoreFilterMode {
 
 interface JobListProps {
   jobs: Job[];
-  filters: SearchFilter[];
+  filters: FilterGroup[];
+  filtersLoading: boolean;
   loading: boolean;
   selectedJobId: string | null;
   onSelectJob: (id: string) => void;
@@ -82,6 +81,7 @@ interface JobListProps {
 export function JobList({
   jobs,
   filters,
+  filtersLoading,
   loading,
   selectedJobId,
   onSelectJob,
@@ -94,6 +94,21 @@ export function JobList({
   onDeleteJobs,
   onRecalculateJobs,
 }: JobListProps) {
+  const normalizedFilterSelection = useMemo(
+    () => resolveFilterGroupID(filters, filterByFilterId) ?? "",
+    [filters, filterByFilterId]
+  );
+  const selectedFilterIDs = useMemo(() => {
+    if (normalizedFilterSelection === "") {
+      return null;
+    }
+
+    const selectedFilter = filters.find(
+      (filter) => filter.ID === normalizedFilterSelection
+    );
+    return selectedFilter?.FilterIDs ?? null;
+  }, [filters, normalizedFilterSelection]);
+
   const {
     searchTerm,
     setSearchTerm,
@@ -104,7 +119,7 @@ export function JobList({
     matchScoreFilterMode,
     setMatchScoreFilterMode,
     filteredJobs,
-  } = useJobSearch(jobs, filterByFilterId);
+  } = useJobSearch(jobs, selectedFilterIDs);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(
     () => new Set()
@@ -131,7 +146,7 @@ export function JobList({
 
   const hasSearch = searchTerm.trim().length > 0;
   const hasFilter =
-    filterByFilterId !== null ||
+    selectedFilterIDs !== null ||
     postedDateFilterMode !== "any" ||
     matchScoreFilterMode !== "any";
   const visibleJobIndexByID = useMemo(() => {
@@ -219,6 +234,25 @@ export function JobList({
     setPostedDateFilterMode,
     setMatchScoreFilterMode,
   ]);
+
+  useEffect(() => {
+    if (!filterByFilterId) {
+      return;
+    }
+    if (filtersLoading) {
+      return;
+    }
+
+    const resolved = resolveFilterGroupID(filters, filterByFilterId);
+    if (resolved !== null && resolved !== filterByFilterId) {
+      onFilterChange(resolved);
+      return;
+    }
+
+    if (resolved === null) {
+      onFilterChange(null);
+    }
+  }, [filterByFilterId, filters, filtersLoading, onFilterChange]);
 
   useEffect(() => {
     if (!preferencesHydratedRef.current) {
@@ -541,7 +575,7 @@ export function JobList({
           onChange={setSearchTerm}
         />
         <select
-          value={filterByFilterId ?? ""}
+          value={normalizedFilterSelection}
           onChange={(e) => onFilterChange(e.target.value || null)}
           className="w-full px-2 py-1.5 text-sm rounded bg-hw-bg border border-hw-border text-hw-text focus:outline-none focus:border-hw-accent"
           aria-label="Filter jobs by search filter"
@@ -550,6 +584,9 @@ export function JobList({
           {filters.map((f) => (
             <option key={f.ID} value={f.ID}>
               {f.Name}
+              {f.Sources.length > 1
+                ? ` (${f.Sources.length} sources)`
+                : ""}
             </option>
           ))}
         </select>

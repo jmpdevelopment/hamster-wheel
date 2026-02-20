@@ -1,10 +1,10 @@
 import { useState } from "react";
-import { SearchFilter } from "../../bindings/hamster-wheel/internal/db/models";
+import { FilterGroup } from "../lib/filterGroups";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 
 interface FilterCardProps {
-  filter: SearchFilter;
+  filter: FilterGroup;
   associatedJobCount: number;
   onToggle: (enabled: boolean) => Promise<void>;
   onDelete: (deleteAssociatedJobs: boolean) => Promise<void>;
@@ -18,6 +18,13 @@ export function FilterCard({
 }: FilterCardProps) {
   const [confirming, setConfirming] = useState(false);
   const [deleteAssociatedJobs, setDeleteAssociatedJobs] = useState(false);
+  const sourceCount = filter.FilterIDs.length;
+  const isAllEnabled = filter.AllEnabled;
+  const isMixedEnabled = filter.Enabled && !filter.AllEnabled;
+  const sourcesSummary =
+    filter.Sources.length === 1
+      ? filter.Sources[0]
+      : filter.Sources.join(", ");
 
   const handleDelete = () => {
     if (confirming) {
@@ -98,27 +105,38 @@ export function FilterCard({
       )}
 
       <div className="flex items-center justify-between mt-2">
-        <span className="text-xs text-hw-text-muted">{filter.Source}</span>
+        <div className="min-w-0">
+          <div className="text-xs text-hw-text-muted truncate">
+            Sources: {sourcesSummary}
+          </div>
+          {sourceCount > 1 && (
+            <div className="text-xs text-hw-text-muted">
+              {filter.EnabledSourceCount}/{sourceCount} sources enabled
+            </div>
+          )}
+        </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => {
-            void onToggle(!filter.Enabled).catch(() => {
+            void onToggle(!isAllEnabled).catch(() => {
               // Parent tracks mutation errors for display.
             });
           }}
           className={`font-medium ${
-            filter.Enabled
+            isAllEnabled
               ? "bg-hw-success/20 text-hw-success hover:bg-hw-success/30"
+              : isMixedEnabled
+                ? "bg-hw-accent/20 text-hw-accent hover:bg-hw-accent/30"
               : "bg-hw-text-muted/20 hover:bg-hw-text-muted/30"
           }`}
           aria-label={
-            filter.Enabled
+            isAllEnabled
               ? `Disable filter ${filter.Name}`
               : `Enable filter ${filter.Name}`
           }
         >
-          {filter.Enabled ? "ON" : "OFF"}
+          {isAllEnabled ? "ON" : isMixedEnabled ? "MIXED" : "OFF"}
         </Button>
       </div>
     </div>
