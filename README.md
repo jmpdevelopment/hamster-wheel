@@ -16,16 +16,41 @@ Hamster Wheel is a self-hosted desktop application (macOS & Windows) built with 
 - Extensible adapter pattern for job sources
 - Privacy-first: no telemetry, no user accounts
 
-## Tech Stack
+## Architecture
 
-| Layer | Technology |
-|---|---|
-| Desktop Framework | Wails v3 |
-| Backend | Go 1.25 |
-| Database | SQLite (modernc.org/sqlite) |
-| Frontend | React 18 + TypeScript + Vite + Tailwind |
-| Secrets | zalando/go-keyring |
-| LLM Integration | Provider interface (OpenAI-first, extensible) |
+The application follows a layered architecture with clear separation between the frontend UI, Wails-bound service layer, and internal packages. Polling and matching are intentionally decoupled so ingestion stays fast and deterministic while LLM scoring runs asynchronously.
+
+```mermaid
+flowchart TD
+    UI["Frontend\n(React + TypeScript)"]
+    WAILS["Wails v3 Bridge"]
+    SVC["Service Layer\n(Filter · Job · Polling · Settings)"]
+    SCHED["Scheduler"]
+    ADAPT["Job Source Adapters"]
+    MATCH["Match Worker"]
+    DB["SQLite"]
+    API["Job Board APIs"]
+    LLM["LLM Provider\n(Cloud / Local)"]
+    KC["OS Keychain"]
+    NOTIF["Native Notifications"]
+
+    UI <-->|"bound calls"| WAILS
+    WAILS <--> SVC
+    SVC --> SCHED
+    SVC --> MATCH
+    SVC --> KC
+    SCHED --> ADAPT
+    ADAPT -->|"fetch"| API
+    ADAPT -->|"deduplicate & store"| DB
+    MATCH -->|"claim queued jobs"| DB
+    MATCH -->|"score"| LLM
+    MATCH -->|"high-score alert"| NOTIF
+    SVC -->|"read/write"| DB
+```
+
+**Data flow:** The scheduler triggers enabled filters on a configurable interval. Each adapter fetches jobs from its source API, deduplicates by `(source, source_id)`, and persists new results. Newly discovered jobs are queued for asynchronous matching. The match worker atomically claims pending jobs, scores them via the configured LLM provider, and fires native notifications for high-score matches. The UI reflects state changes in real time.
+
+For the full technology stack, data model, and service boundary details see [`docs/core/architecture.md`](docs/core/architecture.md).
 
 ## Prerequisites
 
@@ -45,23 +70,6 @@ cd frontend && npm install && cd ..
 
 # Run in development mode
 ./dev-run.sh
-```
-
-## Project Structure
-
-```
-├── main.go                  # Application entry point
-├── app.go                   # App lifecycle service
-├── *_service.go             # Wails-bound service layer
-├── frontend/                # React + TypeScript UI
-├── internal/
-│   ├── db/                  # Migrations and DB operations
-│   ├── adapter/             # Job source adapters
-│   ├── scheduler/           # Polling orchestration
-│   ├── matcher/             # LLM matching engine
-│   └── keychain/            # Key storage abstraction
-├── docs/                    # Project documentation & AI context
-└── scripts/                 # Build and installer scripts
 ```
 
 ## Building Installers
