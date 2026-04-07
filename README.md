@@ -6,6 +6,49 @@ Job search monitoring with LLM-powered matching
 
 Hamster Wheel is a self-hosted desktop application (macOS & Windows) built with Wails v3. It runs in the background, polls job boards at configurable intervals, deduplicates and stores results locally in SQLite, and scores each posting against your CV using an AI model (cloud or local LLM). When a high-quality match is found, you get a native desktop notification. CV and cover-letter tailoring workflows are planned for a future phase.
 
+## Architecture
+
+```mermaid
+flowchart TD
+    User("👤 User")
+
+    subgraph Desktop["Desktop App (Wails v3)"]
+        Frontend["Frontend\nReact + TypeScript"]
+        subgraph Services["Go Services (Wails-bound)"]
+            FilterSvc["FilterService"]
+            JobSvc["JobService"]
+            PollSvc["PollingService"]
+            SettingsSvc["SettingsService"]
+        end
+    end
+
+    subgraph Internal["Internal Packages"]
+        Scheduler["Scheduler\nscheduler/"]
+        Adapter["Job Adapters\nadapter/"]
+        Matcher["Match Worker\nmatcher/"]
+        Keychain["Keychain\nkeychain/"]
+        DB[("SQLite\ndb/")]
+    end
+
+    LLM["LLM Provider\n(OpenAI / Local / Compatible)"]
+    JobAPI["External Job APIs\n(e.g. Reed UK)"]
+    Notify["Native OS Notification"]
+
+    User -->|UI interactions| Frontend
+    Frontend <-->|Wails bindings| Services
+    PollSvc --> Scheduler
+    SettingsSvc --> Keychain
+    Scheduler -->|trigger poll| Adapter
+    Adapter -->|fetch listings| JobAPI
+    Adapter -->|persist & deduplicate| DB
+    Scheduler -->|queue new jobs| Matcher
+    Matcher -->|score against CV| LLM
+    Matcher -->|store match result| DB
+    Matcher -->|high-score match| Notify
+    DB -->|retrieve jobs & scores| JobSvc
+    DB -->|retrieve filters| FilterSvc
+```
+
 ## Features
 
 - Background job-board polling with configurable intervals
@@ -15,17 +58,6 @@ Hamster Wheel is a self-hosted desktop application (macOS & Windows) built with 
 - OS keychain integration for API key storage
 - Extensible adapter pattern for job sources
 - Privacy-first: no telemetry, no user accounts
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Desktop Framework | Wails v3 |
-| Backend | Go 1.25 |
-| Database | SQLite (modernc.org/sqlite) |
-| Frontend | React 18 + TypeScript + Vite + Tailwind |
-| Secrets | zalando/go-keyring |
-| LLM Integration | Provider interface (OpenAI-first, extensible) |
 
 ## Prerequisites
 
@@ -45,23 +77,6 @@ cd frontend && npm install && cd ..
 
 # Run in development mode
 ./dev-run.sh
-```
-
-## Project Structure
-
-```
-├── main.go                  # Application entry point
-├── app.go                   # App lifecycle service
-├── *_service.go             # Wails-bound service layer
-├── frontend/                # React + TypeScript UI
-├── internal/
-│   ├── db/                  # Migrations and DB operations
-│   ├── adapter/             # Job source adapters
-│   ├── scheduler/           # Polling orchestration
-│   ├── matcher/             # LLM matching engine
-│   └── keychain/            # Key storage abstraction
-├── docs/                    # Project documentation & AI context
-└── scripts/                 # Build and installer scripts
 ```
 
 ## Building Installers
