@@ -6,26 +6,38 @@ Job search monitoring with LLM-powered matching
 
 Hamster Wheel is a self-hosted desktop application (macOS & Windows) built with Wails v3. It runs in the background, polls job boards at configurable intervals, deduplicates and stores results locally in SQLite, and scores each posting against your CV using an AI model (cloud or local LLM). When a high-quality match is found, you get a native desktop notification. CV and cover-letter tailoring workflows are planned for a future phase.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    Scheduler -->|triggers| Adapters
+    Adapters -->|raw jobs| Dedup[Dedup & Storage]
+    Dedup -->|new jobs| MatchQueue[Match Queue]
+    MatchQueue -->|pending jobs| Matcher[LLM Matcher]
+    Matcher -->|scored results| UI[Desktop UI]
+    Matcher -->|high scores| Notifications[Native Notifications]
+    UI -->|manage| Settings[Settings & Keys]
+    Settings -->|configure| Scheduler
+    Settings -->|configure| Matcher
+```
+
+- The **Scheduler** polls enabled filters at configurable intervals
+- **Adapters** fetch jobs from source APIs (extensible via adapter pattern)
+- New jobs are **deduplicated** and stored in local SQLite
+- Discovered jobs enter a **match queue** for async LLM scoring
+- The **LLM Matcher** scores job fit against the user's CV (cloud or local provider)
+- **High-score matches** trigger native desktop notifications
+- All configuration (API keys, intervals, thresholds) managed through **Settings**, with keys stored in OS keychain
+
+Built with Go, Wails v3, React/TypeScript, and SQLite. See [`docs/core/architecture.md`](docs/core/architecture.md) for the full technology stack.
+
 ## Features
 
-- Background job-board polling with configurable intervals
-- LLM-powered job matching (OpenAI cloud, local models, or OpenAI-compatible endpoints)
-- Native desktop notifications for high-score matches
-- Local SQLite storage — no cloud backend required
-- OS keychain integration for API key storage
-- Extensible adapter pattern for job sources
-- Privacy-first: no telemetry, no user accounts
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Desktop Framework | Wails v3 |
-| Backend | Go 1.25 |
-| Database | SQLite (modernc.org/sqlite) |
-| Frontend | React 18 + TypeScript + Vite + Tailwind |
-| Secrets | zalando/go-keyring |
-| LLM Integration | Provider interface (OpenAI-first, extensible) |
+- Automatic job-board polling in the background — no manual searching
+- LLM-powered match scoring against your CV (cloud or local model)
+- Native desktop notifications when a high-quality match is found
+- Fully local: no cloud backend, no telemetry, no user accounts
+- API keys stored securely in the OS keychain
 
 ## Prerequisites
 
@@ -45,23 +57,6 @@ cd frontend && npm install && cd ..
 
 # Run in development mode
 ./dev-run.sh
-```
-
-## Project Structure
-
-```
-├── main.go                  # Application entry point
-├── app.go                   # App lifecycle service
-├── *_service.go             # Wails-bound service layer
-├── frontend/                # React + TypeScript UI
-├── internal/
-│   ├── db/                  # Migrations and DB operations
-│   ├── adapter/             # Job source adapters
-│   ├── scheduler/           # Polling orchestration
-│   ├── matcher/             # LLM matching engine
-│   └── keychain/            # Key storage abstraction
-├── docs/                    # Project documentation & AI context
-└── scripts/                 # Build and installer scripts
 ```
 
 ## Building Installers
