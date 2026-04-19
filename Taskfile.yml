@@ -1,0 +1,41 @@
+version: '3'
+
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./windows/Taskfile.yml
+  darwin: ./darwin/Taskfile.yml
+
+vars:
+  APP_NAME: "hamster-wheel"
+  BIN_DIR: "bin"
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+
+tasks:
+  build:
+    summary: Builds the application for the current OS
+    cmds:
+      - task: "{{OS}}:build"
+
+  package:
+    summary: Packages the application for the current OS
+    cmds:
+      - task: "{{OS}}:package"
+
+  package:universal:
+    summary: Packages a macOS universal build (arm64 + amd64)
+    preconditions:
+      - sh: '[ "{{OS}}" = "darwin" ]'
+        msg: "package:universal is only available on macOS hosts."
+    cmds:
+      - task: darwin:package:universal
+
+  run:
+    summary: Runs the application for the current OS
+    cmds:
+      - task: "{{OS}}:run"
+
+  dev:
+    summary: Runs the app in development mode
+    cmds:
+      - wails3 dev -config ./config.yml -port {{.VITE_PORT}}
+

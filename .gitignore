@@ -1,8 +1,9 @@
 # Build output
 build/bin/
 build/darwin/icons.icns
-bin/hamster-wheel
-bin/*.app/
+/hamster-wheel
+bin/
+dist/
 
 # Frontend dependencies
 frontend/node_modules/
@@ -26,6 +27,7 @@ frontend/coverage/
 
 # OS
 .DS_Store
+**/.DS_Store
 Thumbs.db
 
 # Wails dev
@@ -49,16 +51,13 @@ secrets/
 # Claude Code local configuration (project-specific model settings)
 .claude/
 
-# Wails generated task cache and optional platform scaffolding
+# Wails task runner cache
 .task/
-android/
-ios/
-linux/
-docker/
+
+# Wails-generated platform artifacts (regenerated on build)
 appicon.icon/
 appicon.png
-Taskfile.yml
-build/Taskfile.yml
-config.yml
-darwin/
-windows/
+darwin/build/
+darwin/Assets.car
+darwin/icons.icns
+windows/build/

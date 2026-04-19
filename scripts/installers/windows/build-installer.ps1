@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$AppExePath = "bin\hamster-wheel.exe",
-    [string]$Version = "0.1.0",
+    [string]$Version = "1.0.0",
     [string]$OutputDir = "dist\installers\windows",
     [string]$AppName = "Hamster Wheel",
     [string]$Publisher = "Hamster Wheel",

@@ -1,15 +1,15 @@
 {
 	"fixed": {
-		"file_version": "{{.Info.ProductVersion}}"
+		"file_version": "1.0.0"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "{{.Info.ProductVersion}}",
-			"CompanyName": "{{.Info.CompanyName}}",
-			"FileDescription": "{{.Info.ProductName}}",
-			"LegalCopyright": "{{.Info.Copyright}}",
-			"ProductName": "{{.Info.ProductName}}",
-			"Comments": "{{.Info.Comments}}"
+			"ProductVersion": "1.0.0",
+			"CompanyName": "jmpdevelopment",
+			"FileDescription": "Automated job search monitoring with LLM-powered matching",
+			"LegalCopyright": "(c) 2026, jmpdevelopment",
+			"ProductName": "Hamster Wheel",
+			"Comments": "Self-hosted desktop app that polls job boards and scores listings against your CV"
 		}
 	}
 }

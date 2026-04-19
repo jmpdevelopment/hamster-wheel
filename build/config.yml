@@ -3,13 +3,13 @@ version: '3'
 
 # Application information
 info:
-  companyName: "Hamster Wheel"
+  companyName: "jmpdevelopment"
   productName: "Hamster Wheel"
-  productIdentifier: "com.hamsterwheel.app"
-  description: "Job search monitoring and application assistant"
-  copyright: "(c) 2026, Hamster Wheel"
-  comments: "Automated job search monitoring with LLM-powered matching"
-  version: "0.1.0"
+  productIdentifier: "io.github.jmpdevelopment.hamster-wheel"
+  description: "Automated job search monitoring with LLM-powered matching"
+  copyright: "(c) 2026, jmpdevelopment"
+  comments: "Self-hosted desktop app that polls job boards and scores listings against your CV"
+  version: "1.0.0"
 
 # Dev mode configuration
 dev_mode:

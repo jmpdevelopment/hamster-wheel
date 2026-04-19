@@ -1,96 +1,89 @@
 # Hamster Wheel
 
-Job search monitoring with LLM-powered matching
+**Self-hosted job-search assistant.** Polls job boards in the background, deduplicates listings, and uses an LLM to score each one against your CV — so you see real matches, not noise.
 
-## Overview
+![Hamster Wheel demo](assets/HamsterWheelDemo.gif)
 
-Hamster Wheel is a self-hosted desktop application (macOS & Windows) built with Wails v3. It runs in the background, polls job boards at configurable intervals, deduplicates and stores results locally in SQLite, and scores each posting against your CV using an AI model (cloud or local LLM). When a high-quality match is found, you get a native desktop notification. CV and cover-letter tailoring workflows are planned for a future phase.
+## What it is
 
-## Architecture
+Manual job hunting is repetitive and time-sensitive. The early applicant has an edge, but refreshing search pages every hour is a poor use of a person. Hamster Wheel polls the boards on a schedule, persists every new listing to a local database, and scores each one against your CV using an LLM — either OpenAI in the cloud, or a Llama model running fully offline on your machine.
 
-```mermaid
-flowchart TD
-    User("👤 User")
+Unlike paid aggregators or job-site email alerts, Hamster Wheel runs as a desktop app you control. There is no cloud backend, no account, and no telemetry. Your CV is parsed in-process and only the parts the matcher needs are sent to the LLM endpoint *you* configured. Pick the local Llama runtime and it never leaves the machine at all.
 
-    subgraph Desktop["Desktop App (Wails v3)"]
-        Frontend["Frontend\nReact + TypeScript"]
-        subgraph Services["Go Services (Wails-bound)"]
-            FilterSvc["FilterService"]
-            JobSvc["JobService"]
-            PollSvc["PollingService"]
-            SettingsSvc["SettingsService"]
-        end
-    end
+## Install
 
-    subgraph Internal["Internal Packages"]
-        Scheduler["Scheduler\nscheduler/"]
-        Adapter["Job Adapters\nadapter/"]
-        Matcher["Match Worker\nmatcher/"]
-        Keychain["Keychain\nkeychain/"]
-        DB[("SQLite\ndb/")]
-    end
+### Pre-built (recommended)
 
-    LLM["LLM Provider\n(OpenAI / Local / Compatible)"]
-    JobAPI["External Job APIs\n(e.g. Reed UK)"]
-    Notify["Native OS Notification"]
+Download the latest installer from [Releases](https://github.com/jmpdevelopment/hamster-wheel/releases):
 
-    User -->|UI interactions| Frontend
-    Frontend <-->|Wails bindings| Services
-    PollSvc --> Scheduler
-    SettingsSvc --> Keychain
-    Scheduler -->|trigger poll| Adapter
-    Adapter -->|fetch listings| JobAPI
-    Adapter -->|persist & deduplicate| DB
-    Scheduler -->|queue new jobs| Matcher
-    Matcher -->|score against CV| LLM
-    Matcher -->|store match result| DB
-    Matcher -->|high-score match| Notify
-    DB -->|retrieve jobs & scores| JobSvc
-    DB -->|retrieve filters| FilterSvc
-```
+| Platform | File |
+|---|---|
+| macOS (Apple Silicon + Intel) | `hamster-wheel-<version>-macos-installer.dmg` |
+| Windows 10/11 (x64) | `hamster-wheel-<version>-windows-installer.exe` |
 
-## Features
+Builds are not yet code-signed. On macOS, right-click the app → *Open* on first launch to bypass Gatekeeper. On Windows, click *More info* → *Run anyway* on the SmartScreen prompt. Verify downloads against the SHA256 checksums published with each release.
 
-- Background job-board polling with configurable intervals
-- LLM-powered job matching (OpenAI cloud, local models, or OpenAI-compatible endpoints)
-- Native desktop notifications for high-score matches
-- Local SQLite storage — no cloud backend required
-- OS keychain integration for API key storage
-- Extensible adapter pattern for job sources
-- Privacy-first: no telemetry, no user accounts
+### Build from source
 
-## Prerequisites
-
-- Go 1.25+
-- Node.js (for frontend)
-- Wails v3 CLI
-
-## Getting Started
+Requires Go 1.25+, Node 20+, and the [Wails v3 CLI](https://v3.wails.io/getting-started/installation/) (`go install github.com/wailsapp/wails/v3/cmd/wails3@latest`).
 
 ```bash
-# Clone the repository
 git clone https://github.com/jmpdevelopment/hamster-wheel.git
 cd hamster-wheel
-
-# Install frontend dependencies
 cd frontend && npm install && cd ..
-
-# Run in development mode
-./dev-run.sh
+wails3 dev
 ```
 
-## Building Installers
+For installer packaging, see [scripts/installers/README.md](scripts/installers/README.md).
 
-Windows (NSIS) and macOS (pkg/dmg) installer instructions are in [`scripts/installers/README.md`](scripts/installers/README.md).
+## Getting started
 
-## Documentation
+Two paths, depending on how much you want leaving your machine.
 
-Detailed architecture, product, and engineering docs live in [`docs/`](docs/). For AI agent context (documentation contract, read order, and minimal context packs) see [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md).
+### Cloud setup (fastest)
 
-## Current Status
+1. Get a free Reed API key at <https://www.reed.co.uk/developers>.
+2. Get an OpenAI API key at <https://platform.openai.com/api-keys>.
+3. Launch the app. The first-run wizard walks you through:
+   - Pasting both keys (stored in the OS keychain).
+   - Setting the polling interval (default 30 minutes) and job retention (default 30 days).
+   - Picking the OpenAI model (default `gpt-4o-mini`).
+4. Create at least one search filter (keywords + location), then **Poll Now**. New jobs appear immediately; match scores fill in within a few seconds each.
 
-Phase 1 (foundation + polling) is complete. Phase 2 (LLM matching) is in progress. See [`docs/execution/status.md`](docs/execution/status.md) and [`docs/execution/roadmap.md`](docs/execution/roadmap.md) for details.
+### Fully local setup
+
+1. Install [Ollama](https://ollama.com), launch it once so it registers itself, then quit it.
+2. Get a free Reed API key at <https://www.reed.co.uk/developers>.
+3. Launch Hamster Wheel. In the wizard:
+   - Add the Reed key.
+   - Choose **LLM mode → Local**, click **Start runtime**, then **Download Llama** (~4.7 GB, one-time).
+   - Wait for the runtime to reach *ready*.
+4. Create a filter and **Poll Now**. Matching takes longer than Cloud (CPU/GPU dependent) but nothing leaves your machine.
+
+You can switch between Cloud and Local at any time from **Settings → LLM Providers** without restarting the app.
+
+## How matching works
+
+Polling and matching are decoupled. The scheduler fetches jobs and writes them to SQLite immediately; a separate worker pulls pending jobs off the queue and scores them. Slow LLM responses never delay job discovery, and you can disable matching entirely if you only want raw polling.
+
+Each match request sends the LLM your job filter, the listing's title/company/location/description, and a compact summary of your CV. The model returns a score from 0.0 to 1.0 and a one-paragraph rationale. Recalculate any job's score after editing your CV, or bulk-recalculate from the right-click menu in the job list.
+
+If a match fails (rate limit, parse error, network drop), the job stays in the list with a *failed* badge — you can retry it without losing the discovery.
+
+## Privacy
+
+Hamster Wheel makes no analytics or telemetry calls. The only outbound traffic is to the job-board APIs and the LLM endpoint you configured.
+
+API keys live in the OS keychain (Keychain on macOS, Credential Manager on Windows), never in the SQLite database or in plaintext config. Job data is stored locally in your user data directory. CV files are read from disk and parsed in-process; the parsed text is included in match prompts only.
+
+Choose **Local** mode and the LLM endpoint is `localhost` — your CV and the job descriptions you score never reach a third party.
+
+## Tech stack
+
+Go 1.25, [Wails v3](https://v3.wails.io), [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) (pure-Go, no CGO), [zalando/go-keyring](https://github.com/zalando/go-keyring), React 18 + TypeScript + Vite + Tailwind. LLM integration is OpenAI-first with an OpenAI-compatible local-runtime path via Ollama.
+
+See [docs/](docs/) — particularly [architecture.md](docs/core/architecture.md) and [decisions.md](docs/core/decisions.md) — for deeper detail on the runtime model and accepted decisions.
 
 ## License
 
-Apache 2.0
+[MIT](LICENSE)

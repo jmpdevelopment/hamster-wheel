@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 APP_BUNDLE_PATH="${1:-${REPO_ROOT}/bin/hamster-wheel.app}"
-VERSION="${2:-0.1.0}"
+VERSION="${2:-1.0.0}"
 OUTPUT_DIR="${3:-${REPO_ROOT}/dist/installers/macos}"
 
 APP_NAME="${APP_NAME:-Hamster Wheel}"
